@@ -20,6 +20,13 @@ public struct PackageManagerCachesRule: ScanRule {
     }
 
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
-        true
+        guard ScanPolicy.isLowImpactPath(fileURL) else {
+            return false
+        }
+
+        return ScanPolicy.passesMinimumAge(
+            for: resourceValues,
+            minimumAgeSeconds: ScanPolicy.defaultMinimumAgeSeconds(for: category)
+        )
     }
 }

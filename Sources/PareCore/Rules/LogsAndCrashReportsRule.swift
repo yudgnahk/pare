@@ -18,6 +18,10 @@ public struct LogsAndCrashReportsRule: ScanRule {
 
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
         let ext = fileURL.pathExtension.lowercased()
-        return ["log", "crash", "ips", "diag"].contains(ext)
+        guard ["log", "crash", "ips", "diag"].contains(ext) else {
+            return false
+        }
+
+        return ScanPolicy.isLowImpactPath(fileURL)
     }
 }

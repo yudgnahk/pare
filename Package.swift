@@ -12,6 +12,10 @@ let package = Package(
             targets: ["App BCore"]
         ),
         .executable(
+            name: "PareApp",
+            targets: ["PareApp"]
+        ),
+        .executable(
             name: "pare-cli",
             targets: ["App BCLI"]
         )
@@ -19,6 +23,10 @@ let package = Package(
     targets: [
         .target(
             name: "App BCore"
+        ),
+        .executableTarget(
+            name: "PareApp",
+            dependencies: ["App BCore"]
         ),
         .executableTarget(
             name: "App BCLI",

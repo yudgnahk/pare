@@ -59,7 +59,7 @@ final class ScanRunnerTests: XCTestCase {
         let rule = TemporaryFilesRule()
 
         var oldValues = URLResourceValues()
-        oldValues.contentModificationDate = Date().addingTimeInterval(-2 * 24 * 60 * 60)
+        oldValues.contentModificationDate = Date().addingTimeInterval(-4 * 24 * 60 * 60)
 
         var newValues = URLResourceValues()
         newValues.contentModificationDate = Date()
@@ -77,6 +77,31 @@ final class ScanRunnerTests: XCTestCase {
                 resourceValues: newValues
             )
         )
+    }
+
+    func testTemporaryRuleRejectsFilesNewerThanDefaultCacheAge() {
+        let rule = TemporaryFilesRule()
+
+        var values = URLResourceValues()
+        values.contentModificationDate = Date().addingTimeInterval(-2 * 24 * 60 * 60)
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/private/var/folders/tmp/too-new.tmp"),
+                resourceValues: values
+            )
+        )
+    }
+
+    func testScanPolicyLargeFileThreshold() {
+        XCTAssertFalse(ScanPolicy.isLargeFile(ScanPolicy.largeFileThresholdBytes))
+        XCTAssertTrue(ScanPolicy.isLargeFile(ScanPolicy.largeFileThresholdBytes + 1))
+    }
+
+    func testScanPolicyRejectsProtectedPaths() {
+        XCTAssertFalse(ScanPolicy.isLowImpactPath(URL(fileURLWithPath: "/Users/test/Documents/archive.cache")))
+        XCTAssertFalse(ScanPolicy.isLowImpactPath(URL(fileURLWithPath: "/Users/test/Library/Application Support/App/data.cache")))
+        XCTAssertTrue(ScanPolicy.isLowImpactPath(URL(fileURLWithPath: "/Users/test/Library/Caches/com.example/cache.db")))
     }
 
     func testDeveloperRuleCatalogIncludesPersonaRules() {
