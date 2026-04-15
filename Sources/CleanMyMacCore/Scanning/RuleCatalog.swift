@@ -3,6 +3,8 @@ import Foundation
 public enum ScanProfile: String, Sendable {
     case baseline
     case developer
+    case designer
+    case videoBuilder = "video-builder"
 }
 
 public enum RuleCatalog {
@@ -12,6 +14,10 @@ public enum RuleCatalog {
             return baseline
         case .developer:
             return developer
+        case .designer:
+            return designer
+        case .videoBuilder:
+            return videoBuilder
         }
     }
 
@@ -30,6 +36,20 @@ public enum RuleCatalog {
             XcodeArchivesRule(),
             PackageManagerCachesRule(),
             XcodeSimulatorCachesRule()
+        ] + baseline
+    }
+
+    public static var designer: [any ScanRule] {
+        [
+            DesignerCachesRule(),
+            DesignerReviewRequiredMediaRule()
+        ] + baseline
+    }
+
+    public static var videoBuilder: [any ScanRule] {
+        [
+            VideoBuilderCachesRule(),
+            VideoBuilderReviewRequiredMediaRule()
         ] + baseline
     }
 }

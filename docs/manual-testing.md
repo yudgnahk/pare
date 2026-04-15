@@ -19,6 +19,8 @@ make run-app
 ```bash
 make run-baseline
 make run-developer
+make run PROFILE=designer TOP=50
+make run PROFILE=video-builder TOP=50
 make run PROFILE=developer TOP=50
 ```
 
@@ -26,8 +28,10 @@ make run PROFILE=developer TOP=50
 
 1. Run baseline scan and confirm categories appear with sensible totals.
 2. Run developer scan and verify Xcode/package/simulator items appear.
-3. Inspect top files output and spot-check paths for safety expectations.
-4. Re-run same command and check that output remains stable.
+3. Run designer and video-builder scans and verify Adobe/Figma/FCP/Premiere/Resolve cache targets appear.
+4. Confirm media-preview-like targets are labeled `REVIEW` in top-files output.
+5. Inspect top files output and spot-check paths for safety expectations.
+6. Re-run same command and check that output remains stable.
 
 ## Phase 2 Parity Validation (Recorded)
 
