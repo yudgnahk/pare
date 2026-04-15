@@ -22,15 +22,19 @@
 - [x] Verify manual baseline run via `make start`.
 
 ## Phase 2 - SwiftUI macOS App Target (Core Reuse)
-- [ ] Create a macOS SwiftUI app target (for example, `PareApp`) in the same package/workspace.
-- [ ] Reuse `App BCore` directly from the app target (no duplicated scan logic).
-- [ ] Keep `cleanmymac-cli` as a debug/diagnostic runner that uses the same core module.
-- [ ] Add an app state/view model that wraps `ScanRunner` and `RuleCatalog`.
-- [ ] Add profile selector UI (Baseline/Developer) wired to existing profile rules.
-- [ ] Add scan action UI and show loading/progress state.
-- [ ] Show scan results UI: total reclaimable, category summaries, top files.
-- [ ] Add a local run command path for the app target in docs/Makefile.
-- [ ] Manually verify CLI and SwiftUI app produce consistent summary totals for the same profile.
+- [x] Create a macOS SwiftUI app target (for example, `PareApp`) in the same package/workspace.
+- [x] Reuse `App BCore` directly from the app target (no duplicated scan logic).
+- [x] Keep `cleanmymac-cli` as a debug/diagnostic runner that uses the same core module.
+- [x] Add an app state/view model that wraps `ScanRunner` and `RuleCatalog`.
+- [x] Add profile selector UI (Baseline/Developer) wired to existing profile rules.
+- [x] Add scan action UI and show loading/progress state.
+- [x] Show scan results UI: total reclaimable, category summaries, top files.
+- [x] Restrict scan results to low-impact candidates and apply default cache-like minimum age of 3 days.
+- [x] Add per-category large-file list (`> 50 MB`) and Finder reveal action.
+- [x] Align CLI output with shared large-file grouping policy.
+- [x] Add/expand tests for policy guardrails (age threshold, large-file threshold, protected-path exclusion).
+- [x] Add a local run command path for the app target in docs/Makefile.
+- [x] Manually verify CLI and SwiftUI app produce consistent summary totals for the same profile.
 
 ## Phase 3 - Persona Packs
 - [x] Add Developer pack (Xcode, package caches, optional simulator cleanup).
@@ -42,7 +46,7 @@
 - [x] Add quick-start manual test guide in `docs/manual-testing.md`.
 - [x] Validate `make build` and `make test` locally.
 - [x] Validate `make start` baseline output locally.
-- [ ] Run developer profile manual validation and record findings.
+- [x] Run developer profile manual validation and record findings.
 
 ## Phase 4 - Safe Cleanup Engine
 - [ ] Implement move-to-Trash cleanup pipeline.

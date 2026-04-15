@@ -21,6 +21,14 @@ public struct XcodeSimulatorCachesRule: ScanRule {
         if path.contains("data/containers") {
             return false
         }
-        return true
+
+        guard ScanPolicy.isLowImpactPath(fileURL) else {
+            return false
+        }
+
+        return ScanPolicy.passesMinimumAge(
+            for: resourceValues,
+            minimumAgeSeconds: ScanPolicy.defaultMinimumAgeSeconds(for: category)
+        )
     }
 }

@@ -5,13 +5,14 @@ PROFILE ?= baseline
 TOP ?= 20
 ARGS ?=
 
-.PHONY: help build test run start run-baseline run-developer clean
+.PHONY: help build test run start run-app run-baseline run-developer clean
 
 help:
 	@printf "Targets:\n"
 	@printf "  make build                Build CLI app\n"
 	@printf "  make test                 Run unit tests\n"
 	@printf "  make start                Start app (baseline profile)\n"
+	@printf "  make run-app              Launch SwiftUI macOS app\n"
 	@printf "  make run PROFILE=...      Run profile (baseline|developer)\n"
 	@printf "  make run-baseline         Run baseline scan\n"
 	@printf "  make run-developer        Run developer scan\n"
@@ -27,6 +28,9 @@ test:
 	swift test
 
 start: run-baseline
+
+run-app:
+	swift run PareApp
 
 run:
 	swift run $(APP) --profile $(PROFILE) --top $(TOP) $(ARGS)
