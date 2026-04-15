@@ -1,0 +1,62 @@
+# Clean My Mac (Pure Swift) - Checklist
+
+## Phase 0 - Discovery and Guardrails
+- [ ] Define supported macOS version range (recommended: macOS 13+).
+- [ ] Decide distribution path (direct notarized app vs App Store constraints).
+- [ ] Lock safe-delete policy (default: move to Trash first).
+- [ ] Define protected paths and never-delete zones.
+- [ ] Create persona cleanup matrix (Developer, Designer, Video Builder).
+
+## Phase 1 - Core Scanner MVP
+- [x] Define `ScanRule` protocol (id/title/category/risk/path resolver/detector).
+- [x] Build async filesystem traversal service.
+- [x] Implement baseline rules for user cache folders.
+- [x] Implement baseline rules for temp folders.
+- [x] Implement baseline rules for logs and crash reports.
+- [x] Implement safe subset browser cache rules.
+- [x] Compute reclaimable size and file count per category.
+- [x] Define result model: category, path, size, last-used, confidence.
+- [x] Build a basic scan runner to execute selected rules.
+- [x] Add unit tests for rule matching and size aggregation.
+- [x] Add local run workflow with `Makefile` commands (`build`, `test`, `start`, profile runs).
+- [x] Verify manual baseline run via `make start`.
+
+## Phase 2 - Persona Packs
+- [x] Add Developer pack (Xcode, package caches, optional simulator cleanup).
+- [ ] Add Designer pack (Adobe/Figma caches and export temp paths).
+- [ ] Add Video Builder pack (FCP, Premiere/AE, Resolve cache targets).
+- [ ] Mark high-risk media paths as review-required.
+
+## Manual Testing Status
+- [x] Add quick-start manual test guide in `docs/manual-testing.md`.
+- [x] Validate `make build` and `make test` locally.
+- [x] Validate `make start` baseline output locally.
+- [ ] Run developer profile manual validation and record findings.
+
+## Phase 3 - Safe Cleanup Engine
+- [ ] Implement move-to-Trash cleanup pipeline.
+- [ ] Store cleanup transaction logs (timestamped JSON).
+- [ ] Add restore/undo flow from transaction logs.
+- [ ] Add pre-delete checks (file locks, in-use, min-age constraints).
+- [ ] Add global and per-profile exclusions.
+
+## Phase 4 - UX and Trust
+- [ ] Build dashboard with reclaimable storage and top categories.
+- [ ] Show explainability for each result (why listed and impact).
+- [ ] Implement dry-run mode.
+- [ ] Implement Quick Clean mode (low risk only).
+- [ ] Implement Deep Clean mode (explicit warnings + confirmations).
+
+## Phase 5 - Performance and Reliability
+- [ ] Add incremental scan metadata cache.
+- [ ] Add progress updates and cancellation support.
+- [ ] Handle symlinks, package bundles, and permission failures safely.
+- [ ] Benchmark large directories and optimize hotspots.
+- [ ] Add reliability tests for interrupted scans.
+
+## Phase 6 - QA, Security, Release
+- [ ] Add unit tests for path safety and risk labeling.
+- [ ] Add integration tests with seeded junk datasets.
+- [ ] Add regression tests for protected path enforcement.
+- [ ] Complete code signing, hardened runtime, and notarization.
+- [ ] Add diagnostics export bundle for support.
