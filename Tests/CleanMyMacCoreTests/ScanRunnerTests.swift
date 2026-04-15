@@ -14,9 +14,17 @@ final class ScanRunnerTests: XCTestCase {
         let id: String
         let title: String
         let category: ScanCategory
-        let riskLevel: RiskLevel = .safe
+        let riskLevel: RiskLevel
         let confidence: Double = 1.0
         let targets: [URL]
+
+        init(id: String, title: String, category: ScanCategory, riskLevel: RiskLevel = .safe, targets: [URL]) {
+            self.id = id
+            self.title = title
+            self.category = category
+            self.riskLevel = riskLevel
+            self.targets = targets
+        }
 
         func targetDirectories(environment: ScanEnvironment) -> [URL] {
             targets
@@ -113,6 +121,84 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
     }
 
+    func testDesignerRuleCatalogIncludesPersonaRules() {
+        let rules = [any ScanRule].designer
+        XCTAssertTrue(rules.contains(where: { $0.id == "designer-caches" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "designer-review-required-media" }))
+        XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
+    }
+
+    func testVideoBuilderRuleCatalogIncludesPersonaRules() {
+        let rules = [any ScanRule].videoBuilder
+        XCTAssertTrue(rules.contains(where: { $0.id == "video-builder-caches" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "video-builder-review-required-media" }))
+        XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
+    }
+
+    func testDesignerRulesRespectPathAndRiskPolicy() {
+        let safeRule = DesignerCachesRule()
+        let reviewRule = DesignerReviewRequiredMediaRule()
+
+        var oldValues = URLResourceValues()
+        oldValues.contentModificationDate = Date().addingTimeInterval(-4 * 24 * 60 * 60)
+
+        XCTAssertTrue(
+            safeRule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Caches/Adobe/Common/cache.bin"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertTrue(
+            reviewRule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Movies/Adobe Premiere Pro Video Previews/preview.cfa"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertFalse(
+            safeRule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/Adobe/Common/Media Cache/bookmarks.db"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertEqual(safeRule.riskLevel, .safe)
+        XCTAssertEqual(reviewRule.riskLevel, .review)
+    }
+
+    func testVideoBuilderRulesRespectPathAndRiskPolicy() {
+        let safeRule = VideoBuilderCachesRule()
+        let reviewRule = VideoBuilderReviewRequiredMediaRule()
+
+        var oldValues = URLResourceValues()
+        oldValues.contentModificationDate = Date().addingTimeInterval(-4 * 24 * 60 * 60)
+
+        XCTAssertTrue(
+            safeRule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/Blackmagic Design/DaVinci Resolve/Cache/media.cache"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertTrue(
+            reviewRule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Movies/Final Cut Pro Render Files/Library/file.mov"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertFalse(
+            reviewRule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Documents/Movies/DaVinci Resolve/CacheClip/cacheclip.mov"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertEqual(safeRule.riskLevel, .safe)
+        XCTAssertEqual(reviewRule.riskLevel, .review)
+    }
+
     func testScanRunnerAggregatesBytesAndCountsByCategory() async {
         let cacheDir = URL(fileURLWithPath: "/tmp/cache")
         let logDir = URL(fileURLWithPath: "/tmp/log")
@@ -149,5 +235,40 @@ final class ScanRunnerTests: XCTestCase {
         let logSummary = report.summaries.first(where: { $0.category == .logsAndCrashReports })
         XCTAssertEqual(logSummary?.reclaimableBytes, 200)
         XCTAssertEqual(logSummary?.fileCount, 1)
+    }
+
+    func testScanRunnerCarriesRiskLabelsAndAggregatesAcrossRulesInSameCategory() async {
+        let safeDir = URL(fileURLWithPath: "/tmp/designer-safe")
+        let reviewDir = URL(fileURLWithPath: "/tmp/designer-review")
+
+        let filesByDirectory = [
+            safeDir.path: [
+                ScannedFile(url: safeDir.appendingPathComponent("cache.db"), sizeBytes: 150, lastModified: nil)
+            ],
+            reviewDir.path: [
+                ScannedFile(url: reviewDir.appendingPathComponent("preview.cfa"), sizeBytes: 350, lastModified: nil)
+            ]
+        ]
+
+        let traversal = MockTraversal(filesByDirectory: filesByDirectory)
+        let runner = ScanRunner(
+            environment: ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test"), tempDirectory: URL(fileURLWithPath: "/tmp")),
+            traversal: traversal
+        )
+
+        let rules: [any ScanRule] = [
+            TestRule(id: "designer-safe", title: "Designer Safe", category: .designerCaches, riskLevel: .safe, targets: [safeDir]),
+            TestRule(id: "designer-review", title: "Designer Review", category: .designerCaches, riskLevel: .review, targets: [reviewDir])
+        ]
+
+        let report = await runner.run(rules: rules)
+        XCTAssertEqual(report.findings.count, 2)
+
+        let riskLevels = Set(report.findings.map(\.riskLevel))
+        XCTAssertEqual(riskLevels, Set([.safe, .review]))
+
+        let summary = report.summaries.first(where: { $0.category == .designerCaches })
+        XCTAssertEqual(summary?.reclaimableBytes, 500)
+        XCTAssertEqual(summary?.fileCount, 2)
     }
 }

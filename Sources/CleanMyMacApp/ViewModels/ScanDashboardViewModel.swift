@@ -14,6 +14,8 @@ final class ScanDashboardViewModel: ObservableObject {
     enum DashboardProfile: String, CaseIterable, Identifiable {
         case baseline = "Baseline"
         case developer = "Developer"
+        case designer = "Designer"
+        case videoBuilder = "Video Builder"
 
         var id: String { rawValue }
 
@@ -23,6 +25,10 @@ final class ScanDashboardViewModel: ObservableObject {
                 return .baseline
             case .developer:
                 return .developer
+            case .designer:
+                return .designer
+            case .videoBuilder:
+                return .videoBuilder
             }
         }
     }
@@ -46,6 +52,7 @@ final class ScanDashboardViewModel: ObservableObject {
         let path: String
         let sizeBytes: Int64
         let category: ScanCategory
+        let riskLevel: RiskLevel
         let confidence: Double
         let lastUsed: Date?
 
@@ -54,6 +61,7 @@ final class ScanDashboardViewModel: ObservableObject {
             self.path = finding.path
             self.sizeBytes = finding.sizeBytes
             self.category = finding.category
+            self.riskLevel = finding.riskLevel
             self.confidence = finding.confidence
             self.lastUsed = finding.lastUsed
         }

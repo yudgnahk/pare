@@ -304,6 +304,10 @@ struct ScanDashboardView: View {
             return Color(red: 0.50, green: 0.85, blue: 0.94)
         case .developerSimulatorCaches:
             return Color(red: 0.86, green: 0.66, blue: 0.44)
+        case .designerCaches:
+            return Color(red: 0.92, green: 0.62, blue: 0.41)
+        case .videoBuilderCaches:
+            return Color(red: 0.48, green: 0.77, blue: 0.61)
         }
     }
 

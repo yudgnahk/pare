@@ -28,6 +28,7 @@ public struct ScanRunner: Sendable {
                 findings.append(
                     ScanFinding(
                         category: rule.category,
+                        riskLevel: rule.riskLevel,
                         path: file.url.path,
                         sizeBytes: file.sizeBytes,
                         lastUsed: file.lastModified,
@@ -70,5 +71,13 @@ public extension Array where Element == any ScanRule {
 
     static var developer: [any ScanRule] {
         RuleCatalog.developer
+    }
+
+    static var designer: [any ScanRule] {
+        RuleCatalog.designer
+    }
+
+    static var videoBuilder: [any ScanRule] {
+        RuleCatalog.videoBuilder
     }
 }

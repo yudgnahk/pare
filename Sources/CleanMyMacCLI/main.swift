@@ -27,7 +27,8 @@ struct CleanMyMacCLI {
             print("Top \(min(top, report.findings.count)) files:")
             let topFindings = report.findings.sorted { $0.sizeBytes > $1.sizeBytes }.prefix(top)
             for finding in topFindings {
-                print("- \(format(bytes: finding.sizeBytes)) | \(finding.category.rawValue) | \(finding.path)")
+                let riskLabel = finding.riskLevel.rawValue.uppercased()
+                print("- \(format(bytes: finding.sizeBytes)) | \(finding.category.rawValue) | \(riskLabel) | \(finding.path)")
             }
         }
 
