@@ -21,7 +21,18 @@
 - [x] Add local run workflow with `Makefile` commands (`build`, `test`, `start`, profile runs).
 - [x] Verify manual baseline run via `make start`.
 
-## Phase 2 - Persona Packs
+## Phase 2 - SwiftUI macOS App Target (Core Reuse)
+- [ ] Create a macOS SwiftUI app target (for example, `PareApp`) in the same package/workspace.
+- [ ] Reuse `App BCore` directly from the app target (no duplicated scan logic).
+- [ ] Keep `pare-cli` as a debug/diagnostic runner that uses the same core module.
+- [ ] Add an app state/view model that wraps `ScanRunner` and `RuleCatalog`.
+- [ ] Add profile selector UI (Baseline/Developer) wired to existing profile rules.
+- [ ] Add scan action UI and show loading/progress state.
+- [ ] Show scan results UI: total reclaimable, category summaries, top files.
+- [ ] Add a local run command path for the app target in docs/Makefile.
+- [ ] Manually verify CLI and SwiftUI app produce consistent summary totals for the same profile.
+
+## Phase 3 - Persona Packs
 - [x] Add Developer pack (Xcode, package caches, optional simulator cleanup).
 - [ ] Add Designer pack (Adobe/Figma caches and export temp paths).
 - [ ] Add Video Builder pack (FCP, Premiere/AE, Resolve cache targets).
@@ -33,28 +44,28 @@
 - [x] Validate `make start` baseline output locally.
 - [ ] Run developer profile manual validation and record findings.
 
-## Phase 3 - Safe Cleanup Engine
+## Phase 4 - Safe Cleanup Engine
 - [ ] Implement move-to-Trash cleanup pipeline.
 - [ ] Store cleanup transaction logs (timestamped JSON).
 - [ ] Add restore/undo flow from transaction logs.
 - [ ] Add pre-delete checks (file locks, in-use, min-age constraints).
 - [ ] Add global and per-profile exclusions.
 
-## Phase 4 - UX and Trust
+## Phase 5 - UX and Trust
 - [ ] Build dashboard with reclaimable storage and top categories.
 - [ ] Show explainability for each result (why listed and impact).
 - [ ] Implement dry-run mode.
 - [ ] Implement Quick Clean mode (low risk only).
 - [ ] Implement Deep Clean mode (explicit warnings + confirmations).
 
-## Phase 5 - Performance and Reliability
+## Phase 6 - Performance and Reliability
 - [ ] Add incremental scan metadata cache.
 - [ ] Add progress updates and cancellation support.
 - [ ] Handle symlinks, package bundles, and permission failures safely.
 - [ ] Benchmark large directories and optimize hotspots.
 - [ ] Add reliability tests for interrupted scans.
 
-## Phase 6 - QA, Security, Release
+## Phase 7 - QA, Security, Release
 - [ ] Add unit tests for path safety and risk labeling.
 - [ ] Add integration tests with seeded junk datasets.
 - [ ] Add regression tests for protected path enforcement.
