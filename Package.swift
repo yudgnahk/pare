@@ -12,6 +12,10 @@ let package = Package(
             targets: ["CleanMyMacCore"]
         ),
         .executable(
+            name: "CleanMyMacApp",
+            targets: ["CleanMyMacApp"]
+        ),
+        .executable(
             name: "cleanmymac-cli",
             targets: ["CleanMyMacCLI"]
         )
@@ -19,6 +23,10 @@ let package = Package(
     targets: [
         .target(
             name: "CleanMyMacCore"
+        ),
+        .executableTarget(
+            name: "CleanMyMacApp",
+            dependencies: ["CleanMyMacCore"]
         ),
         .executableTarget(
             name: "CleanMyMacCLI",

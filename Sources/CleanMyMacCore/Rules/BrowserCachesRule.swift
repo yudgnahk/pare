@@ -25,6 +25,17 @@ public struct BrowserCachesRule: ScanRule {
             return false
         }
 
-        return path.contains("cache") || path.contains("code cache") || path.contains("gpucache")
+        guard path.contains("cache") || path.contains("code cache") || path.contains("gpucache") else {
+            return false
+        }
+
+        guard ScanPolicy.isLowImpactPath(fileURL) else {
+            return false
+        }
+
+        return ScanPolicy.passesMinimumAge(
+            for: resourceValues,
+            minimumAgeSeconds: ScanPolicy.defaultMinimumAgeSeconds(for: category)
+        )
     }
 }

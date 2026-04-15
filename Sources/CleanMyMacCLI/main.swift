@@ -30,6 +30,33 @@ struct CleanMyMacCLI {
                 print("- \(format(bytes: finding.sizeBytes)) | \(finding.category.rawValue) | \(finding.path)")
             }
         }
+
+        let largeFileGroups = groupLargeFilesByCategory(findings: report.findings)
+        if !largeFileGroups.isEmpty {
+            print("")
+            print("Large files by category (> \(format(bytes: ScanPolicy.largeFileThresholdBytes))):")
+
+            for group in largeFileGroups {
+                print("- \(group.category.rawValue): \(format(bytes: group.totalBytes)) (\(group.files.count) files)")
+
+                for finding in group.files.prefix(top) {
+                    print("  - \(format(bytes: finding.sizeBytes)) | \(finding.path)")
+                }
+            }
+        }
+    }
+
+    private static func groupLargeFilesByCategory(findings: [ScanFinding]) -> [(category: ScanCategory, totalBytes: Int64, files: [ScanFinding])] {
+        let largeFindings = findings.filter { ScanPolicy.isLargeFile($0.sizeBytes) }
+        let grouped = Dictionary(grouping: largeFindings, by: \.category)
+
+        return grouped
+            .map { category, files in
+                let sortedFiles = files.sorted { $0.sizeBytes > $1.sizeBytes }
+                let totalBytes = sortedFiles.reduce(0) { $0 + $1.sizeBytes }
+                return (category: category, totalBytes: totalBytes, files: sortedFiles)
+            }
+            .sorted { $0.totalBytes > $1.totalBytes }
     }
 
     private static func parseProfile(from args: ArraySlice<String>) -> ScanProfile? {
