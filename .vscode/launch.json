@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:clean-my-mac}",
+            "name": "Debug pare-cli",
+            "target": "pare-cli",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug pare-cli"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:clean-my-mac}",
+            "name": "Release pare-cli",
+            "target": "pare-cli",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release pare-cli"
+        }
+    ]
+}
