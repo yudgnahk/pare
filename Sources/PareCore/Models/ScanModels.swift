@@ -8,6 +8,8 @@ public enum ScanCategory: String, CaseIterable, Sendable {
     case developerBuildArtifacts = "Developer Build Artifacts"
     case developerPackageCaches = "Developer Package Caches"
     case developerSimulatorCaches = "Developer Simulator Caches"
+    case designerCaches = "Designer Caches"
+    case videoBuilderCaches = "Video Builder Caches"
 }
 
 public enum RiskLevel: String, Sendable {
@@ -30,6 +32,7 @@ public struct ScannedFile: Sendable {
 
 public struct ScanFinding: Sendable {
     public let category: ScanCategory
+    public let riskLevel: RiskLevel
     public let path: String
     public let sizeBytes: Int64
     public let lastUsed: Date?
@@ -37,12 +40,14 @@ public struct ScanFinding: Sendable {
 
     public init(
         category: ScanCategory,
+        riskLevel: RiskLevel,
         path: String,
         sizeBytes: Int64,
         lastUsed: Date?,
         confidence: Double
     ) {
         self.category = category
+        self.riskLevel = riskLevel
         self.path = path
         self.sizeBytes = sizeBytes
         self.lastUsed = lastUsed

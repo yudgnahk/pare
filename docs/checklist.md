@@ -38,9 +38,9 @@
 
 ## Phase 3 - Persona Packs
 - [x] Add Developer pack (Xcode, package caches, optional simulator cleanup).
-- [ ] Add Designer pack (Adobe/Figma caches and export temp paths).
-- [ ] Add Video Builder pack (FCP, Premiere/AE, Resolve cache targets).
-- [ ] Mark high-risk media paths as review-required.
+- [x] Add Designer pack (Adobe/Figma caches and export temp paths).
+- [x] Add Video Builder pack (FCP, Premiere/AE, Resolve cache targets).
+- [x] Mark high-risk media paths as review-required.
 
 ## Manual Testing Status
 - [x] Add quick-start manual test guide in `docs/manual-testing.md`.
