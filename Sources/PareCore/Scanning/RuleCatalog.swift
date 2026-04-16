@@ -36,7 +36,9 @@ public enum RuleCatalog {
             XcodeArchivesRule(),
             PackageManagerCachesRule(),
             XcodeSimulatorCachesRule(),
-            VSCodeCachesRule()
+            VSCodeCachesRule(),
+            VSCodeReviewRequiredStateRule(),
+            JetBrainsReviewRequiredRule()
         ] + baseline
     }
 

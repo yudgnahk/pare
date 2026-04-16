@@ -119,6 +119,8 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "package-manager-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "xcode-simulator-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "vscode-caches" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "vscode-review-required-state" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-review-required" }))
         XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
     }
 
@@ -148,6 +150,80 @@ final class ScanRunnerTests: XCTestCase {
                 resourceValues: oldValues
             )
         )
+    }
+
+    func testVSCodeReviewRuleIncludesOnlyReviewMarkersAndExcludesSensitivePaths() {
+        let rule = VSCodeReviewRequiredStateRule()
+
+        var oldValues = URLResourceValues()
+        oldValues.contentModificationDate = Date().addingTimeInterval(-4 * 24 * 60 * 60)
+
+        XCTAssertTrue(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/Code/User/workspaceStorage/abc/state.vscdb"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertTrue(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/.vscode/extensions/ms-python.python-2026.1.0/extension.vsixmanifest"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/Code/User/settings.json"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/Code/User/workspaceStorage/bookmarks.db"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertEqual(rule.riskLevel, .review)
+    }
+
+    func testJetBrainsReviewRuleIncludesPluginsAndDriversButExcludesStatePaths() {
+        let rule = JetBrainsReviewRequiredRule()
+
+        var oldValues = URLResourceValues()
+        oldValues.contentModificationDate = Date().addingTimeInterval(-4 * 24 * 60 * 60)
+
+        XCTAssertTrue(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/JetBrains/GoLand2025.1/plugins/pluginA/lib.jar"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertTrue(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/JetBrains/DataGrip2024.3/jdbc-drivers/driver.zip"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/JetBrains/DataGrip2024.3/options/editor.xml"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/JetBrains/GoLand2025.1/workspace.xml"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertEqual(rule.riskLevel, .review)
     }
 
     func testDesignerRuleCatalogIncludesPersonaRules() {
