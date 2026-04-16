@@ -69,12 +69,18 @@ public enum ScanPolicy {
         "/movies/davinci resolve/cacheclip"
     ]
 
+    public static let developerSafePathMarkers = [
+        "/library/caches/com.microsoft.vscode.shipit",
+        "/library/application support/code/cachedextensionvsixs"
+    ]
+
     private static let personaProtectedPathOverrides = [
         "/library/application support/adobe/common/media cache",
         "/library/application support/adobe/common/peak files",
         "/library/application support/figma/cache",
         "/library/application support/figma/desktop/cache",
-        "/library/application support/blackmagic design/davinci resolve/cache"
+        "/library/application support/blackmagic design/davinci resolve/cache",
+        "/library/application support/code/cachedextensionvsixs"
     ]
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {

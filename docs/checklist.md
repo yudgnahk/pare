@@ -48,6 +48,13 @@
 - [x] Validate `make start` baseline output locally.
 - [x] Run developer profile manual validation and record findings.
 
+## Developer Mode Scan Enhancements (App-Specific)
+- [x] Add Phase A VS Code safe cache rule (`ShipIt`, `CachedExtensionVSIXs`) into developer profile.
+- [x] Exclude VS Code cache paths from baseline `UserCachesRule` to prevent duplicate findings.
+- [x] Validate developer profile scan output includes VS Code cache findings in developer category.
+- [ ] Implement Phase B review rules for VS Code state paths and JetBrains plugin/state paths.
+- [ ] Implement Phase C Docker review/advanced detect-only paths and guidance.
+
 ## Phase 4 - Safe Cleanup Engine
 - [ ] Implement move-to-Trash cleanup pipeline.
 - [ ] Store cleanup transaction logs (timestamped JSON).
