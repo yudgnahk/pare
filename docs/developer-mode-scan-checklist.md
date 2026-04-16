@@ -19,9 +19,9 @@ Based on `docs/app-storage-investigation.md` (2026-04-15), this checklist focuse
   - [x] `~/Library/Caches/com.microsoft.VSCode.ShipIt/*`
   - [x] `~/Library/Application Support/Code/CachedExtensionVSIXs/*`
 - [ ] Add review-required state rule(s):
-  - [ ] `~/Library/Application Support/Code/User/workspaceStorage/*` (age-gated)
-  - [ ] `~/Library/Application Support/Code/User/History/*`
-  - [ ] `~/.vscode/extensions/*` (flag as plugin/tooling impact)
+  - [x] `~/Library/Application Support/Code/User/workspaceStorage/*` (age-gated)
+  - [x] `~/Library/Application Support/Code/User/History/*`
+  - [x] `~/.vscode/extensions/*` (flag as plugin/tooling impact)
 - [ ] Add optional duplicate-extension analysis for `~/.vscode/extensions`:
   - [ ] detect multiple versions of the same extension id
   - [ ] recommend keeping newest version
@@ -30,12 +30,12 @@ Based on `docs/app-storage-investigation.md` (2026-04-15), this checklist focuse
 
 - [ ] Add JetBrains scan targets under `~/Library/Application Support/JetBrains`.
 - [ ] Add review-required plugin rules:
-  - [ ] `*/plugins/*` for active and older IDE version folders
+  - [x] `*/plugins/*` for active and older IDE version folders
 - [ ] Add review-required state/config exclusions:
-  - [ ] exclude or suppress `*/options/*`, `*/workspace*`, project metadata
+  - [x] exclude or suppress `*/options/*`, `*/workspace*`, project metadata
 - [ ] Add safe cache/log targets (where present):
   - [ ] stale cache/temp/log artifacts in older IDE versions
-- [ ] Tag `jdbc-drivers` as review-required in DataGrip paths.
+- [x] Tag `jdbc-drivers` as review-required in DataGrip paths.
 
 ## 4) Docker Desktop Coverage
 
@@ -67,13 +67,13 @@ Based on `docs/app-storage-investigation.md` (2026-04-15), this checklist focuse
 - [x] Run `make test` and ensure rule/policy tests pass.
 - [x] Add or update tests for:
   - [x] new rule path matching
-  - [ ] risk labeling (`safe`, `review`, `advanced`)
+  - [x] risk labeling (`safe`, `review`, `advanced`)
   - [x] min-age behavior on newly added cache paths
-  - [ ] protected path handling
+  - [x] protected path handling
 - [x] Run manual checks with `make run PROFILE=developer TOP=50`.
 - [ ] Confirm expected findings include:
   - [x] VS Code ShipIt and Cached VSIX
-  - [ ] JetBrains plugin-heavy folders (review)
+  - [x] JetBrains plugin-heavy folders (review)
   - [ ] Docker logs (review)
   - [ ] Docker VM data (advanced/review-only, detect-only)
 
@@ -123,7 +123,7 @@ Preferred cleanup method:
 ## Proposed Implementation Order
 
 - [x] Phase A: VS Code safe cache rules (quick win, low risk)
-- [ ] Phase B: VS Code + JetBrains review rules and labels
+- [x] Phase B: VS Code + JetBrains review rules and labels
 - [ ] Phase C: Docker logs + advanced VM detect-only reporting
 - [ ] Phase D: app-level rollups and remediation hints in UI/CLI
 
@@ -133,4 +133,5 @@ Preferred cleanup method:
 - [x] Added developer-safe markers and protected-path override for Cached VSIX in `ScanPolicy`.
 - [x] Fixed duplicate reporting by excluding VS Code cache paths from `UserCachesRule`.
 - [x] Validated end-to-end via `swift test` and `make run PROFILE=developer TOP=50`.
-- [ ] Next up: implement Phase B review rules and labels for VS Code state and JetBrains plugins.
+- [x] Implemented Phase B review rules and labels for VS Code state and JetBrains plugins.
+- [ ] Next up: implement Phase C Docker review/advanced detect-only rules.
