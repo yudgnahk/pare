@@ -35,7 +35,8 @@ public enum RuleCatalog {
             XcodeDerivedDataRule(),
             XcodeArchivesRule(),
             PackageManagerCachesRule(),
-            XcodeSimulatorCachesRule()
+            XcodeSimulatorCachesRule(),
+            VSCodeCachesRule()
         ] + baseline
     }
 

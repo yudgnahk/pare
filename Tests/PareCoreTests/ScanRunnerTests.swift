@@ -118,7 +118,36 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "xcode-archives" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "package-manager-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "xcode-simulator-caches" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "vscode-caches" }))
         XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
+    }
+
+    func testVSCodeCachesRuleIncludesOnlySafeDeveloperMarkers() {
+        let rule = VSCodeCachesRule()
+
+        var oldValues = URLResourceValues()
+        oldValues.contentModificationDate = Date().addingTimeInterval(-4 * 24 * 60 * 60)
+
+        XCTAssertTrue(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Caches/com.microsoft.VSCode.ShipIt/update.pkg"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertTrue(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/Code/CachedExtensionVSIXs/cache.vsix"),
+                resourceValues: oldValues
+            )
+        )
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/Code/User/workspaceStorage/state.json"),
+                resourceValues: oldValues
+            )
+        )
     }
 
     func testDesignerRuleCatalogIncludesPersonaRules() {
