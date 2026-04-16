@@ -74,13 +74,33 @@ public enum ScanPolicy {
         "/library/application support/code/cachedextensionvsixs"
     ]
 
+    public static let developerReviewPathMarkers = [
+        "/library/application support/code/user/workspacestorage",
+        "/library/application support/code/user/history",
+        "/.vscode/extensions/",
+        "/library/application support/jetbrains/goland",
+        "/library/application support/jetbrains/datagrip"
+    ]
+
+    public static let developerReviewExclusionMarkers = [
+        "/options/",
+        "/workspace.xml",
+        "/workspace/storage",
+        "/projects/",
+        "/projectsettings/",
+        "/.idea/"
+    ]
+
     private static let personaProtectedPathOverrides = [
         "/library/application support/adobe/common/media cache",
         "/library/application support/adobe/common/peak files",
         "/library/application support/figma/cache",
         "/library/application support/figma/desktop/cache",
         "/library/application support/blackmagic design/davinci resolve/cache",
-        "/library/application support/code/cachedextensionvsixs"
+        "/library/application support/code/cachedextensionvsixs",
+        "/library/application support/code/user/workspacestorage",
+        "/library/application support/code/user/history",
+        "/library/application support/jetbrains"
     ]
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
