@@ -426,6 +426,76 @@ final class VSCodeDuplicateExtensionsTests: XCTestCase {
         XCTAssertNotNil(findings)
         XCTAssertEqual(findings?.count, 0)
     }
+
+    func testThreeVersionsKeepsNewestFlagsOtherTwo() async throws {
+        try makeExtDir(name: "ms-python.python-2022.0.0")
+        try makeExtDir(name: "ms-python.python-2023.1.0")
+        try makeExtDir(name: "ms-python.python-2024.2.0")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await VSCodeDuplicateExtensionsRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.count, 2)
+        let paths = findings?.map(\.path) ?? []
+        XCTAssertTrue(paths.contains(where: { $0.contains("2022.0.0") }))
+        XCTAssertTrue(paths.contains(where: { $0.contains("2023.1.0") }))
+        XCTAssertFalse(paths.contains(where: { $0.contains("2024.2.0") }),
+                       "Newest version must not be flagged")
+    }
+
+    func testRecentOlderExtensionIsNotFlagged() async throws {
+        // Older version modified only 1 day ago — within the 3-day minimum-age gate.
+        try makeExtDir(name: "ms-python.python-2023.1.0", ageSeconds: 1 * 24 * 60 * 60)
+        try makeExtDir(name: "ms-python.python-2024.2.0")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await VSCodeDuplicateExtensionsRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.count, 0)
+    }
+
+    func testRiskLevelIsSafe() async throws {
+        try makeExtDir(name: "ms-python.python-2023.1.0")
+        try makeExtDir(name: "ms-python.python-2024.2.0")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await VSCodeDuplicateExtensionsRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.first?.riskLevel, .safe)
+    }
+
+    func testUnparsableDirectoriesAreIgnored() async throws {
+        // Directories that don't follow <publisher>.<name>-<semver> are skipped.
+        try FileManager.default.createDirectory(
+            at: extensionsDir.appending(path: "no-version-here"),
+            withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: extensionsDir.appending(path: ".obsolete"),
+            withIntermediateDirectories: true)
+        try makeExtDir(name: "ms-python.python-2024.2.0")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await VSCodeDuplicateExtensionsRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.count, 0)
+    }
+
+    func testMultipleExtensionsEachWithDuplicates() async throws {
+        try makeExtDir(name: "ms-python.python-2023.1.0")
+        try makeExtDir(name: "ms-python.python-2024.2.0")
+        try makeExtDir(name: "esbenp.prettier-vscode-9.0.0")
+        try makeExtDir(name: "esbenp.prettier-vscode-10.0.0")
+        // Unique extension — no duplicate.
+        try makeExtDir(name: "golang.go-0.41.0")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await VSCodeDuplicateExtensionsRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.count, 2)
+        let paths = findings?.map(\.path) ?? []
+        XCTAssertTrue(paths.contains(where: { $0.contains("ms-python.python-2023.1.0") }))
+        XCTAssertTrue(paths.contains(where: { $0.contains("esbenp.prettier-vscode-9.0.0") }))
+    }
 }
 
 final class JetBrainsStaleVersionTests: XCTestCase {
