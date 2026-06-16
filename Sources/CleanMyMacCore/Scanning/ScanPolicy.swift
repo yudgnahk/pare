@@ -107,10 +107,6 @@ public enum ScanPolicy {
         "/library/containers/com.docker.docker/data/log"
     ]
 
-    public static let developerDockerAdvancedPathMarkers = [
-        "/library/containers/com.docker.docker/data/vms/0/data"
-    ]
-
     public static let developerReviewExclusionMarkers = [
         "/options/",
         "/workspace.xml",
@@ -130,8 +126,7 @@ public enum ScanPolicy {
         "/library/application support/code/user/workspacestorage",
         "/library/application support/code/user/history",
         "/library/application support/jetbrains",
-        "/library/containers/com.docker.docker/data/log",
-        "/library/containers/com.docker.docker/data/vms/0/data"
+        "/library/containers/com.docker.docker/data/log"
     ]
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
