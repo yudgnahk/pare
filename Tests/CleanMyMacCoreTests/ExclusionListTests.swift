@@ -427,3 +427,120 @@ final class VSCodeDuplicateExtensionsTests: XCTestCase {
         XCTAssertEqual(findings?.count, 0)
     }
 }
+
+final class JetBrainsStaleVersionTests: XCTestCase {
+    private var fakeHome: URL!
+    private var jetbrainsDir: URL!
+
+    private static let staleAge: TimeInterval = 100 * 24 * 60 * 60  // 100 days — over 90-day gate
+    private static let freshAge: TimeInterval = 10 * 24 * 60 * 60   // 10 days — under 90-day gate
+
+    override func setUpWithError() throws {
+        fakeHome = URL(fileURLWithPath: "/private/tmp/jb-stale-test-\(UUID().uuidString)")
+        jetbrainsDir = fakeHome
+            .appending(path: "Library/Application Support/JetBrains")
+        try FileManager.default.createDirectory(at: jetbrainsDir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: fakeHome)
+    }
+
+    @discardableResult
+    private func makeVersionDir(name: String, ageSeconds: TimeInterval = staleAge) throws -> URL {
+        let dir = jetbrainsDir.appending(path: name)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("dummy.bin")
+        try Data(repeating: 0x41, count: 4096).write(to: file)
+        let oldDate = Date().addingTimeInterval(-ageSeconds)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: dir.path)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: file.path)
+        return dir
+    }
+
+    func testOlderVersionFlaggedWhenNewerExists() async throws {
+        try makeVersionDir(name: "GoLand2024.3")
+        try makeVersionDir(name: "GoLand2025.1")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await JetBrainsStaleVersionRule().customScan(environment: env)
+
+        XCTAssertNotNil(findings)
+        guard let findings else { return }
+        XCTAssertEqual(findings.count, 1)
+        XCTAssertTrue(findings[0].path.contains("GoLand2024.3"),
+                      "Older GoLand version should be flagged, got: \(findings[0].path)")
+        XCTAssertTrue(findings[0].reason.contains("2025.1"),
+                      "Reason should mention the newer version, got: \(findings[0].reason)")
+        XCTAssertEqual(findings[0].riskLevel, .review)
+    }
+
+    func testSingleVersionProducesNoFindings() async throws {
+        try makeVersionDir(name: "GoLand2025.1")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await JetBrainsStaleVersionRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.count, 0)
+    }
+
+    func testRecentOlderVersionIsNotFlagged() async throws {
+        // Old folder is only 10 days old — within the 90-day minimum-age gate.
+        try makeVersionDir(name: "GoLand2024.3", ageSeconds: Self.freshAge)
+        try makeVersionDir(name: "GoLand2025.1")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await JetBrainsStaleVersionRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.count, 0)
+    }
+
+    func testNonVersionedFoldersAreIgnored() async throws {
+        // Daemon, consentOptions, etc. should not parse as versioned folders.
+        try FileManager.default.createDirectory(
+            at: jetbrainsDir.appending(path: "Daemon"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: jetbrainsDir.appending(path: "consentOptions"), withIntermediateDirectories: true)
+        try makeVersionDir(name: "GoLand2025.1")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await JetBrainsStaleVersionRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.count, 0)
+    }
+
+    func testDifferentProductsAreGroupedIndependently() async throws {
+        // One GoLand and one DataGrip — each only has one version, so no findings.
+        try makeVersionDir(name: "GoLand2025.1")
+        try makeVersionDir(name: "DataGrip2024.3")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await JetBrainsStaleVersionRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.count, 0)
+    }
+
+    func testMultipleProductsEachWithStaleVersions() async throws {
+        try makeVersionDir(name: "GoLand2024.3")
+        try makeVersionDir(name: "GoLand2025.1")
+        try makeVersionDir(name: "DataGrip2023.3")
+        try makeVersionDir(name: "DataGrip2024.3")
+
+        let env = ScanEnvironment(homeDirectory: fakeHome)
+        let findings = await JetBrainsStaleVersionRule().customScan(environment: env)
+
+        XCTAssertEqual(findings?.count, 2)
+        let paths = findings?.map(\.path) ?? []
+        XCTAssertTrue(paths.contains(where: { $0.contains("GoLand2024.3") }))
+        XCTAssertTrue(paths.contains(where: { $0.contains("DataGrip2023.3") }))
+    }
+
+    func testMissingJetBrainsDirProducesEmptyFindings() async throws {
+        let emptyHome = URL(fileURLWithPath: "/private/tmp/jb-empty-home-\(UUID().uuidString)")
+        let env = ScanEnvironment(homeDirectory: emptyHome)
+        let findings = await JetBrainsStaleVersionRule().customScan(environment: env)
+
+        XCTAssertNotNil(findings)
+        XCTAssertEqual(findings?.count, 0)
+    }
+}

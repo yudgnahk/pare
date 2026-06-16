@@ -40,6 +40,7 @@ public enum RuleCatalog {
             VSCodeDuplicateExtensionsRule(),
             VSCodeReviewRequiredStateRule(),
             JetBrainsSafeCachesRule(),
+            JetBrainsStaleVersionRule(),
             JetBrainsReviewRequiredRule(),
             DockerLogsReviewRequiredRule()
         ] + baseline
