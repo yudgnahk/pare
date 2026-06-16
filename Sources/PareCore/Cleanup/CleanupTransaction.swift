@@ -116,6 +116,17 @@ public final class CleanupTransactionStore: Sendable {
         }.sorted { $0.timestamp > $1.timestamp }
     }
 
+    public func deleteAll() throws {
+        guard FileManager.default.fileExists(atPath: transactionsDirectory.path) else { return }
+        let files = try FileManager.default.contentsOfDirectory(
+            at: transactionsDirectory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "json" }
+        for file in files {
+            try FileManager.default.removeItem(at: file)
+        }
+    }
+
     public func load(id: UUID) throws -> CleanupTransaction? {
         let file = transactionsDirectory.appending(path: "\(id.uuidString).json")
         guard let data = try? Data(contentsOf: file) else { return nil }
