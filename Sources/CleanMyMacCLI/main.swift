@@ -48,12 +48,17 @@ struct CleanMyMacCLI {
             }
         }
 
-        let appRollups = groupBySourceApp(findings: report.findings)
-        if !appRollups.isEmpty {
-            print("")
-            print("Top offenders by source app:")
-            for rollup in appRollups {
-                print("- \(rollup.app): \(format(bytes: rollup.totalBytes)) (\(rollup.fileCount) files)")
+        if profile != .baseline {
+            let rollups = ScanReportAnnotator.appRollups(from: report.findings)
+            if !rollups.isEmpty {
+                let total = rollups.reduce(0) { $0 + $1.totalBytes }
+                print("")
+                print("── By Tool ─────────────────────────────────────────────────────────────")
+                for rollup in rollups {
+                    let pct = total > 0 ? Int(Double(rollup.totalBytes) / Double(total) * 100) : 0
+                    print("  \(rollup.app.padding(toLength: 22, withPad: " ", startingAt: 0)) \(format(bytes: rollup.totalBytes).padding(toLength: 10, withPad: " ", startingAt: 0)) \(pct)%  (\(rollup.fileCount) files)")
+                }
+                print("────────────────────────────────────────────────────────────────────────")
             }
         }
 
@@ -87,59 +92,6 @@ struct CleanMyMacCLI {
         print("    → also removes unused images and stopped containers")
         print("⚠️  Never add --volumes unless you want to delete Docker volume data (e.g. databases).")
         print("────────────────────────────────────────────────────────────────────────")
-    }
-
-    private static func sourceApp(for finding: ScanFinding) -> String {
-        let path = finding.path.lowercased()
-        if path.contains("com.microsoft.vscode") || path.contains("/code/") || path.contains("/.vscode/") {
-            return "VS Code"
-        }
-        if path.contains("jetbrains") {
-            return "JetBrains"
-        }
-        if path.contains("com.docker.docker") || path.contains("/docker/") {
-            return "Docker"
-        }
-        if path.contains("xcode") || path.contains("coresimulator") {
-            return "Xcode"
-        }
-        if path.contains("com.apple.safari") || path.contains("/safari/") {
-            return "Safari"
-        }
-        if path.contains("google/chrome") || path.contains("chromium") {
-            return "Chrome"
-        }
-        if path.contains("firefox") {
-            return "Firefox"
-        }
-        if path.contains("com.adobe") || path.contains("/adobe/") {
-            return "Adobe"
-        }
-        if path.contains("com.figma") || path.contains("/figma/") {
-            return "Figma"
-        }
-        if path.contains("com.blackmagicdesign") || path.contains("davinci resolve") {
-            return "DaVinci Resolve"
-        }
-        if path.contains("finalcut") || path.contains("final cut pro") {
-            return "Final Cut Pro"
-        }
-        if path.contains("homebrew") || path.contains("/npm/") || path.contains("node_modules") || path.contains("/.cargo/") || path.contains("/.gradle/") {
-            return "Package Managers"
-        }
-        return "Other"
-    }
-
-    private static func groupBySourceApp(findings: [ScanFinding]) -> [(app: String, totalBytes: Int64, fileCount: Int)] {
-        var grouped: [String: (bytes: Int64, count: Int)] = [:]
-        for finding in findings {
-            let app = sourceApp(for: finding)
-            let current = grouped[app] ?? (0, 0)
-            grouped[app] = (bytes: current.bytes + finding.sizeBytes, count: current.count + 1)
-        }
-        return grouped
-            .map { app, value in (app: app, totalBytes: value.bytes, fileCount: value.count) }
-            .sorted { $0.totalBytes > $1.totalBytes }
     }
 
     private static func groupLargeFilesByCategory(findings: [ScanFinding]) -> [(category: ScanCategory, totalBytes: Int64, files: [ScanFinding])] {
