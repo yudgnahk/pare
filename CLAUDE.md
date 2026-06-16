@@ -23,7 +23,7 @@ Sources/
     ViewModels/         # ScanDashboardViewModel (@MainActor ObservableObject)
     Views/              # ScanDashboardView + Components/
     Theme/              # AppTheme
-  CleanMyMacCLI/        # CLI diagnostic runner
+  CleanMyMacCLI/        # CLI diagnostic runner — secondary tool for fast testing only
     main.swift          # @main struct, argparse, formatted output
 Tests/
   CleanMyMacCoreTests/  # XCTest — ScanRunnerTests, ScanIntegrationTests,
@@ -54,6 +54,18 @@ swift test --filter ScanRunnerTests # run a single test class
 **CleanupEngine (actor)** — `quickClean` (safe only), `deepClean` (safe + review, requires `confirmed: true`), `clean` (generic). Always moves to Trash (never permanent delete). Re-verifies ScanPolicy on every item at cleanup time as a belt-and-suspenders check. Persists `CleanupTransaction` JSON records to `~/Library/Application Support/CleanMyMac/transactions/` for undo/restore.
 
 **ExclusionList** — user-defined path exclusions (prefix or exact). Loaded by `ScanRunner` and checked after rule matching; persisted to `~/Library/Application Support/CleanMyMac/exclusions.json`.
+
+## Verification (after any code change)
+
+```bash
+make build        # must compile clean
+make test         # must pass
+make run-app      # launch the SwiftUI app and exercise the changed feature manually
+```
+
+## Priorities
+
+**The SwiftUI app (`CleanMyMacApp`) is the primary deliverable.** The CLI is a secondary diagnostic/fast-testing tool. When implementing features, focus on the app experience first. CLI updates are optional and only warranted when trivial (e.g. already using a shared core utility).
 
 ## Conventions
 

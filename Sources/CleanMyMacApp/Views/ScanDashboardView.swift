@@ -15,6 +15,7 @@ struct ScanDashboardView: View {
                     cleanupStatusBanner
                     metrics
                     summaries
+                    byToolBreakdown
                     largeFilesByCategory
                     topFiles
                 }
@@ -326,6 +327,17 @@ struct ScanDashboardView: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var byToolBreakdown: some View {
+        if !viewModel.perToolRollups.isEmpty {
+            ByToolBreakdownCard(
+                rollups: viewModel.perToolRollups,
+                resultsVisible: viewModel.resultsVisible,
+                formatBytes: viewModel.formattedBytes
+            )
         }
     }
 
@@ -647,6 +659,137 @@ private struct DeepCleanConfirmationSheet: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
         }
+    }
+}
+
+// MARK: - ByToolBreakdownCard
+
+private struct ByToolBreakdownCard: View {
+    let rollups: [ScanDashboardViewModel.ToolRollupItem]
+    let resultsVisible: Bool
+    let formatBytes: (Int64) -> String
+
+    @State private var expandedApps: Set<String> = []
+
+    var body: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("By Tool")
+                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.textPrimary)
+
+                VStack(spacing: 8) {
+                    ForEach(Array(rollups.enumerated()), id: \.element.id) { index, rollup in
+                        ToolRollupRow(
+                            rollup: rollup,
+                            isExpanded: expandedApps.contains(rollup.app),
+                            formatBytes: formatBytes
+                        ) {
+                            if expandedApps.contains(rollup.app) {
+                                expandedApps.remove(rollup.app)
+                            } else {
+                                expandedApps.insert(rollup.app)
+                            }
+                        }
+                        .opacity(resultsVisible ? 1 : 0)
+                        .offset(y: resultsVisible ? 0 : 6)
+                        .animation(
+                            .spring(response: 0.36, dampingFraction: 0.85)
+                            .delay(Double(index) * 0.05),
+                            value: resultsVisible
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ToolRollupRow: View {
+    let rollup: ScanDashboardViewModel.ToolRollupItem
+    let isExpanded: Bool
+    let formatBytes: (Int64) -> String
+    let onTap: () -> Void
+
+    private var toolIcon: String {
+        switch rollup.app {
+        case "Xcode": return "hammer.fill"
+        case "VS Code": return "chevron.left.forwardslash.chevron.right"
+        case "JetBrains": return "j.circle.fill"
+        case "Docker": return "shippingbox.fill"
+        case "Safari": return "safari.fill"
+        case "Chrome": return "globe"
+        case "Firefox": return "flame.fill"
+        case "Adobe": return "a.circle.fill"
+        case "Figma": return "pencil.and.outline"
+        case "DaVinci Resolve": return "film.fill"
+        case "Final Cut Pro": return "scissors"
+        case "Package Managers": return "shippingbox"
+        default: return "puzzlepiece.fill"
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: onTap) {
+                HStack(spacing: 12) {
+                    Image(systemName: toolIcon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(width: 20)
+
+                    Text(rollup.app)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+
+                    Spacer()
+
+                    Text("\(Int(rollup.share * 100))%")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 34, alignment: .trailing)
+
+                    Text(formatBytes(rollup.totalBytes))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .frame(width: 72, alignment: .trailing)
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.borderless)
+
+            if isExpanded {
+                HStack {
+                    Spacer().frame(width: 44)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(rollup.fileCount) file\(rollup.fileCount == 1 ? "" : "s") identified")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(Color.white.opacity(0.10))
+                                    .frame(height: 6)
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(AppTheme.accent)
+                                    .frame(width: geo.size.width * rollup.share, height: 6)
+                            }
+                        }
+                        .frame(height: 6)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.trailing, 12)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: isExpanded)
     }
 }
 
