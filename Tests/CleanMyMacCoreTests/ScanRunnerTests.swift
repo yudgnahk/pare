@@ -124,7 +124,7 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "vscode-review-required-state" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-review-required" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "docker-logs-review-required" }))
-        XCTAssertTrue(rules.contains(where: { $0.id == "docker-vm-data-advanced" }))
+        XCTAssertFalse(rules.contains(where: { $0.id == "docker-vm-data-advanced" }))
         XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
     }
 
@@ -409,31 +409,4 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertEqual(rule.riskLevel, .review)
     }
 
-    func testDockerVMDataAdvancedRuleIncludesVMPathsOnly() {
-        let rule = DockerVMDataAdvancedRule()
-        let values = URLResourceValues()
-
-        XCTAssertTrue(
-            rule.include(
-                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"),
-                resourceValues: values
-            )
-        )
-
-        XCTAssertFalse(
-            rule.include(
-                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/log/host/docker.log"),
-                resourceValues: values
-            )
-        )
-
-        XCTAssertFalse(
-            rule.include(
-                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.example.app/Data/vms/0/data/disk.raw"),
-                resourceValues: values
-            )
-        )
-
-        XCTAssertEqual(rule.riskLevel, .advanced)
-    }
 }

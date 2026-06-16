@@ -47,7 +47,7 @@ Based on `docs/app-storage-investigation.md` (2026-04-15), this checklist focuse
   - `Docker.raw` (inside `vms/0/data`) is a monolithic VM disk; it contains ALL Docker data including user volumes (e.g. PostgreSQL databases). It cannot be selectively cleaned as a filesystem path. See `docs/developer-mode-phase-d-plan.md`.
 - [x] Do not suggest direct file deletion for VM data.
 - [x] Add guidance in output to use Docker-native cleanup (`docker system prune`, image/container/volume prune) — printed in CLI when ADVANCED findings detected.
-- [ ] **Phase D: Remove `DockerVMDataAdvancedRule`** — replace with CLI hint approach. See `docs/developer-mode-phase-d-plan.md`.
+- [x] **Phase D: Remove `DockerVMDataAdvancedRule`** — replaced with CLI hint approach. See `docs/developer-mode-phase-d-plan.md`.
 
 ## 5) Policy and Guardrails
 
