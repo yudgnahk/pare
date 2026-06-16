@@ -22,9 +22,9 @@ Based on `docs/app-storage-investigation.md` (2026-04-15), this checklist focuse
   - [x] `~/Library/Application Support/Code/User/workspaceStorage/*` (age-gated)
   - [x] `~/Library/Application Support/Code/User/History/*`
   - [x] `~/.vscode/extensions/*` (flag as plugin/tooling impact)
-- [ ] Add optional duplicate-extension analysis for `~/.vscode/extensions`:
-  - [ ] detect multiple versions of the same extension id
-  - [ ] recommend keeping newest version
+- [x] Add optional duplicate-extension analysis for `~/.vscode/extensions`:
+  - [x] detect multiple versions of the same extension id (`VSCodeDuplicateExtensionsRule`, risk: `.safe`, 3-day age gate)
+  - [x] recommend keeping newest version (flagged in finding reason, e.g. "newer: 2024.2.0")
 
 ## 3) JetBrains (GoLand, DataGrip) Coverage
 
