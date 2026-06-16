@@ -41,8 +41,7 @@ public enum RuleCatalog {
             VSCodeReviewRequiredStateRule(),
             JetBrainsSafeCachesRule(),
             JetBrainsReviewRequiredRule(),
-            DockerLogsReviewRequiredRule(),
-            DockerVMDataAdvancedRule()
+            DockerLogsReviewRequiredRule()
         ] + baseline
     }
 

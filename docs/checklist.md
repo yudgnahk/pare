@@ -54,7 +54,7 @@
 - [x] Validate developer profile scan output includes VS Code cache findings in developer category.
 - [x] Implement Phase B review rules for VS Code state paths and JetBrains plugin/state paths.
 - [x] Implement Phase C Docker review/advanced detect-only paths and guidance.
-- [ ] Phase D: Fix `DockerVMDataAdvancedRule` — rule incorrectly targets `Docker.raw` (a monolithic VM disk containing user volumes/databases). Remove the rule; replace with CLI-hint guidance for `docker builder prune`. See `docs/developer-mode-phase-d-plan.md`.
+- [x] Phase D: Fix `DockerVMDataAdvancedRule` — removed rule that incorrectly targeted `Docker.raw` (monolithic VM disk containing user volumes/databases). Replaced with CLI-hint guidance for `docker builder prune`.
 
 ## Phase 4 - Safe Cleanup Engine
 - [x] Implement move-to-Trash cleanup pipeline.
