@@ -3,6 +3,7 @@ import Foundation
 public struct DesignerReviewRequiredMediaRule: ScanRule {
     public let id = "designer-review-required-media"
     public let title = "Designer Media Caches (Review Required)"
+    public let reason = "Adobe peak file or Premiere/AE media preview (review before removing)"
     public let category: ScanCategory = .designerCaches
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.78

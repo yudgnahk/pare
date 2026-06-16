@@ -19,6 +19,26 @@
             "target": "pare-cli",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release pare-cli"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:clean-my-mac}",
+            "name": "Debug PareApp",
+            "target": "PareApp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug PareApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:clean-my-mac}",
+            "name": "Release PareApp",
+            "target": "PareApp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release PareApp"
         }
     ]
 }

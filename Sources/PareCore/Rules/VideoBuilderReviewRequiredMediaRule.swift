@@ -3,6 +3,7 @@ import Foundation
 public struct VideoBuilderReviewRequiredMediaRule: ScanRule {
     public let id = "video-builder-review-required-media"
     public let title = "Video Builder Media Caches (Review Required)"
+    public let reason = "Video editor proxy, render file, or backup media (review before removing)"
     public let category: ScanCategory = .videoBuilderCaches
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.76

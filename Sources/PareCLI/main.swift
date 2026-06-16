@@ -27,8 +27,9 @@ struct App BCLI {
             print("Top \(min(top, report.findings.count)) files:")
             let topFindings = report.findings.sorted { $0.sizeBytes > $1.sizeBytes }.prefix(top)
             for finding in topFindings {
-                let riskLabel = finding.riskLevel.rawValue.uppercased()
-                print("- \(format(bytes: finding.sizeBytes)) | \(finding.category.rawValue) | \(riskLabel) | \(finding.path)")
+                let riskLabel = riskTag(finding.riskLevel)
+                print("- \(format(bytes: finding.sizeBytes)) \(riskLabel) \(finding.category.rawValue) — \(finding.reason)")
+                print("  \(finding.path)")
             }
         }
 
@@ -41,10 +42,86 @@ struct App BCLI {
                 print("- \(group.category.rawValue): \(format(bytes: group.totalBytes)) (\(group.files.count) files)")
 
                 for finding in group.files.prefix(top) {
-                    print("  - \(format(bytes: finding.sizeBytes)) | \(finding.path)")
+                    let riskLabel = riskTag(finding.riskLevel)
+                    print("  \(riskLabel) \(format(bytes: finding.sizeBytes)) | \(finding.path)")
                 }
             }
         }
+
+        let appRollups = groupBySourceApp(findings: report.findings)
+        if !appRollups.isEmpty {
+            print("")
+            print("Top offenders by source app:")
+            for rollup in appRollups {
+                print("- \(rollup.app): \(format(bytes: rollup.totalBytes)) (\(rollup.fileCount) files)")
+            }
+        }
+
+        let advancedFindings = report.findings.filter { $0.riskLevel == .advanced }
+        if !advancedFindings.isEmpty {
+            print("")
+            print("⚠️  ADVANCED findings detected — do NOT delete these files directly.")
+            if advancedFindings.contains(where: { $0.path.lowercased().contains("com.docker.docker") }) {
+                print("   Docker VM storage should be cleaned via Docker Desktop or the CLI:")
+                print("     docker system prune              # removes stopped containers, unused images and build cache")
+                print("     docker image prune -a            # removes all unused images")
+                print("     docker volume prune              # removes unused volumes")
+                print("   Open Docker Desktop > Settings > Resources > Disk image to reclaim VM space.")
+            }
+        }
+    }
+
+    private static func sourceApp(for finding: ScanFinding) -> String {
+        let path = finding.path.lowercased()
+        if path.contains("com.microsoft.vscode") || path.contains("/code/") || path.contains("/.vscode/") {
+            return "VS Code"
+        }
+        if path.contains("jetbrains") {
+            return "JetBrains"
+        }
+        if path.contains("com.docker.docker") || path.contains("/docker/") {
+            return "Docker"
+        }
+        if path.contains("xcode") || path.contains("coresimulator") {
+            return "Xcode"
+        }
+        if path.contains("com.apple.safari") || path.contains("/safari/") {
+            return "Safari"
+        }
+        if path.contains("google/chrome") || path.contains("chromium") {
+            return "Chrome"
+        }
+        if path.contains("firefox") {
+            return "Firefox"
+        }
+        if path.contains("com.adobe") || path.contains("/adobe/") {
+            return "Adobe"
+        }
+        if path.contains("com.figma") || path.contains("/figma/") {
+            return "Figma"
+        }
+        if path.contains("com.blackmagicdesign") || path.contains("davinci resolve") {
+            return "DaVinci Resolve"
+        }
+        if path.contains("finalcut") || path.contains("final cut pro") {
+            return "Final Cut Pro"
+        }
+        if path.contains("homebrew") || path.contains("/npm/") || path.contains("node_modules") || path.contains("/.cargo/") || path.contains("/.gradle/") {
+            return "Package Managers"
+        }
+        return "Other"
+    }
+
+    private static func groupBySourceApp(findings: [ScanFinding]) -> [(app: String, totalBytes: Int64, fileCount: Int)] {
+        var grouped: [String: (bytes: Int64, count: Int)] = [:]
+        for finding in findings {
+            let app = sourceApp(for: finding)
+            let current = grouped[app] ?? (0, 0)
+            grouped[app] = (bytes: current.bytes + finding.sizeBytes, count: current.count + 1)
+        }
+        return grouped
+            .map { app, value in (app: app, totalBytes: value.bytes, fileCount: value.count) }
+            .sorted { $0.totalBytes > $1.totalBytes }
     }
 
     private static func groupLargeFilesByCategory(findings: [ScanFinding]) -> [(category: ScanCategory, totalBytes: Int64, files: [ScanFinding])] {
@@ -87,5 +164,13 @@ struct App BCLI {
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+
+    private static func riskTag(_ level: RiskLevel) -> String {
+        switch level {
+        case .safe:     return "[SAFE]"
+        case .review:   return "[REVIEW]"
+        case .advanced: return "[ADVANCED]"
+        }
     }
 }

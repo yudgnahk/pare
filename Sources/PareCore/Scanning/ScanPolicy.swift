@@ -38,6 +38,26 @@ public enum ScanPolicy {
         "keychain"
     ]
 
+    /// App-specific state paths that must never be deleted — removing them would
+    /// break credentials, active sessions, or IDE state for the matching tool.
+    private static let appStateSensitiveMarkers = [
+        // VS Code — active user settings / keybindings / snippets
+        "/library/application support/code/user/settings.json",
+        "/library/application support/code/user/keybindings.json",
+        "/library/application support/code/user/snippets",
+        // JetBrains — active licence and IDE session tokens
+        "/library/application support/jetbrains/consentOptions",
+        "/library/application support/jetbrains/prefs.xml",
+        // Docker — active daemon config
+        "/library/containers/com.docker.docker/data/config",
+        "/library/containers/com.docker.docker/data/daemon.json",
+        // GitHub Desktop / git credentials
+        "/.gitconfig",
+        "/.git-credentials",
+        // SSH keys (always protected)
+        "/.ssh/"
+    ]
+
     public static let designerSafePathMarkers = [
         "/library/caches/adobe",
         "/library/caches/com.adobe",
@@ -71,7 +91,8 @@ public enum ScanPolicy {
 
     public static let developerSafePathMarkers = [
         "/library/caches/com.microsoft.vscode.shipit",
-        "/library/application support/code/cachedextensionvsixs"
+        "/library/application support/code/cachedextensionvsixs",
+        "/library/logs/jetbrains"
     ]
 
     public static let developerReviewPathMarkers = [
@@ -80,6 +101,14 @@ public enum ScanPolicy {
         "/.vscode/extensions/",
         "/library/application support/jetbrains/goland",
         "/library/application support/jetbrains/datagrip"
+    ]
+
+    public static let developerDockerReviewPathMarkers = [
+        "/library/containers/com.docker.docker/data/log"
+    ]
+
+    public static let developerDockerAdvancedPathMarkers = [
+        "/library/containers/com.docker.docker/data/vms/0/data"
     ]
 
     public static let developerReviewExclusionMarkers = [
@@ -100,7 +129,9 @@ public enum ScanPolicy {
         "/library/application support/code/cachedextensionvsixs",
         "/library/application support/code/user/workspacestorage",
         "/library/application support/code/user/history",
-        "/library/application support/jetbrains"
+        "/library/application support/jetbrains",
+        "/library/containers/com.docker.docker/data/log",
+        "/library/containers/com.docker.docker/data/vms/0/data"
     ]
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
@@ -128,6 +159,11 @@ public enum ScanPolicy {
             return false
         }
 
+        let containsAppStateSensitiveMarker = appStateSensitiveMarkers.contains { path.hasSuffix($0) || path.contains($0) }
+        guard !containsAppStateSensitiveMarker else {
+            return false
+        }
+
         return allowedMarkers.contains { path.contains($0) }
     }
 
@@ -141,6 +177,11 @@ public enum ScanPolicy {
 
         let containsSensitiveDataMarker = sensitiveDataMarkers.contains { path.contains($0) }
         guard !containsSensitiveDataMarker else {
+            return false
+        }
+
+        let containsAppStateSensitiveMarker = appStateSensitiveMarkers.contains { path.hasSuffix($0) || path.contains($0) }
+        guard !containsAppStateSensitiveMarker else {
             return false
         }
 

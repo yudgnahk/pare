@@ -1,11 +1,11 @@
 # Clean My Mac (Pure Swift) - Checklist
 
 ## Phase 0 - Discovery and Guardrails
-- [ ] Define supported macOS version range (recommended: macOS 13+).
-- [ ] Decide distribution path (direct notarized app vs App Store constraints).
-- [ ] Lock safe-delete policy (default: move to Trash first).
-- [ ] Define protected paths and never-delete zones.
-- [ ] Create persona cleanup matrix (Developer, Designer, Video Builder).
+- [x] Define supported macOS version range: **macOS 13+** (set in `Package.swift`).
+- [ ] Decide distribution path (direct notarized app vs App Store constraints) — pending business decision.
+- [x] Lock safe-delete policy: **move to Trash first** (implemented in `CleanupEngine`).
+- [x] Define protected paths and never-delete zones (implemented in `ScanPolicy` protected/sensitive markers + app-state markers).
+- [x] Create persona cleanup matrix: **Baseline / Developer / Designer / Video Builder** (implemented in `RuleCatalog`).
 
 ## Phase 1 - Core Scanner MVP
 - [x] Define `ScanRule` protocol (id/title/category/risk/path resolver/detector).
@@ -53,32 +53,33 @@
 - [x] Exclude VS Code cache paths from baseline `UserCachesRule` to prevent duplicate findings.
 - [x] Validate developer profile scan output includes VS Code cache findings in developer category.
 - [x] Implement Phase B review rules for VS Code state paths and JetBrains plugin/state paths.
-- [ ] Implement Phase C Docker review/advanced detect-only paths and guidance.
+- [x] Implement Phase C Docker review/advanced detect-only paths and guidance.
+- [ ] Phase D: Fix `DockerVMDataAdvancedRule` — rule incorrectly targets `Docker.raw` (a monolithic VM disk containing user volumes/databases). Remove the rule; replace with CLI-hint guidance for `docker builder prune`. See `docs/developer-mode-phase-d-plan.md`.
 
 ## Phase 4 - Safe Cleanup Engine
-- [ ] Implement move-to-Trash cleanup pipeline.
-- [ ] Store cleanup transaction logs (timestamped JSON).
-- [ ] Add restore/undo flow from transaction logs.
-- [ ] Add pre-delete checks (file locks, in-use, min-age constraints).
-- [ ] Add global and per-profile exclusions.
+- [x] Implement move-to-Trash cleanup pipeline.
+- [x] Store cleanup transaction logs (timestamped JSON).
+- [x] Add restore/undo flow from transaction logs.
+- [x] Add pre-delete checks (in-use path, min-age constraints, ADVANCED-risk guard).
+- [x] Add global exclusions list (ExclusionList model + JSON persistence + ScanRunner integration).
 
 ## Phase 5 - UX and Trust
-- [ ] Build dashboard with reclaimable storage and top categories.
-- [ ] Show explainability for each result (why listed and impact).
-- [ ] Implement dry-run mode.
-- [ ] Implement Quick Clean mode (low risk only).
-- [ ] Implement Deep Clean mode (explicit warnings + confirmations).
+- [x] Build dashboard with reclaimable storage and top categories.
+- [x] Show explainability for each result (why listed and impact — `reason` field + risk badges).
+- [x] Implement dry-run mode.
+- [x] Implement Quick Clean mode (safe-risk only, confirmation + undo).
+- [x] Implement Deep Clean mode (explicit warnings + confirmations for review-risk items).
 
 ## Phase 6 - Performance and Reliability
 - [ ] Add incremental scan metadata cache.
-- [ ] Add progress updates and cancellation support.
-- [ ] Handle symlinks, package bundles, and permission failures safely.
+- [x] Add progress updates and cancellation support (ScanRunner + ViewModel cancel button).
+- [x] Handle symlinks, package bundles, and permission failures safely (FileSystemTraversal).
 - [ ] Benchmark large directories and optimize hotspots.
 - [ ] Add reliability tests for interrupted scans.
 
 ## Phase 7 - QA, Security, Release
-- [ ] Add unit tests for path safety and risk labeling.
-- [ ] Add integration tests with seeded junk datasets.
-- [ ] Add regression tests for protected path enforcement.
+- [x] Add unit tests for path safety and risk labeling (PathSafetyTests — 14 assertions).
+- [x] Add integration tests with seeded junk datasets (ScanIntegrationTests + CleanupRestoreIntegrationTests).
+- [x] Add regression tests for protected path enforcement (PathSafetyTests).
 - [ ] Complete code signing, hardened runtime, and notarization.
 - [ ] Add diagnostics export bundle for support.

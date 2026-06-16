@@ -110,14 +110,20 @@ Main storage consumers:
 
 - App bundle: `/Applications/Docker.app`: `2.3G`
 - `~/Library/Containers/com.docker.docker/Data/vms/0/data`: `10G`
-- `~/Library/Containers/com.docker.docker/Data/log`: `80M`
+  - Contains a single file: `Docker.raw` (sparse disk image, ~1 TB allocated)
+  - `Docker.raw` is the entire Docker VM disk — all images, containers, build cache, AND volumes live inside it
+  - **User PostgreSQL databases are stored in Docker volumes inside `Docker.raw`**
+- `~/Library/Containers/com.docker.docker/Data/log`: `73M`
 
 Risk guidance:
 
 - Safe candidates:
   - Docker logs (`.../Data/log`) after review
-- Review-required / high risk:
-  - `.../Data/vms/0/data` (contains images/containers/volumes; deleting blindly can destroy environments)
+- **DO NOT scan or report `vms/0/data` as a filesystem cleanup target:**
+  - `Docker.raw` is a monolithic VM disk; it cannot be selectively cleaned from outside
+  - There is no filesystem path for "build cache older than X days" — that data is inside the VM
+  - Direct deletion destroys all Docker data including user volumes and databases
+  - Correct approach: `docker builder prune --filter "until=168h"` or `docker system prune --filter "until=168h"` (never touches volumes unless `--volumes` flag is added)
 
 ## Scanner Correlation (Current Rules)
 
@@ -136,8 +142,10 @@ Developer profile scan summary (current core rules):
 2. Review extension bloat:
    - remove unused/duplicate VS Code extensions
    - remove unused GoLand/DataGrip plugins from older IDE versions
-3. Treat Docker VM data as explicit review-only:
-   - prune via Docker commands and UI (not direct file deletion)
+3. Treat Docker VM data as explicitly out-of-scope for filesystem scanning:
+   - `Docker.raw` contains user volumes (e.g. PostgreSQL databases) — cannot be selectively cleaned
+   - prune build cache via `docker builder prune --filter "until=168h"` (does NOT touch volumes)
+   - prune unused images/containers via `docker system prune --filter "until=168h"` (no `--volumes` flag)
 4. Keep app bundles untouched unless uninstalling the app.
 
 ## Suggested Next Scanner Enhancements
