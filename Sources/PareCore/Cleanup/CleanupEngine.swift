@@ -240,7 +240,6 @@ public actor CleanupEngine {
             + ScanPolicy.developerSafePathMarkers
             + ScanPolicy.developerReviewPathMarkers
             + ScanPolicy.developerDockerReviewPathMarkers
-            + ScanPolicy.developerDockerAdvancedPathMarkers
 
         return ScanPolicy.matchesPersonaPath(url, allowedMarkers: allPersonaMarkers)
     }
