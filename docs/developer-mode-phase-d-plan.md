@@ -24,14 +24,12 @@ Fix the flawed `DockerVMDataAdvancedRule` and complete the remaining developer-m
 - Remove `developerDockerAdvancedPathMarkers` from `ScanPolicy` (and its entry in `personaProtectedPathOverrides`)
 - Keep `DockerLogsReviewRequiredRule` — log files at `Data/log/` are genuinely cleanable
 
-### 2. Add CLI Hint Output for Docker Build Cache
+### 2. Add CLI Hint Output for Docker Build Cache ✓
 
-- When the developer profile scan runs and Docker Desktop data directory exists, emit a CLI hint (not a scan finding) suggesting:
-  ```
-  Docker build cache: run `docker builder prune --filter "until=168h"` to remove build cache older than 7 days (does not touch volumes).
-  ```
-- This should NOT create a `ScanFinding` — it is advisory output only
-- Possible approach: a separate `ScanHint` model or just a post-scan advisory message in CLI output
+- Implemented as `printDockerBuildCacheHint(profile:)` in `main.swift`
+- Fires only when `profile == .developer` AND `~/Library/Containers/com.docker.docker/Data` exists
+- Prints `docker builder prune --filter "until=168h"` and `docker system prune` with clear volume warning
+- Does NOT create a `ScanFinding`
 
 ### 3. JetBrains Safe Cache Targets (from Phase B backlog)
 
