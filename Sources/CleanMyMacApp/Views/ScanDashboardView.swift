@@ -84,6 +84,18 @@ struct ScanDashboardView: View {
                             viewModel.runScan()
                         }
 
+                        if viewModel.state == .success {
+                            Button {
+                                viewModel.runScan(forceRescan: true)
+                            } label: {
+                                Label("Force Rescan", systemImage: "arrow.clockwise")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Clear the scan cache and do a full traversal")
+                        }
+
                         if viewModel.state == .success && viewModel.quickCleanCandidatesCount > 0 {
                             PrimaryActionButton(
                                 title: "Quick Clean",
