@@ -76,6 +76,22 @@ final class ScanDashboardViewModel: ObservableObject {
         let files: [FindingItem]
     }
 
+    struct ToolRollupItem: Identifiable {
+        let id: String
+        let app: String
+        let totalBytes: Int64
+        let fileCount: Int
+        let share: Double
+
+        init(rollup: AppRollup, total: Int64) {
+            self.id = rollup.app
+            self.app = rollup.app
+            self.totalBytes = rollup.totalBytes
+            self.fileCount = rollup.fileCount
+            self.share = total > 0 ? Double(rollup.totalBytes) / Double(total) : 0
+        }
+    }
+
     // MARK: - Cleanup state
 
     enum CleanupState: Equatable {
@@ -94,6 +110,7 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
     @Published private(set) var largeFilesByCategory: [CategoryLargeFiles] = []
+    @Published private(set) var perToolRollups: [ToolRollupItem] = []
     @Published private(set) var lastScanDate: Date?
     @Published private(set) var lastScanDuration: TimeInterval?
     @Published private(set) var revealFeedback: String?
@@ -179,6 +196,9 @@ final class ScanDashboardViewModel: ObservableObject {
                 .prefix(30)
                 .map(FindingItem.init(finding:))
             let largeFilesByCategory = Self.makeLargeFileGroups(from: report.findings)
+            let toolRollups = profile != .baseline
+                ? Self.makeToolRollups(from: report.findings)
+                : []
             let finishedAt = Date()
 
             await MainActor.run {
@@ -188,6 +208,7 @@ final class ScanDashboardViewModel: ObservableObject {
                 summaries = report.summaries.map(SummaryItem.init(summary:))
                 topFindings = sortedTopFindings
                 self.largeFilesByCategory = largeFilesByCategory
+                self.perToolRollups = toolRollups
                 lastScanDate = finishedAt
                 lastScanDuration = finishedAt.timeIntervalSince(startedAt)
                 revealFeedback = nil
@@ -335,6 +356,12 @@ final class ScanDashboardViewModel: ObservableObject {
     func summaryShare(for bytes: Int64) -> Double {
         guard totalReclaimableBytes > 0 else { return 0 }
         return Double(bytes) / Double(totalReclaimableBytes)
+    }
+
+    static func makeToolRollups(from findings: [ScanFinding]) -> [ToolRollupItem] {
+        let rollups = ScanReportAnnotator.appRollups(from: findings)
+        let total = rollups.reduce(0) { $0 + $1.totalBytes }
+        return rollups.map { ToolRollupItem(rollup: $0, total: total) }
     }
 
     private static func makeLargeFileGroups(from findings: [ScanFinding]) -> [CategoryLargeFiles] {

@@ -2,6 +2,8 @@
 
 Each story is a self-contained unit of user-visible value. Stories are sized to be meaningful PRs (multiple files, end-to-end feature), not individual rule additions or test tweaks.
 
+> **Priority note:** The SwiftUI app is the primary deliverable. The CLI (`App BCLI`) is a secondary diagnostic/testing tool. CLI sub-tasks in each story are optional — implement them only when they are trivial or reuse shared core utilities already needed for the app.
+
 ---
 
 ## US-1 — Developer Scan Dashboard
@@ -51,7 +53,7 @@ Implement US-1 (Developer Scan Dashboard) from docs/user-stories.md.
 
 5. Add unit tests for ScanReportAnnotator attribution and rollup aggregation.
 
-Run swift test and make run PROFILE=developer TOP=20 to verify.
+Run swift test. Launch the app (make run-app), switch to Developer profile, run a scan, and verify the "By Tool" breakdown card appears with collapsible rows.
 ```
 
 ---
