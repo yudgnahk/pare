@@ -34,7 +34,7 @@ Based on `docs/app-storage-investigation.md` (2026-04-15), this checklist focuse
 - [ ] Add review-required state/config exclusions:
   - [x] exclude or suppress `*/options/*`, `*/workspace*`, project metadata
 - [ ] Add safe cache/log targets (where present):
-  - [ ] stale cache/temp/log artifacts in older IDE versions
+  - [x] stale version folders in older IDE versions (`JetBrainsStaleVersionRule`, risk: `.review`, 90-day age gate)
 - [x] Tag `jdbc-drivers` as review-required in DataGrip paths.
 
 ## 4) Docker Desktop Coverage
