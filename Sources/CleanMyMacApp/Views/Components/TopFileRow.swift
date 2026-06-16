@@ -8,6 +8,7 @@ struct TopFileRow: View {
     let riskLevel: RiskLevel
     let sizeText: String
     let lastUsedText: String
+    var onExclude: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -66,6 +67,13 @@ struct TopFileRow: View {
                         .strokeBorder(riskBorderColor, lineWidth: 1)
                 )
         )
+        .contextMenu {
+            if let onExclude {
+                Button(action: onExclude) {
+                    Label("Exclude from Scans", systemImage: "eye.slash")
+                }
+            }
+        }
     }
 
     private var riskLabel: String {
