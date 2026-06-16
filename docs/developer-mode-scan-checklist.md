@@ -129,22 +129,10 @@ Correct cleanup method for build cache:
 - `docker builder prune --filter "until=168h"` — clears build cache older than 7 days, never touches volumes
 - `docker system prune --filter "until=168h"` — removes unused images/containers/networks; add `--volumes` only if you want to remove volumes too (destructive for databases)
 
-## Proposed Implementation Order
+## Implementation History
 
-- [x] Phase A: VS Code safe cache rules (quick win, low risk)
+- [x] Phase A: VS Code safe cache rules
 - [x] Phase B: VS Code + JetBrains review rules and labels
-- [x] Phase C: Docker logs + advanced VM detect-only reporting
-- [x] Phase D (partial): risk badges, reason metadata, Docker guidance, sensitive path markers — rollups remaining
-- [ ] Phase D (continuation): Fix Docker VM rule (remove `DockerVMDataAdvancedRule`, add CLI-hint approach); see `docs/developer-mode-phase-d-plan.md`
-
-## Progress Notes (Current)
-
-- [x] Added `VSCodeCachesRule` in developer profile for ShipIt and Cached VSIX paths.
-- [x] Added developer-safe markers and protected-path override for Cached VSIX in `ScanPolicy`.
-- [x] Fixed duplicate reporting by excluding VS Code cache paths from `UserCachesRule`.
-- [x] Validated end-to-end via `swift test` and `make run PROFILE=developer TOP=50`.
-- [x] Implemented Phase B review rules and labels for VS Code state and JetBrains plugins.
-- [x] Implemented Phase C Docker logs (review) and VM data (advanced) detect-only rules.
-- [x] Added Docker path markers and protected-path overrides in `ScanPolicy`.
-- [x] Validated via `swift test` (18/18 pass) and `make run PROFILE=developer TOP=50`.
-- [ ] **NEXT (Phase D):** `DockerVMDataAdvancedRule` is wrong — `vms/0/data/Docker.raw` is a monolithic VM disk containing user PostgreSQL volumes. Cannot selectively clean build cache via filesystem. Rule must be removed and replaced with CLI-hint guidance. See `docs/developer-mode-phase-d-plan.md`.
+- [x] Phase C: Docker logs (review) + VM detect-only reporting
+- [x] Phase D: Docker VM rule fix, JetBrains stale version detection, VS Code duplicate extensions, Docker build cache CLI hint
+- **COMPLETE** — all developer scan rules implemented. Remaining work tracked in `docs/user-stories.md`.
