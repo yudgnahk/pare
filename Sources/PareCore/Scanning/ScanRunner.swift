@@ -4,18 +4,33 @@ public struct ScanRunner: Sendable {
     private let environment: ScanEnvironment
     private let traversal: any FileTraversing
     private let exclusionList: ExclusionList
+    private let cache: ScanMetadataCache?
 
     public init(
         environment: ScanEnvironment = .current(),
         traversal: any FileTraversing = FileSystemTraversal(),
-        exclusionList: ExclusionList = .empty
+        exclusionList: ExclusionList = .empty,
+        cache: ScanMetadataCache? = nil
     ) {
         self.environment = environment
         self.traversal = traversal
         self.exclusionList = exclusionList
+        self.cache = cache
     }
 
-    public func run(rules: [any ScanRule]) async -> ScanReport {
+    public func run(rules: [any ScanRule], forceRescan: Bool = false) async -> ScanReport {
+        let effectiveTraversal: any FileTraversing
+        if let cache {
+            let fingerprint = rules.map(\.id).sorted().joined(separator: ",")
+            await cache.setProfile(fingerprint)
+            if forceRescan {
+                await cache.invalidate()
+            }
+            effectiveTraversal = CachedFileTraversal(inner: traversal, cache: cache)
+        } else {
+            effectiveTraversal = traversal
+        }
+
         var findings: [ScanFinding] = []
         var grouped: [ScanCategory: (bytes: Int64, count: Int)] = [:]
 
@@ -36,7 +51,7 @@ public struct ScanRunner: Sendable {
             }
 
             let directories = rule.targetDirectories(environment: environment)
-            let files = await traversal.collectFiles(in: directories)
+            let files = await effectiveTraversal.collectFiles(in: directories)
 
             for file in files {
                 guard include(file: file, rule: rule) else {

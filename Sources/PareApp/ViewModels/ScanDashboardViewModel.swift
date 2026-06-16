@@ -125,6 +125,7 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Raw findings kept after scan so cleanup can reference them.
     private var latestFindings: [ScanFinding] = []
     private let engine = CleanupEngine()
+    private let scanCache = ScanMetadataCache()
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
 
@@ -176,17 +177,19 @@ final class ScanDashboardViewModel: ObservableObject {
         resultsVisible = false
     }
 
-    func runScan() {
+    func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
         state = .scanning
         resultsVisible = false
         let startedAt = Date()
         let profile = selectedProfile.coreProfile
+        let cache = scanCache
 
         scanTask = Task(priority: .userInitiated) {
             let rules = RuleCatalog.rules(for: profile)
-            let report = await ScanRunner().run(rules: rules)
+            let runner = ScanRunner(cache: cache)
+            let report = await runner.run(rules: rules, forceRescan: forceRescan)
 
             // If the task was cancelled, don't update UI with partial results.
             guard !Task.isCancelled else { return }
