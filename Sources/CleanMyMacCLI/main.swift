@@ -61,14 +61,32 @@ struct App BCLI {
         if !advancedFindings.isEmpty {
             print("")
             print("⚠️  ADVANCED findings detected — do NOT delete these files directly.")
-            if advancedFindings.contains(where: { $0.path.lowercased().contains("com.docker.docker") }) {
-                print("   Docker VM storage should be cleaned via Docker Desktop or the CLI:")
-                print("     docker system prune              # removes stopped containers, unused images and build cache")
-                print("     docker image prune -a            # removes all unused images")
-                print("     docker volume prune              # removes unused volumes")
-                print("   Open Docker Desktop > Settings > Resources > Disk image to reclaim VM space.")
-            }
+            print("   Check each path and use the appropriate native tool to clean it.")
         }
+
+        printDockerBuildCacheHint(profile: profile)
+    }
+
+    /// Emits a Docker build-cache advisory when running the developer profile and Docker
+    /// Desktop is installed. Docker stores build cache inside its VM disk (Docker.raw) —
+    /// it cannot be scanned as regular files. This hint points to the correct CLI commands.
+    private static func printDockerBuildCacheHint(profile: ScanProfile) {
+        guard profile == .developer else { return }
+
+        let dockerDataDir = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Containers/com.docker.docker/Data")
+        guard FileManager.default.fileExists(atPath: dockerDataDir.path) else { return }
+
+        print("")
+        print("── Docker build cache ──────────────────────────────────────────────────")
+        print("Docker stores build cache inside its VM disk — not scannable as regular files.")
+        print("To reclaim build cache older than 7 days, run:")
+        print("  docker builder prune --filter \"until=168h\"")
+        print("    → removes build cache only; never touches volumes or databases")
+        print("  docker system prune  --filter \"until=168h\"")
+        print("    → also removes unused images and stopped containers")
+        print("⚠️  Never add --volumes unless you want to delete Docker volume data (e.g. databases).")
+        print("────────────────────────────────────────────────────────────────────────")
     }
 
     private static func sourceApp(for finding: ScanFinding) -> String {
