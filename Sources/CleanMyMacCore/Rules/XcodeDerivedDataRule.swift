@@ -3,6 +3,7 @@ import Foundation
 public struct XcodeDerivedDataRule: ScanRule {
     public let id = "xcode-derived-data"
     public let title = "Xcode DerivedData"
+    public let reason = "Xcode build artefacts (regenerated on next build)"
     public let category: ScanCategory = .developerBuildArtifacts
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.98

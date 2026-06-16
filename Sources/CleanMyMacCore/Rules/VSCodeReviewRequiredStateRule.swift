@@ -3,6 +3,7 @@ import Foundation
 public struct VSCodeReviewRequiredStateRule: ScanRule {
     public let id = "vscode-review-required-state"
     public let title = "VS Code State and Extensions (Review Required)"
+    public let reason = "VS Code workspace state or extension data (review before removing)"
     public let category: ScanCategory = .developerPackageCaches
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.78

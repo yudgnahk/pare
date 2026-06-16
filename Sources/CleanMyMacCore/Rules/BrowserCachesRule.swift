@@ -3,6 +3,7 @@ import Foundation
 public struct BrowserCachesRule: ScanRule {
     public let id = "browser-caches"
     public let title = "Browser Caches (Safe Subset)"
+    public let reason = "Browser rendering or GPU cache"
     public let category: ScanCategory = .browserCaches
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.88

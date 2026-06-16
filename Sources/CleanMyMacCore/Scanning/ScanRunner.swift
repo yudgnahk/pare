@@ -3,13 +3,16 @@ import Foundation
 public struct ScanRunner: Sendable {
     private let environment: ScanEnvironment
     private let traversal: any FileTraversing
+    private let exclusionList: ExclusionList
 
     public init(
         environment: ScanEnvironment = .current(),
-        traversal: any FileTraversing = FileSystemTraversal()
+        traversal: any FileTraversing = FileSystemTraversal(),
+        exclusionList: ExclusionList = .empty
     ) {
         self.environment = environment
         self.traversal = traversal
+        self.exclusionList = exclusionList
     }
 
     public func run(rules: [any ScanRule]) async -> ScanReport {
@@ -17,6 +20,21 @@ public struct ScanRunner: Sendable {
         var grouped: [ScanCategory: (bytes: Int64, count: Int)] = [:]
 
         for rule in rules {
+            guard !Task.isCancelled else { break }
+
+            // Rules that need directory-level reasoning produce findings themselves.
+            if let customFindings = await rule.customScan(environment: environment) {
+                for finding in customFindings where !exclusionList.isExcluded(finding.path) {
+                    findings.append(finding)
+                    let current = grouped[finding.category] ?? (0, 0)
+                    grouped[finding.category] = (
+                        bytes: current.bytes + finding.sizeBytes,
+                        count: current.count + 1
+                    )
+                }
+                continue
+            }
+
             let directories = rule.targetDirectories(environment: environment)
             let files = await traversal.collectFiles(in: directories)
 
@@ -24,11 +42,15 @@ public struct ScanRunner: Sendable {
                 guard include(file: file, rule: rule) else {
                     continue
                 }
+                guard !exclusionList.isExcluded(file.url.path) else {
+                    continue
+                }
 
                 findings.append(
                     ScanFinding(
                         category: rule.category,
                         riskLevel: rule.riskLevel,
+                        reason: rule.reason,
                         path: file.url.path,
                         sizeBytes: file.sizeBytes,
                         lastUsed: file.lastModified,

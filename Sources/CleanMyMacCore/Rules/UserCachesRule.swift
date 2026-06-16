@@ -3,6 +3,7 @@ import Foundation
 public struct UserCachesRule: ScanRule {
     public let id = "user-caches"
     public let title = "User Cache Folders"
+    public let reason = "Application cache (safe to regenerate)"
     public let category: ScanCategory = .userCaches
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.95

@@ -12,6 +12,7 @@ struct ScanDashboardView: View {
             ScrollView {
                 VStack(spacing: 22) {
                     header
+                    cleanupStatusBanner
                     metrics
                     summaries
                     largeFilesByCategory
@@ -20,6 +21,12 @@ struct ScanDashboardView: View {
                 .padding(.horizontal, 28)
                 .padding(.vertical, 24)
             }
+        }
+        .sheet(isPresented: $viewModel.showCleanConfirmation) {
+            QuickCleanConfirmationSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.showDeepCleanConfirmation) {
+            DeepCleanConfirmationSheet(viewModel: viewModel)
         }
     }
 
@@ -61,6 +68,11 @@ struct ScanDashboardView: View {
                         if viewModel.isScanning {
                             ScanPulseView()
                                 .frame(width: 20, height: 20)
+
+                            Button("Cancel") { viewModel.cancelScan() }
+                                .buttonStyle(.borderless)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(AppTheme.textSecondary)
                         }
 
                         PrimaryActionButton(
@@ -70,7 +82,146 @@ struct ScanDashboardView: View {
                         ) {
                             viewModel.runScan()
                         }
+
+                        if viewModel.state == .success && viewModel.quickCleanCandidatesCount > 0 {
+                            PrimaryActionButton(
+                                title: "Quick Clean",
+                                systemImage: "trash.fill",
+                                isLoading: viewModel.isCleaning
+                            ) {
+                                viewModel.requestQuickClean()
+                            }
+                        }
+
+                        if viewModel.state == .success && viewModel.reviewRiskCandidatesCount > 0 {
+                            PrimaryActionButton(
+                                title: "Deep Clean",
+                                systemImage: "bolt.fill",
+                                isLoading: viewModel.isCleaning
+                            ) {
+                                viewModel.requestDeepClean()
+                            }
+                        }
                     }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var cleanupStatusBanner: some View {
+        switch viewModel.cleanupState {
+        case .idle, .confirming:
+            EmptyView()
+
+        case .cleaning:
+            GlassCard {
+                HStack(spacing: 14) {
+                    ProgressView()
+                        .scaleEffect(0.85)
+                    Text("Moving files to Trash…")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Spacer()
+                }
+            }
+
+        case .done(let bytesFreed, let skippedCount):
+            GlassCard {
+                HStack(spacing: 14) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(AppTheme.success)
+                        .font(.system(size: 22))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Cleaned \(viewModel.formattedBytes(bytesFreed))")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        if skippedCount > 0 {
+                            Text("\(skippedCount) items skipped (policy check).")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    if viewModel.canUndo {
+                        Button("Undo") { viewModel.undoLastCleanup() }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AppTheme.accent)
+                    }
+
+                    Button {
+                        viewModel.dismissCleanupResult()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+
+        case .undoing:
+            GlassCard {
+                HStack(spacing: 14) {
+                    ProgressView()
+                        .scaleEffect(0.85)
+                    Text("Restoring files from Trash…")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Spacer()
+                }
+            }
+
+        case .undone(let restoredCount):
+            GlassCard {
+                HStack(spacing: 14) {
+                    Image(systemName: "arrow.uturn.backward.circle.fill")
+                        .foregroundStyle(AppTheme.warning)
+                        .font(.system(size: 22))
+
+                    Text("\(restoredCount) file\(restoredCount == 1 ? "" : "s") restored.")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+
+                    Spacer()
+
+                    Button {
+                        viewModel.dismissCleanupResult()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+
+        case .error(let message):
+            GlassCard {
+                HStack(spacing: 14) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(AppTheme.review)
+                        .font(.system(size: 22))
+
+                    Text(message)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(3)
+
+                    Spacer()
+
+                    Button {
+                        viewModel.dismissCleanupResult()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
         }
@@ -159,10 +310,10 @@ struct ScanDashboardView: View {
                             TopFileRow(
                                 path: finding.path,
                                 category: finding.category.rawValue,
+                                reason: finding.reason,
+                                riskLevel: finding.riskLevel,
                                 sizeText: viewModel.formattedBytes(finding.sizeBytes),
-                                confidenceText: viewModel.confidenceLabel(for: finding.confidence),
-                                lastUsedText: viewModel.formattedDate(finding.lastUsed),
-                                confidenceColor: confidenceColor(for: finding.confidence)
+                                lastUsedText: viewModel.formattedDate(finding.lastUsed)
                             )
                             .opacity(viewModel.resultsVisible ? 1 : 0)
                             .scaleEffect(viewModel.resultsVisible ? 1 : 0.98)
@@ -223,6 +374,8 @@ struct ScanDashboardView: View {
                                         path: file.path,
                                         sizeText: viewModel.formattedBytes(file.sizeBytes),
                                         lastUsedText: viewModel.formattedDate(file.lastUsed),
+                                        riskLevel: file.riskLevel,
+                                        reason: file.reason,
                                         canReveal: viewModel.canReveal(path: file.path)
                                     ) {
                                         viewModel.revealInFinder(path: file.path)
@@ -311,16 +464,6 @@ struct ScanDashboardView: View {
         }
     }
 
-    private func confidenceColor(for confidence: Double) -> Color {
-        if confidence >= 0.9 {
-            return AppTheme.success
-        }
-        if confidence >= 0.7 {
-            return AppTheme.warning
-        }
-        return AppTheme.review
-    }
-
     private func placeholder(icon: String, title: String, message: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(title, systemImage: icon)
@@ -335,6 +478,179 @@ struct ScanDashboardView: View {
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
+
+// MARK: - QuickCleanConfirmationSheet
+
+private struct QuickCleanConfirmationSheet: View {
+    @ObservedObject var viewModel: ScanDashboardViewModel
+
+    var body: some View {
+        ZStack {
+            AppBackgroundView()
+
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.success.opacity(0.18))
+                            .frame(width: 48, height: 48)
+                        Image(systemName: "trash.fill")
+                            .foregroundStyle(AppTheme.success)
+                            .font(.system(size: 20, weight: .semibold))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Quick Clean")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text("Safe-risk findings only")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    infoRow(icon: "checkmark.shield.fill", color: AppTheme.success,
+                            text: "\(viewModel.quickCleanCandidatesCount) safe-risk file\(viewModel.quickCleanCandidatesCount == 1 ? "" : "s") will be moved to Trash.")
+                    infoRow(icon: "exclamationmark.triangle", color: AppTheme.warning,
+                            text: "Review and Advanced findings are never touched.")
+                    infoRow(icon: "arrow.uturn.backward", color: AppTheme.accent,
+                            text: "You can undo immediately after cleanup via the Undo button.")
+                    infoRow(icon: "externaldrive", color: AppTheme.textSecondary,
+                            text: "Estimated space: \(viewModel.formattedBytes(viewModel.quickCleanCandidatesBytes))")
+                }
+                .padding(16)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                HStack(spacing: 12) {
+                    Button("Cancel") { viewModel.cancelCleanup() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Button("Move to Trash") { viewModel.confirmQuickClean() }
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.success, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .buttonStyle(.borderless)
+                }
+            }
+            .padding(28)
+        }
+        .frame(width: 440, height: 340)
+    }
+
+    private func infoRow(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 20)
+            Text(text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppTheme.textPrimary)
+        }
+    }
+}
+
+// MARK: - DeepCleanConfirmationSheet
+
+private struct DeepCleanConfirmationSheet: View {
+    @ObservedObject var viewModel: ScanDashboardViewModel
+
+    var body: some View {
+        ZStack {
+            AppBackgroundView()
+
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.review.opacity(0.18))
+                            .frame(width: 48, height: 48)
+                        Image(systemName: "bolt.fill")
+                            .foregroundStyle(AppTheme.review)
+                            .font(.system(size: 20, weight: .semibold))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Deep Clean")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text("Safe + Review-risk findings")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(AppTheme.review)
+                    }
+                }
+
+                // Warning banner
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(AppTheme.review)
+                        .font(.system(size: 16, weight: .bold))
+                    Text("Deep Clean includes REVIEW-risk items — files that may be regenerated by your apps but could require re-configuration. Proceed only if you have reviewed them.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(14)
+                .background(AppTheme.review.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    infoRow(icon: "bolt.fill", color: AppTheme.review,
+                            text: "\(viewModel.deepCleanCandidatesCount) file\(viewModel.deepCleanCandidatesCount == 1 ? "" : "s") will be moved to Trash (\(viewModel.reviewRiskCandidatesCount) review-risk).")
+                    infoRow(icon: "exclamationmark.shield", color: AppTheme.warning,
+                            text: "ADVANCED findings (e.g. Docker VM data) are never touched.")
+                    infoRow(icon: "arrow.uturn.backward", color: AppTheme.accent,
+                            text: "You can undo immediately after cleanup via the Undo button.")
+                    infoRow(icon: "externaldrive", color: AppTheme.textSecondary,
+                            text: "Estimated space: \(viewModel.formattedBytes(viewModel.deepCleanCandidatesBytes))")
+                }
+                .padding(16)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                HStack(spacing: 12) {
+                    Button("Cancel") { viewModel.cancelDeepClean() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Button("Move to Trash") { viewModel.confirmDeepClean() }
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.review, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .buttonStyle(.borderless)
+                }
+            }
+            .padding(28)
+        }
+        .frame(width: 480, height: 400)
+    }
+
+    private func infoRow(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 20)
+            Text(text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppTheme.textPrimary)
+        }
+    }
+}
+
+// MARK: - ScanPulseView
 
 private struct ScanPulseView: View {
     @State private var pulse = false
