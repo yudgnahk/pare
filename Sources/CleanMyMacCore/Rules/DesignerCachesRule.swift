@@ -3,6 +3,7 @@ import Foundation
 public struct DesignerCachesRule: ScanRule {
     public let id = "designer-caches"
     public let title = "Designer Caches (Adobe/Figma)"
+    public let reason = "Adobe or Figma rendering cache (regenerated automatically)"
     public let category: ScanCategory = .designerCaches
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.9

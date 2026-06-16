@@ -3,6 +3,7 @@ import Foundation
 public struct XcodeSimulatorCachesRule: ScanRule {
     public let id = "xcode-simulator-caches"
     public let title = "Xcode Simulator Caches"
+    public let reason = "Simulator runtime cache (regenerated on next launch)"
     public let category: ScanCategory = .developerSimulatorCaches
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.85

@@ -3,6 +3,7 @@ import Foundation
 public struct PackageManagerCachesRule: ScanRule {
     public let id = "package-manager-caches"
     public let title = "Package Manager Caches"
+    public let reason = "Package manager download cache (npm/Yarn/pnpm/CocoaPods/SwiftPM)"
     public let category: ScanCategory = .developerPackageCaches
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.95

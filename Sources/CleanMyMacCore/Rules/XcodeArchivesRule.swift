@@ -3,6 +3,7 @@ import Foundation
 public struct XcodeArchivesRule: ScanRule {
     public let id = "xcode-archives"
     public let title = "Xcode Archives"
+    public let reason = "Xcode app archive (review before removing)"
     public let category: ScanCategory = .developerBuildArtifacts
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.9

@@ -1,0 +1,46 @@
+{
+  "agent": {
+    "orchestrator": {
+      "model": "github-copilot/claude-sonnet-4.6",
+      "options": {},
+      "permission": {}
+    },
+    "oracle": {
+      "model": "google/gemini-2.5-pro",
+      "variant": "high",
+      "options": {},
+      "permission": {}
+    },
+    "council": {
+      "model": "nvidia/moonshotai/kimi-k2-thinking",
+      "variant": "high",
+      "options": {},
+      "permission": {}
+    },
+    "librarian": {
+      "model": "google/gemini-2.5-flash",
+      "variant": "low",
+      "options": {},
+      "permission": {}
+    },
+    "explorer": {
+      "model": "github-copilot/gpt-5.4-mini",
+      "variant": "low",
+      "options": {},
+      "permission": {}
+    },
+    "designer": {
+      "model": "github-copilot/claude-sonnet-4.5",
+      "variant": "medium",
+      "options": {},
+      "permission": {}
+    },
+    "fixer": {
+      "model": "nvidia/deepseek-ai/deepseek-v4-flash",
+      "variant": "low",
+      "options": {},
+      "permission": {}
+    }
+  },
+  "$schema": "https://opencode.ai/config.json"
+}

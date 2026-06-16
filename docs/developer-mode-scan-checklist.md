@@ -6,12 +6,12 @@ Based on `docs/app-storage-investigation.md` (2026-04-15), this checklist focuse
 
 - [x] Add a dedicated developer tooling ruleset for app-specific paths:
   - [x] VS Code
-  - [ ] JetBrains (GoLand, DataGrip)
-  - [ ] Docker Desktop
-- [ ] Keep large app bundles (`/Applications/*.app`) out of reclaimable results unless uninstall flow exists.
+  - [x] JetBrains (GoLand, DataGrip) — review rules for plugins/drivers
+  - [x] Docker Desktop — logs (review) + VM data (advanced detect-only)
+- [x] Keep large app bundles (`/Applications/*.app`) out of reclaimable results — app bundle paths are not in any scan target directory.
 - [x] Preserve current low-risk default behavior:
   - [x] Safe paths are auto-included.
-  - [ ] Review/high-risk paths are detect-only or explicitly labeled `REVIEW`.
+  - [x] Review/high-risk paths are detect-only or explicitly labeled `REVIEW`.
 
 ## 2) VS Code Coverage
 
@@ -39,27 +39,30 @@ Based on `docs/app-storage-investigation.md` (2026-04-15), this checklist focuse
 
 ## 4) Docker Desktop Coverage
 
-- [ ] Add Docker review rule for logs:
-  - [ ] `~/Library/Containers/com.docker.docker/Data/log/*`
-- [ ] Add Docker VM storage as advanced/review-only detect target:
-  - [ ] `~/Library/Containers/com.docker.docker/Data/vms/0/data/*`
-- [ ] Do not suggest direct file deletion for VM data.
-- [ ] Add guidance in output to use Docker-native cleanup (`docker system prune`, image/container/volume prune) instead of removing files directly.
+- [x] Add Docker review rule for logs:
+  - [x] `~/Library/Containers/com.docker.docker/Data/log/*`
+- [x] Add Docker VM storage as advanced/review-only detect target:
+  - [x] `~/Library/Containers/com.docker.docker/Data/vms/0/data/*`
+  - ⚠️ **This rule is architecturally wrong — see Phase D for fix**
+  - `Docker.raw` (inside `vms/0/data`) is a monolithic VM disk; it contains ALL Docker data including user volumes (e.g. PostgreSQL databases). It cannot be selectively cleaned as a filesystem path. See `docs/developer-mode-phase-d-plan.md`.
+- [x] Do not suggest direct file deletion for VM data.
+- [x] Add guidance in output to use Docker-native cleanup (`docker system prune`, image/container/volume prune) — printed in CLI when ADVANCED findings detected.
+- [ ] **Phase D: Remove `DockerVMDataAdvancedRule`** — replace with CLI hint approach. See `docs/developer-mode-phase-d-plan.md`.
 
 ## 5) Policy and Guardrails
 
 - [x] Extend `ScanPolicy` marker strategy for developer-tooling-safe markers.
-- [ ] Add app-specific sensitive markers to avoid state/credential/session breakage.
+- [x] Add app-specific sensitive markers to avoid state/credential/session breakage (settings.json, .ssh/, .git-credentials, etc.).
 - [x] Keep minimum-age guardrails (default 3 days) for cache-like paths.
-- [ ] Ensure review/advanced findings are visually separated in CLI and app summaries.
+- [x] Ensure review/advanced findings are visually separated in CLI and app summaries (risk badges + colored borders).
 
 ## 6) UX and Output Improvements
 
-- [ ] Add finding reason metadata (for example: `cache`, `plugin`, `workspace state`, `docker vm data`).
-- [ ] Add remediation hints per finding type:
-  - [ ] Safe: direct cleanup candidate
-  - [ ] Review: explain impact before deletion
-  - [ ] Advanced: use app-native prune flow
+- [x] Add finding reason metadata (e.g. "VS Code extension update cache", "Docker VM disk image").
+- [x] Add remediation hints per finding type:
+  - [x] SAFE badge in app + [SAFE] tag in CLI
+  - [x] REVIEW badge in app + [REVIEW] tag in CLI
+  - [x] ADVANCED badge in app + [ADVANCED] tag + Docker-native guidance block in CLI
 - [ ] Add top offender rollups by app (VS Code / GoLand / DataGrip / Docker).
 
 ## 7) Validation Checklist
@@ -74,8 +77,8 @@ Based on `docs/app-storage-investigation.md` (2026-04-15), this checklist focuse
 - [ ] Confirm expected findings include:
   - [x] VS Code ShipIt and Cached VSIX
   - [x] JetBrains plugin-heavy folders (review)
-  - [ ] Docker logs (review)
-  - [ ] Docker VM data (advanced/review-only, detect-only)
+  - [x] Docker logs (review)
+  - [x] Docker VM data (advanced/review-only, detect-only)
 
 ## Research: What We Can Remove From These Apps
 
@@ -114,18 +117,25 @@ Review before deleting:
 Safe to remove with review:
 - `~/Library/Containers/com.docker.docker/Data/log/*`
 
-Do not remove directly from filesystem (high risk):
-- `~/Library/Containers/com.docker.docker/Data/vms/0/data/*`
+**Must NOT scan as a filesystem target:**
+- `~/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw`
+- This is a ~1 TB sparse disk image — the entire Docker VM
+- Contains ALL Docker data: images, containers, build cache, AND user volumes
+- User PostgreSQL databases (and any other Docker volumes) live inside this file
+- There is no way to selectively delete "build cache older than X days" from outside the VM
+- `DockerVMDataAdvancedRule` reports this file as a finding — that is misleading and must be removed
 
-Preferred cleanup method:
-- Docker-native prune commands and Docker Desktop UI cleanup for images, containers, build cache, and volumes.
+Correct cleanup method for build cache:
+- `docker builder prune --filter "until=168h"` — clears build cache older than 7 days, never touches volumes
+- `docker system prune --filter "until=168h"` — removes unused images/containers/networks; add `--volumes` only if you want to remove volumes too (destructive for databases)
 
 ## Proposed Implementation Order
 
 - [x] Phase A: VS Code safe cache rules (quick win, low risk)
 - [x] Phase B: VS Code + JetBrains review rules and labels
-- [ ] Phase C: Docker logs + advanced VM detect-only reporting
-- [ ] Phase D: app-level rollups and remediation hints in UI/CLI
+- [x] Phase C: Docker logs + advanced VM detect-only reporting
+- [x] Phase D (partial): risk badges, reason metadata, Docker guidance, sensitive path markers — rollups remaining
+- [ ] Phase D (continuation): Fix Docker VM rule (remove `DockerVMDataAdvancedRule`, add CLI-hint approach); see `docs/developer-mode-phase-d-plan.md`
 
 ## Progress Notes (Current)
 
@@ -134,4 +144,7 @@ Preferred cleanup method:
 - [x] Fixed duplicate reporting by excluding VS Code cache paths from `UserCachesRule`.
 - [x] Validated end-to-end via `swift test` and `make run PROFILE=developer TOP=50`.
 - [x] Implemented Phase B review rules and labels for VS Code state and JetBrains plugins.
-- [ ] Next up: implement Phase C Docker review/advanced detect-only rules.
+- [x] Implemented Phase C Docker logs (review) and VM data (advanced) detect-only rules.
+- [x] Added Docker path markers and protected-path overrides in `ScanPolicy`.
+- [x] Validated via `swift test` (18/18 pass) and `make run PROFILE=developer TOP=50`.
+- [ ] **NEXT (Phase D):** `DockerVMDataAdvancedRule` is wrong — `vms/0/data/Docker.raw` is a monolithic VM disk containing user PostgreSQL volumes. Cannot selectively clean build cache via filesystem. Rule must be removed and replaced with CLI-hint guidance. See `docs/developer-mode-phase-d-plan.md`.

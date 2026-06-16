@@ -3,6 +3,7 @@ import Foundation
 public struct TemporaryFilesRule: ScanRule {
     public let id = "temporary-files"
     public let title = "Temporary Files"
+    public let reason = "Temporary file older than 3 days"
     public let category: ScanCategory = .temporaryFiles
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.9

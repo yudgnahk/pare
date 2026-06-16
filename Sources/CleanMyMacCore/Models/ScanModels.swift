@@ -33,6 +33,8 @@ public struct ScannedFile: Sendable {
 public struct ScanFinding: Sendable {
     public let category: ScanCategory
     public let riskLevel: RiskLevel
+    /// Human-readable reason this file was flagged (copied from the matching `ScanRule`).
+    public let reason: String
     public let path: String
     public let sizeBytes: Int64
     public let lastUsed: Date?
@@ -41,6 +43,7 @@ public struct ScanFinding: Sendable {
     public init(
         category: ScanCategory,
         riskLevel: RiskLevel,
+        reason: String,
         path: String,
         sizeBytes: Int64,
         lastUsed: Date?,
@@ -48,6 +51,7 @@ public struct ScanFinding: Sendable {
     ) {
         self.category = category
         self.riskLevel = riskLevel
+        self.reason = reason
         self.path = path
         self.sizeBytes = sizeBytes
         self.lastUsed = lastUsed

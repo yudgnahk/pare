@@ -3,6 +3,7 @@ import Foundation
 public struct LogsAndCrashReportsRule: ScanRule {
     public let id = "logs-crash-reports"
     public let title = "Logs and Crash Reports"
+    public let reason = "Application log or crash report"
     public let category: ScanCategory = .logsAndCrashReports
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.92

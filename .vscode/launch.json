@@ -19,6 +19,26 @@
             "target": "cleanmymac-cli",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release cleanmymac-cli"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:clean-my-mac}",
+            "name": "Debug CleanMyMacApp",
+            "target": "CleanMyMacApp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug CleanMyMacApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:clean-my-mac}",
+            "name": "Release CleanMyMacApp",
+            "target": "CleanMyMacApp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release CleanMyMacApp"
         }
     ]
 }

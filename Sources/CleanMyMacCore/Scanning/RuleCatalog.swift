@@ -37,8 +37,12 @@ public enum RuleCatalog {
             PackageManagerCachesRule(),
             XcodeSimulatorCachesRule(),
             VSCodeCachesRule(),
+            VSCodeDuplicateExtensionsRule(),
             VSCodeReviewRequiredStateRule(),
-            JetBrainsReviewRequiredRule()
+            JetBrainsSafeCachesRule(),
+            JetBrainsReviewRequiredRule(),
+            DockerLogsReviewRequiredRule(),
+            DockerVMDataAdvancedRule()
         ] + baseline
     }
 

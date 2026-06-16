@@ -3,6 +3,7 @@ import Foundation
 public struct JetBrainsReviewRequiredRule: ScanRule {
     public let id = "jetbrains-review-required"
     public let title = "JetBrains Plugins and Drivers (Review Required)"
+    public let reason = "JetBrains IDE plugin or JDBC driver data (review before removing)"
     public let category: ScanCategory = .developerPackageCaches
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.8

@@ -13,14 +13,16 @@ final class ScanRunnerTests: XCTestCase {
     struct TestRule: ScanRule {
         let id: String
         let title: String
+        let reason: String
         let category: ScanCategory
         let riskLevel: RiskLevel
         let confidence: Double = 1.0
         let targets: [URL]
 
-        init(id: String, title: String, category: ScanCategory, riskLevel: RiskLevel = .safe, targets: [URL]) {
+        init(id: String, title: String, reason: String = "Test finding", category: ScanCategory, riskLevel: RiskLevel = .safe, targets: [URL]) {
             self.id = id
             self.title = title
+            self.reason = reason
             self.category = category
             self.riskLevel = riskLevel
             self.targets = targets
@@ -121,6 +123,8 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "vscode-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "vscode-review-required-state" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-review-required" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "docker-logs-review-required" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "docker-vm-data-advanced" }))
         XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
     }
 
@@ -375,5 +379,61 @@ final class ScanRunnerTests: XCTestCase {
         let summary = report.summaries.first(where: { $0.category == .designerCaches })
         XCTAssertEqual(summary?.reclaimableBytes, 500)
         XCTAssertEqual(summary?.fileCount, 2)
+    }
+
+    func testDockerLogsReviewRuleIncludesDockerLogPathsOnly() {
+        let rule = DockerLogsReviewRequiredRule()
+        let values = URLResourceValues()
+
+        XCTAssertTrue(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/log/host/docker.log"),
+                resourceValues: values
+            )
+        )
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"),
+                resourceValues: values
+            )
+        )
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.example.app/Data/log/app.log"),
+                resourceValues: values
+            )
+        )
+
+        XCTAssertEqual(rule.riskLevel, .review)
+    }
+
+    func testDockerVMDataAdvancedRuleIncludesVMPathsOnly() {
+        let rule = DockerVMDataAdvancedRule()
+        let values = URLResourceValues()
+
+        XCTAssertTrue(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"),
+                resourceValues: values
+            )
+        )
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/log/host/docker.log"),
+                resourceValues: values
+            )
+        )
+
+        XCTAssertFalse(
+            rule.include(
+                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.example.app/Data/vms/0/data/disk.raw"),
+                resourceValues: values
+            )
+        )
+
+        XCTAssertEqual(rule.riskLevel, .advanced)
     }
 }

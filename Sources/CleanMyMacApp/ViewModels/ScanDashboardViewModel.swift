@@ -53,6 +53,7 @@ final class ScanDashboardViewModel: ObservableObject {
         let sizeBytes: Int64
         let category: ScanCategory
         let riskLevel: RiskLevel
+        let reason: String
         let confidence: Double
         let lastUsed: Date?
 
@@ -62,6 +63,7 @@ final class ScanDashboardViewModel: ObservableObject {
             self.sizeBytes = finding.sizeBytes
             self.category = finding.category
             self.riskLevel = finding.riskLevel
+            self.reason = finding.reason
             self.confidence = finding.confidence
             self.lastUsed = finding.lastUsed
         }
@@ -72,6 +74,18 @@ final class ScanDashboardViewModel: ObservableObject {
         let category: ScanCategory
         let totalBytes: Int64
         let files: [FindingItem]
+    }
+
+    // MARK: - Cleanup state
+
+    enum CleanupState: Equatable {
+        case idle
+        case confirming
+        case cleaning
+        case done(bytesFreed: Int64, skippedCount: Int)
+        case undoing
+        case undone(restoredCount: Int)
+        case error(String)
     }
 
     @Published var selectedProfile: DashboardProfile = .baseline
@@ -85,8 +99,64 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var revealFeedback: String?
     @Published var resultsVisible = false
 
+    // Cleanup-specific state
+    @Published private(set) var cleanupState: CleanupState = .idle
+    @Published var showCleanConfirmation = false
+    @Published var showDeepCleanConfirmation = false
+    /// Most recent transaction, used to offer undo.
+    private var lastTransaction: CleanupTransaction?
+    /// Raw findings kept after scan so cleanup can reference them.
+    private var latestFindings: [ScanFinding] = []
+    private let engine = CleanupEngine()
+    /// The running scan task — kept so we can cancel it on demand.
+    private var scanTask: Task<Void, Never>?
+
     var isScanning: Bool {
         state == .scanning
+    }
+
+    var isCleaning: Bool {
+        if case .cleaning = cleanupState { return true }
+        return false
+    }
+
+    var isUndoing: Bool {
+        if case .undoing = cleanupState { return true }
+        return false
+    }
+
+    var canUndo: Bool {
+        if let tx = lastTransaction, !tx.isDryRun, !tx.items.isEmpty { return true }
+        return false
+    }
+
+    /// Number of safe-risk findings from the last scan (Quick Clean candidates).
+    var quickCleanCandidatesCount: Int {
+        latestFindings.filter { $0.riskLevel == .safe }.count
+    }
+
+    var quickCleanCandidatesBytes: Int64 {
+        latestFindings.filter { $0.riskLevel == .safe }.reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    /// Deep Clean candidates: safe + review-risk findings.
+    var deepCleanCandidatesCount: Int {
+        latestFindings.filter { $0.riskLevel == .safe || $0.riskLevel == .review }.count
+    }
+
+    var deepCleanCandidatesBytes: Int64 {
+        latestFindings.filter { $0.riskLevel == .safe || $0.riskLevel == .review }.reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    var reviewRiskCandidatesCount: Int {
+        latestFindings.filter { $0.riskLevel == .review }.count
+    }
+
+    func cancelScan() {
+        scanTask?.cancel()
+        scanTask = nil
+        state = .idle
+        resultsVisible = false
     }
 
     func runScan() {
@@ -97,9 +167,13 @@ final class ScanDashboardViewModel: ObservableObject {
         let startedAt = Date()
         let profile = selectedProfile.coreProfile
 
-        Task(priority: .userInitiated) {
+        scanTask = Task(priority: .userInitiated) {
             let rules = RuleCatalog.rules(for: profile)
             let report = await ScanRunner().run(rules: rules)
+
+            // If the task was cancelled, don't update UI with partial results.
+            guard !Task.isCancelled else { return }
+
             let sortedTopFindings = report.findings
                 .sorted { $0.sizeBytes > $1.sizeBytes }
                 .prefix(30)
@@ -108,6 +182,8 @@ final class ScanDashboardViewModel: ObservableObject {
             let finishedAt = Date()
 
             await MainActor.run {
+                scanTask = nil
+                latestFindings = report.findings
                 totalReclaimableBytes = report.totalReclaimableBytes
                 summaries = report.summaries.map(SummaryItem.init(summary:))
                 topFindings = sortedTopFindings
@@ -115,6 +191,7 @@ final class ScanDashboardViewModel: ObservableObject {
                 lastScanDate = finishedAt
                 lastScanDuration = finishedAt.timeIntervalSince(startedAt)
                 revealFeedback = nil
+                cleanupState = .idle
                 state = .success
 
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
@@ -139,6 +216,107 @@ final class ScanDashboardViewModel: ObservableObject {
         FileManager.default.fileExists(atPath: path)
     }
 
+    // MARK: - Cleanup actions
+
+    func requestQuickClean() {
+        guard !latestFindings.isEmpty, state == .success else { return }
+        showCleanConfirmation = true
+        cleanupState = .confirming
+    }
+
+    func confirmQuickClean() {
+        showCleanConfirmation = false
+        guard state == .success else { return }
+        cleanupState = .cleaning
+        let findings = latestFindings
+        let profileName = selectedProfile.coreProfile.rawValue
+
+        Task(priority: .userInitiated) {
+            do {
+                let result = try await engine.quickClean(findings: findings, profileName: profileName)
+                await MainActor.run {
+                    lastTransaction = result.transaction
+                    cleanupState = .done(
+                        bytesFreed: result.totalBytesFreed,
+                        skippedCount: result.skipped.count
+                    )
+                    // Re-run scan to refresh results after cleanup.
+                    runScan()
+                }
+            } catch {
+                await MainActor.run {
+                    cleanupState = .error(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func cancelCleanup() {
+        showCleanConfirmation = false
+        cleanupState = .idle
+    }
+
+    // MARK: - Deep Clean actions
+
+    func requestDeepClean() {
+        guard !latestFindings.isEmpty, state == .success else { return }
+        showDeepCleanConfirmation = true
+        cleanupState = .confirming
+    }
+
+    func confirmDeepClean() {
+        showDeepCleanConfirmation = false
+        guard state == .success else { return }
+        cleanupState = .cleaning
+        let findings = latestFindings
+        let profileName = selectedProfile.coreProfile.rawValue
+
+        Task(priority: .userInitiated) {
+            do {
+                let result = try await engine.deepClean(
+                    findings: findings,
+                    profileName: profileName,
+                    confirmed: true
+                )
+                await MainActor.run {
+                    lastTransaction = result.transaction
+                    cleanupState = .done(
+                        bytesFreed: result.totalBytesFreed,
+                        skippedCount: result.skipped.count
+                    )
+                    runScan()
+                }
+            } catch {
+                await MainActor.run {
+                    cleanupState = .error(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func cancelDeepClean() {
+        showDeepCleanConfirmation = false
+        cleanupState = .idle
+    }
+
+    func undoLastCleanup() {
+        guard let tx = lastTransaction, !tx.isDryRun else { return }
+        cleanupState = .undoing
+
+        Task(priority: .userInitiated) {
+            let (restored, _) = await engine.restore(transaction: tx)
+            await MainActor.run {
+                lastTransaction = nil
+                cleanupState = .undone(restoredCount: restored.count)
+                runScan()
+            }
+        }
+    }
+
+    func dismissCleanupResult() {
+        cleanupState = .idle
+    }
+
     func formattedBytes(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
@@ -152,12 +330,6 @@ final class ScanDashboardViewModel: ObservableObject {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date)
-    }
-
-    func confidenceLabel(for confidence: Double) -> String {
-        if confidence >= 0.9 { return "High" }
-        if confidence >= 0.7 { return "Medium" }
-        return "Review"
     }
 
     func summaryShare(for bytes: Int64) -> Double {

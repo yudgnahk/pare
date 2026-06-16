@@ -3,6 +3,7 @@ import Foundation
 public struct VSCodeCachesRule: ScanRule {
     public let id = "vscode-caches"
     public let title = "VS Code Caches"
+    public let reason = "VS Code extension update or install cache"
     public let category: ScanCategory = .developerPackageCaches
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.96
