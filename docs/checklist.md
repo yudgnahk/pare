@@ -71,11 +71,11 @@
 - [x] Implement Deep Clean mode (explicit warnings + confirmations for review-risk items).
 
 ## Phase 6 - Performance and Reliability
-- [ ] Add incremental scan metadata cache. → **US-2**
+- [x] Add incremental scan metadata cache. → **US-2**
 - [x] Add progress updates and cancellation support (ScanRunner + ViewModel cancel button).
 - [x] Handle symlinks, package bundles, and permission failures safely (FileSystemTraversal).
-- [ ] Benchmark large directories and optimize hotspots. → **US-2**
-- [ ] Add reliability tests for interrupted scans. → **US-2**
+- [x] Benchmark large directories and optimize hotspots. → **US-2**
+- [x] Add reliability tests for interrupted scans. → **US-2**
 
 ## Phase 7 - QA, Security, Release
 - [x] Add unit tests for path safety and risk labeling (PathSafetyTests — 14 assertions).
@@ -88,6 +88,6 @@
 See `docs/user-stories.md` for full scope, acceptance criteria, and session prompts.
 
 - [x] **US-1** Developer Scan Dashboard — per-tool space breakdown in app and CLI
-- [ ] **US-2** Scan Performance — incremental cache, benchmarks, reliability
+- [x] **US-2** Scan Performance — incremental cache, benchmarks, reliability
 - [ ] **US-3** In-App Cleanup Management — exclusion list UI + cleanup history with restore
 - [ ] **US-4** Distribution Readiness — code signing, notarization, diagnostics export
