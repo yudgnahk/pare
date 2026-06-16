@@ -121,6 +121,7 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "package-manager-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "xcode-simulator-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "vscode-caches" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "vscode-duplicate-extensions" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "vscode-review-required-state" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-safe-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-stale-version" }))
