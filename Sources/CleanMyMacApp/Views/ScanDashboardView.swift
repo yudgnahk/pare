@@ -4,6 +4,8 @@ import App BCore
 
 struct ScanDashboardView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
+    @StateObject private var exclusionListViewModel = ExclusionListViewModel()
+    @State private var showSettings = false
 
     var body: some View {
         ZStack {
@@ -28,6 +30,9 @@ struct ScanDashboardView: View {
         }
         .sheet(isPresented: $viewModel.showDeepCleanConfirmation) {
             DeepCleanConfirmationSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showSettings) {
+            ExclusionListView(viewModel: exclusionListViewModel)
         }
     }
 
@@ -95,6 +100,17 @@ struct ScanDashboardView: View {
                             .buttonStyle(.borderless)
                             .help("Clear the scan cache and do a full traversal")
                         }
+
+                        Button {
+                            exclusionListViewModel.load()
+                            showSettings = true
+                        } label: {
+                            Image(systemName: "gearshape")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Manage excluded paths")
 
                         if viewModel.state == .success && viewModel.quickCleanCandidatesCount > 0 {
                             PrimaryActionButton(
@@ -326,7 +342,8 @@ struct ScanDashboardView: View {
                                 reason: finding.reason,
                                 riskLevel: finding.riskLevel,
                                 sizeText: viewModel.formattedBytes(finding.sizeBytes),
-                                lastUsedText: viewModel.formattedDate(finding.lastUsed)
+                                lastUsedText: viewModel.formattedDate(finding.lastUsed),
+                                onExclude: { viewModel.exclude(path: finding.path) }
                             )
                             .opacity(viewModel.resultsVisible ? 1 : 0)
                             .scaleEffect(viewModel.resultsVisible ? 1 : 0.98)
@@ -400,10 +417,10 @@ struct ScanDashboardView: View {
                                         lastUsedText: viewModel.formattedDate(file.lastUsed),
                                         riskLevel: file.riskLevel,
                                         reason: file.reason,
-                                        canReveal: viewModel.canReveal(path: file.path)
-                                    ) {
-                                        viewModel.revealInFinder(path: file.path)
-                                    }
+                                        canReveal: viewModel.canReveal(path: file.path),
+                                        onReveal: { viewModel.revealInFinder(path: file.path) },
+                                        onExclude: { viewModel.exclude(path: file.path) }
+                                    )
                                 }
                             }
                             .opacity(viewModel.resultsVisible ? 1 : 0)

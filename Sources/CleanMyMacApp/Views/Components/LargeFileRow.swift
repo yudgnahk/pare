@@ -9,6 +9,7 @@ struct LargeFileRow: View {
     let reason: String
     let canReveal: Bool
     let onReveal: () -> Void
+    var onExclude: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -59,6 +60,13 @@ struct LargeFileRow: View {
                         .strokeBorder(riskBorderColor, lineWidth: 1)
                 )
         )
+        .contextMenu {
+            if let onExclude {
+                Button(action: onExclude) {
+                    Label("Exclude from Scans", systemImage: "eye.slash")
+                }
+            }
+        }
     }
 
     private var riskBadgeLabel: String {

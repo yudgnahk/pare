@@ -89,5 +89,5 @@ See `docs/user-stories.md` for full scope, acceptance criteria, and session prom
 
 - [x] **US-1** Developer Scan Dashboard — per-tool space breakdown in app and CLI
 - [x] **US-2** Scan Performance — incremental cache, benchmarks, reliability
-- [ ] **US-3** In-App Cleanup Management — exclusion list UI + cleanup history with restore
+- [x] **US-3** In-App Cleanup Management — exclusion list UI + cleanup history with restore
 - [ ] **US-4** Distribution Readiness — code signing, notarization, diagnostics export
