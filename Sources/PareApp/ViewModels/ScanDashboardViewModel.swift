@@ -188,7 +188,8 @@ final class ScanDashboardViewModel: ObservableObject {
 
         scanTask = Task(priority: .userInitiated) {
             let rules = RuleCatalog.rules(for: profile)
-            let runner = ScanRunner(cache: cache)
+            let exclusionList = (try? ExclusionStore.shared.load()) ?? .empty
+            let runner = ScanRunner(exclusionList: exclusionList, cache: cache)
             let report = await runner.run(rules: rules, forceRescan: forceRescan)
 
             // If the task was cancelled, don't update UI with partial results.
@@ -339,6 +340,22 @@ final class ScanDashboardViewModel: ObservableObject {
 
     func dismissCleanupResult() {
         cleanupState = .idle
+    }
+
+    // MARK: - Exclusion
+
+    func exclude(path: String) {
+        let entry = ExclusionEntry(path: path)
+        try? ExclusionStore.shared.addEntry(entry)
+        latestFindings.removeAll { $0.path == path }
+        topFindings.removeAll { $0.path == path }
+        largeFilesByCategory = largeFilesByCategory.compactMap { group in
+            let filtered = group.files.filter { $0.path != path }
+            guard !filtered.isEmpty else { return nil }
+            let total = filtered.reduce(0) { $0 + $1.sizeBytes }
+            return CategoryLargeFiles(id: group.id, category: group.category, totalBytes: total, files: filtered)
+        }
+        perToolRollups = Self.makeToolRollups(from: latestFindings)
     }
 
     func formattedBytes(_ bytes: Int64) -> String {

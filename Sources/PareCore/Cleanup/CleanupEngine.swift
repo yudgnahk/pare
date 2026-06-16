@@ -229,6 +229,28 @@ public actor CleanupEngine {
         return (restored, skipped)
     }
 
+    // MARK: - Single-item restore
+
+    /// Restores one item from the Trash to its original path.
+    /// Returns `true` when the move succeeded.
+    public func restoreItem(_ item: CleanupItem) async -> Bool {
+        guard let trashedPath = item.trashedPath else { return false }
+        let trashURL = URL(fileURLWithPath: trashedPath)
+        let destinationURL = URL(fileURLWithPath: item.originalPath)
+
+        guard FileManager.default.fileExists(atPath: trashedPath) else { return false }
+
+        let parentDir = destinationURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+
+        do {
+            try FileManager.default.moveItem(at: trashURL, to: destinationURL)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Private helpers
 
     /// A path passes persona policy if it matches any of the known persona marker sets.
