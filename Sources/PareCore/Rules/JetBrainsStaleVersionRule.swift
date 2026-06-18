@@ -37,7 +37,7 @@ public struct JetBrainsStaleVersionRule: ScanRule {
         do {
             contents = try fm.contentsOfDirectory(
                 at: jetbrainsDir,
-                includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+                includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey],
                 options: [.skipsHiddenFiles]
             )
         } catch {
@@ -64,9 +64,10 @@ public struct JetBrainsStaleVersionRule: ScanRule {
             }
             // sorted[0] is the newest — flag everything else.
             for older in sorted.dropFirst() {
-                let modDate = (try? older.url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-                if let mod = modDate {
-                    guard Date().timeIntervalSince(mod) >= Self.minimumAgeSeconds else { continue }
+                let res = try? older.url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
+                let modDate = res?.contentModificationDate
+                if let d = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
+                    guard Date().timeIntervalSince(d) >= Self.minimumAgeSeconds else { continue }
                 }
 
                 let size = FileSystemUtils.directorySize(url: older.url)

@@ -349,6 +349,48 @@ final class PathSafetyTests: XCTestCase {
         let passes = ScanPolicy.matchesPersonaPath(url, allowedMarkers: ScanPolicy.developerSafePathMarkers)
         XCTAssertFalse(passes, "VS Code settings.json is an app-state-sensitive marker and must be blocked")
     }
+
+    // MARK: - isWrongPlatformBinary
+
+    func testWindowsInstallerAtDownloadsTopLevelIsWrongPlatform() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let url = URL(fileURLWithPath: "\(home)/Downloads/Setup.exe")
+        XCTAssertTrue(ScanPolicy.isWrongPlatformBinary(url),
+                      ".exe directly in ~/Downloads must be recognised as wrong-platform")
+    }
+
+    func testLinuxInstallerAtDownloadsTopLevelIsWrongPlatform() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let url = URL(fileURLWithPath: "\(home)/Downloads/package.deb")
+        XCTAssertTrue(ScanPolicy.isWrongPlatformBinary(url))
+    }
+
+    func testWindowsBinaryInNestedProjectDownloadsFolderIsNotWrongPlatform() {
+        // A repo's downloads/ directory must NOT be matched — the bypass is ~/Downloads only.
+        let url = URL(fileURLWithPath: "/Users/test/Projects/myapp/downloads/setup.exe")
+        XCTAssertFalse(ScanPolicy.isWrongPlatformBinary(url),
+                       "Nested project downloads/ must not bypass the protected-path guard")
+    }
+
+    func testWindowsBinaryInSubdirectoryOfDownloadsIsNotWrongPlatform() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let url = URL(fileURLWithPath: "\(home)/Downloads/subfolder/Setup.exe")
+        XCTAssertFalse(ScanPolicy.isWrongPlatformBinary(url),
+                       "Files inside subdirectories of ~/Downloads are not top-level and must not match")
+    }
+
+    func testMacOSInstallerIsNotWrongPlatform() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let url = URL(fileURLWithPath: "\(home)/Downloads/App.dmg")
+        XCTAssertFalse(ScanPolicy.isWrongPlatformBinary(url),
+                       ".dmg is a macOS format and must not be flagged")
+    }
+
+    func testApplicationSupportDownloadsSubdirIsNotWrongPlatform() {
+        // SomeApp's internal "downloads" cache folder must not trigger the bypass.
+        let url = URL(fileURLWithPath: "/Users/test/Library/Application Support/SomeApp/downloads/plugin.dll")
+        XCTAssertFalse(ScanPolicy.isWrongPlatformBinary(url))
+    }
 }
 
 // MARK: - VSCodeDuplicateExtensionsRule tests

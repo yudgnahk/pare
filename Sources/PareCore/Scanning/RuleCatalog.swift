@@ -42,6 +42,7 @@ public enum RuleCatalog {
             JetBrainsSafeCachesRule(),
             JetBrainsStaleVersionRule(),
             JetBrainsReviewRequiredRule(),
+            WrongPlatformBinariesRule(),
             DockerLogsReviewRequiredRule()
         ] + baseline
     }
