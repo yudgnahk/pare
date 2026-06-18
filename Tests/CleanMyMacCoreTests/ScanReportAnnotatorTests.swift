@@ -64,27 +64,27 @@ final class ScanReportAnnotatorTests: XCTestCase {
 
     func testRollupsAggregateByApp() {
         let findings = [
-            makeFinding(path: "/Library/Caches/Xcode/foo", size: 100),
-            makeFinding(path: "/Library/Caches/Xcode/bar", size: 200),
-            makeFinding(path: "/Library/Caches/com.microsoft.vscode/baz", size: 50),
+            makeFinding(path: "/Library/Caches/Xcode/foo", size: 1_200_000),
+            makeFinding(path: "/Library/Caches/Xcode/bar", size: 2_000_000),
+            makeFinding(path: "/Library/Caches/com.microsoft.vscode/baz", size: 1_100_000),
         ]
         let rollups = ScanReportAnnotator.appRollups(from: findings)
 
         let xcodeRollup = rollups.first { $0.app == "Xcode" }
         XCTAssertNotNil(xcodeRollup)
-        XCTAssertEqual(xcodeRollup?.totalBytes, 300)
+        XCTAssertEqual(xcodeRollup?.totalBytes, 3_200_000)
         XCTAssertEqual(xcodeRollup?.fileCount, 2)
 
         let vsCodeRollup = rollups.first { $0.app == "VS Code" }
         XCTAssertNotNil(vsCodeRollup)
-        XCTAssertEqual(vsCodeRollup?.totalBytes, 50)
+        XCTAssertEqual(vsCodeRollup?.totalBytes, 1_100_000)
         XCTAssertEqual(vsCodeRollup?.fileCount, 1)
     }
 
     func testRollupsSortedBySize() {
         let findings = [
-            makeFinding(path: "/Library/Caches/com.microsoft.vscode/foo", size: 10),
-            makeFinding(path: "/Library/Caches/Xcode/bar", size: 999),
+            makeFinding(path: "/Library/Caches/com.microsoft.vscode/foo", size: 1_100_000),
+            makeFinding(path: "/Library/Caches/Xcode/bar", size: 2_000_000),
         ]
         let rollups = ScanReportAnnotator.appRollups(from: findings)
         XCTAssertEqual(rollups.first?.app, "Xcode")

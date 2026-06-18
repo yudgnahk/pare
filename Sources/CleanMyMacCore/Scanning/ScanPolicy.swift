@@ -46,7 +46,7 @@ public enum ScanPolicy {
         "/library/application support/code/user/keybindings.json",
         "/library/application support/code/user/snippets",
         // JetBrains — active licence and IDE session tokens
-        "/library/application support/jetbrains/consentOptions",
+        "/library/application support/jetbrains/consentoptions",
         "/library/application support/jetbrains/prefs.xml",
         // Docker — active daemon config
         "/library/containers/com.docker.docker/data/config",
@@ -100,7 +100,19 @@ public enum ScanPolicy {
         "/library/application support/code/user/history",
         "/.vscode/extensions/",
         "/library/application support/jetbrains/goland",
-        "/library/application support/jetbrains/datagrip"
+        "/library/application support/jetbrains/datagrip",
+        "/library/application support/jetbrains/intellijidea",
+        "/library/application support/jetbrains/pycharm",
+        "/library/application support/jetbrains/webstorm",
+        "/library/application support/jetbrains/phpstorm",
+        "/library/application support/jetbrains/rider",
+        "/library/application support/jetbrains/clion",
+        "/library/application support/jetbrains/rubymine",
+        "/library/application support/jetbrains/androidstudio",
+        "/library/application support/jetbrains/fleet",
+        "/library/application support/jetbrains/aqua",
+        "/library/application support/jetbrains/dataspell",
+        "/library/application support/jetbrains/rustrover"
     ]
 
     public static let developerDockerReviewPathMarkers = [
@@ -133,7 +145,9 @@ public enum ScanPolicy {
         switch category {
         case .userCaches, .temporaryFiles, .browserCaches, .developerPackageCaches, .developerSimulatorCaches, .designerCaches, .videoBuilderCaches:
             return defaultCacheMinAgeSeconds
-        case .logsAndCrashReports, .developerBuildArtifacts:
+        case .logsAndCrashReports:
+            return 24 * 60 * 60
+        case .developerBuildArtifacts:
             return nil
         }
     }

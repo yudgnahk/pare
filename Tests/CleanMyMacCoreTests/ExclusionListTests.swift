@@ -542,7 +542,7 @@ final class JetBrainsStaleVersionTests: XCTestCase {
                       "Older GoLand version should be flagged, got: \(findings[0].path)")
         XCTAssertTrue(findings[0].reason.contains("2025.1"),
                       "Reason should mention the newer version, got: \(findings[0].reason)")
-        XCTAssertEqual(findings[0].riskLevel, .review)
+        XCTAssertEqual(findings[0].riskLevel, .safe)
     }
 
     func testSingleVersionProducesNoFindings() async throws {

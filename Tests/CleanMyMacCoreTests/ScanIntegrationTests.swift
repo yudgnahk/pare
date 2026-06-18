@@ -451,14 +451,12 @@ final class JetBrainsSafeCachesRuleTests: XCTestCase {
         XCTAssertTrue(rule.include(fileURL: url, resourceValues: rv))
     }
 
-    /// JetBrainsSafeCachesRule uses .logsAndCrashReports which has NO minimum age
-    /// requirement — consistent with LogsAndCrashReportsRule.  Fresh log files ARE included.
-    func testIncludesFreshLogFileBecauseNoAgeRequirementForLogs() {
+    func testExcludesFreshLogFileBelowOneDayAgeGate() {
         let url = URL(fileURLWithPath: "/Users/test/Library/Logs/JetBrains/GoLand2024.1/idea.log")
         var rv = URLResourceValues()
         rv.contentModificationDate = Date().addingTimeInterval(-12 * 3600)  // 12 hours old
-        XCTAssertTrue(rule.include(fileURL: url, resourceValues: rv),
-                      "Log category has no age guard, so fresh log files should be included")
+        XCTAssertFalse(rule.include(fileURL: url, resourceValues: rv),
+                       "Log files newer than 1 day should be excluded by the minimum age gate")
     }
 
     func testExcludesXmlConfigFile() {
