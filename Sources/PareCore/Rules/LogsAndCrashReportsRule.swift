@@ -19,10 +19,11 @@ public struct LogsAndCrashReportsRule: ScanRule {
 
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
         let ext = fileURL.pathExtension.lowercased()
-        guard ["log", "crash", "ips", "diag"].contains(ext) else {
-            return false
-        }
-
-        return ScanPolicy.isLowImpactPath(fileURL)
+        guard ["log", "crash", "ips", "diag"].contains(ext) else { return false }
+        guard ScanPolicy.isLowImpactPath(fileURL) else { return false }
+        return ScanPolicy.passesMinimumAge(
+            for: resourceValues,
+            minimumAgeSeconds: ScanPolicy.defaultMinimumAgeSeconds(for: category)
+        )
     }
 }

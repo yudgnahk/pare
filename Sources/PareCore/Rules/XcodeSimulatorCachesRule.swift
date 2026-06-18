@@ -12,21 +12,12 @@ public struct XcodeSimulatorCachesRule: ScanRule {
 
     public func targetDirectories(environment: ScanEnvironment) -> [URL] {
         [
-            environment.homeDirectory.appending(path: "Library/Developer/CoreSimulator/Caches"),
-            environment.homeDirectory.appending(path: "Library/Developer/CoreSimulator/Devices")
+            environment.homeDirectory.appending(path: "Library/Developer/CoreSimulator/Caches")
         ]
     }
 
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
-        let path = fileURL.path.lowercased()
-        if path.contains("data/containers") {
-            return false
-        }
-
-        guard ScanPolicy.isLowImpactPath(fileURL) else {
-            return false
-        }
-
+        guard ScanPolicy.isLowImpactPath(fileURL) else { return false }
         return ScanPolicy.passesMinimumAge(
             for: resourceValues,
             minimumAgeSeconds: ScanPolicy.defaultMinimumAgeSeconds(for: category)
