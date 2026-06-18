@@ -182,7 +182,11 @@ final class ScanDashboardViewModel: ObservableObject {
         guard !isScanning else { return }
 
         state = .scanning
-        resultsVisible = false
+        // Only hide results on the first scan; subsequent scans keep old results
+        // visible so the screen doesn't go blank while scanning.
+        if latestFindings.isEmpty {
+            resultsVisible = false
+        }
         let startedAt = Date()
         let cache = scanCache
 
