@@ -126,7 +126,7 @@ public actor CleanupEngine {
             let url = URL(fileURLWithPath: finding.path)
 
             // Re-verify the path is still considered safe by policy.
-            guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url) else {
+            guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url) || ScanPolicy.isWrongPlatformBinary(url) else {
                 skipped.append((finding.path, "Path no longer passes safety policy"))
                 continue
             }
@@ -138,10 +138,13 @@ public actor CleanupEngine {
             }
 
             // Re-verify minimum age for categories that require it.
-            if let minAge = ScanPolicy.defaultMinimumAgeSeconds(for: finding.category) {
-                if let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate {
-                    let age = Date().timeIntervalSince(modified)
-                    if age < minAge {
+            // Wrong-platform binaries are exempted: a Windows installer in ~/Downloads
+            // is inert on macOS from day zero — age is irrelevant.
+            if !ScanPolicy.isWrongPlatformBinary(url),
+               let minAge = ScanPolicy.defaultMinimumAgeSeconds(for: finding.category) {
+                let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
+                if let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
+                    if Date().timeIntervalSince(date) < minAge {
                         skipped.append((finding.path, "File is too new (age < \(Int(minAge / 86400)) days)"))
                         continue
                     }

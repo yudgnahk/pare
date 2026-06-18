@@ -197,17 +197,48 @@ public enum ScanPolicy {
         return lowImpactMarkers.contains { path.contains($0) }
     }
 
+    /// The effective reference date for age comparisons.
+    /// For files: the modification date.
+    /// For directories: the OLDER of creation date and modification date.
+    /// Using the oldest date is intentional — it handles two opposing edge cases:
+    ///   • App migration resets mtime to today on an old directory → creation date is older → use it.
+    ///   • Backup/Migration Assistant resets birthtime to restore date → mtime from before restore is older → use it.
+    /// Tests can back-date mtime via setAttributes; creation date defaults to "now" and is thus newer,
+    /// so the min() still defers to the backdated mtime — which is what the test intends.
+    public static func effectiveAgeDate(from values: URLResourceValues) -> Date? {
+        guard values.isDirectory == true else { return values.contentModificationDate }
+        let candidates = [values.creationDate, values.contentModificationDate].compactMap { $0 }
+        return candidates.min()
+    }
+
     public static func passesMinimumAge(for resourceValues: URLResourceValues, minimumAgeSeconds: TimeInterval?) -> Bool {
-        guard let minimumAgeSeconds else {
-            return true
-        }
-        guard let modified = resourceValues.contentModificationDate else {
-            return true
-        }
-        return Date().timeIntervalSince(modified) >= minimumAgeSeconds
+        guard let minimumAgeSeconds else { return true }
+        guard let date = effectiveAgeDate(from: resourceValues) else { return true }
+        return Date().timeIntervalSince(date) >= minimumAgeSeconds
     }
 
     public static func isLargeFile(_ bytes: Int64) -> Bool {
         bytes > largeFileThresholdBytes
+    }
+
+    public static let windowsExecutableExtensions: Set<String> = ["exe", "msi", "dll"]
+    public static let linuxExecutableExtensions: Set<String> = ["deb", "rpm", "appimage"]
+    // Union — used for the CleanupEngine bypass guard.
+    static let nonMacOSDownloadExtensions: Set<String> =
+        windowsExecutableExtensions.union(linuxExecutableExtensions)
+
+    /// Returns `true` for files that are unambiguously non-macOS platform binaries
+    /// sitting at the TOP LEVEL of `~/Downloads`. This anchoring is intentional:
+    /// it avoids falsely matching `.exe` files inside project `downloads/` subdirs
+    /// or nested tool caches.
+    public static func isWrongPlatformBinary(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        guard nonMacOSDownloadExtensions.contains(ext) else { return false }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path.lowercased()
+        let downloadsPrefix = home + "/downloads/"
+        let path = url.path.lowercased()
+        guard path.hasPrefix(downloadsPrefix) else { return false }
+        // Top-level only — reject files inside subdirectories of ~/Downloads.
+        return !path.dropFirst(downloadsPrefix.count).contains("/")
     }
 }
