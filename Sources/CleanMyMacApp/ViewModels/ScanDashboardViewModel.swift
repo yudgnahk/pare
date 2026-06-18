@@ -11,28 +11,6 @@ final class ScanDashboardViewModel: ObservableObject {
         case success
     }
 
-    enum DashboardProfile: String, CaseIterable, Identifiable {
-        case baseline = "Baseline"
-        case developer = "Developer"
-        case designer = "Designer"
-        case videoBuilder = "Video Builder"
-
-        var id: String { rawValue }
-
-        var coreProfile: ScanProfile {
-            switch self {
-            case .baseline:
-                return .baseline
-            case .developer:
-                return .developer
-            case .designer:
-                return .designer
-            case .videoBuilder:
-                return .videoBuilder
-            }
-        }
-    }
-
     struct SummaryItem: Identifiable {
         let id: String
         let category: ScanCategory
@@ -77,11 +55,32 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     struct ToolRollupItem: Identifiable {
+        struct TopFileItem: Identifiable {
+            let id: String
+            let path: String
+            let sizeBytes: Int64
+            var fileName: String { URL(fileURLWithPath: path).lastPathComponent }
+            var abbreviatedParent: String {
+                let parent = URL(fileURLWithPath: path).deletingLastPathComponent().path
+                let home = FileManager.default.homeDirectoryForCurrentUser.path
+                let shortened = parent.hasPrefix(home)
+                    ? "~" + parent.dropFirst(home.count)
+                    : parent
+                // Keep only last 2 directory components to avoid very long paths
+                let parts = shortened.split(separator: "/", omittingEmptySubsequences: false)
+                if parts.count > 3 {
+                    return "…/" + parts.suffix(2).joined(separator: "/")
+                }
+                return shortened
+            }
+        }
+
         let id: String
         let app: String
         let totalBytes: Int64
         let fileCount: Int
         let share: Double
+        let topFiles: [TopFileItem]
 
         init(rollup: AppRollup, total: Int64) {
             self.id = rollup.app
@@ -89,6 +88,9 @@ final class ScanDashboardViewModel: ObservableObject {
             self.totalBytes = rollup.totalBytes
             self.fileCount = rollup.fileCount
             self.share = total > 0 ? Double(rollup.totalBytes) / Double(total) : 0
+            self.topFiles = rollup.topFiles.map {
+                TopFileItem(id: $0.path, path: $0.path, sizeBytes: $0.sizeBytes)
+            }
         }
     }
 
@@ -104,7 +106,6 @@ final class ScanDashboardViewModel: ObservableObject {
         case error(String)
     }
 
-    @Published var selectedProfile: DashboardProfile = .baseline
     @Published private(set) var state: ScanState = .idle
     @Published private(set) var totalReclaimableBytes: Int64 = 0
     @Published private(set) var summaries: [SummaryItem] = []
@@ -183,11 +184,10 @@ final class ScanDashboardViewModel: ObservableObject {
         state = .scanning
         resultsVisible = false
         let startedAt = Date()
-        let profile = selectedProfile.coreProfile
         let cache = scanCache
 
         scanTask = Task(priority: .userInitiated) {
-            let rules = RuleCatalog.rules(for: profile)
+            let rules = RuleCatalog.all
             let exclusionList = (try? ExclusionStore.shared.load()) ?? .empty
             let runner = ScanRunner(exclusionList: exclusionList, cache: cache)
             let report = await runner.run(rules: rules, forceRescan: forceRescan)
@@ -200,9 +200,7 @@ final class ScanDashboardViewModel: ObservableObject {
                 .prefix(30)
                 .map(FindingItem.init(finding:))
             let largeFilesByCategory = Self.makeLargeFileGroups(from: report.findings)
-            let toolRollups = profile != .baseline
-                ? Self.makeToolRollups(from: report.findings)
-                : []
+            let toolRollups = Self.makeToolRollups(from: report.findings)
             let finishedAt = Date()
 
             await MainActor.run {
@@ -254,11 +252,10 @@ final class ScanDashboardViewModel: ObservableObject {
         guard state == .success else { return }
         cleanupState = .cleaning
         let findings = latestFindings
-        let profileName = selectedProfile.coreProfile.rawValue
 
         Task(priority: .userInitiated) {
             do {
-                let result = try await engine.quickClean(findings: findings, profileName: profileName)
+                let result = try await engine.quickClean(findings: findings, profileName: "all")
                 await MainActor.run {
                     lastTransaction = result.transaction
                     cleanupState = .done(
@@ -294,13 +291,12 @@ final class ScanDashboardViewModel: ObservableObject {
         guard state == .success else { return }
         cleanupState = .cleaning
         let findings = latestFindings
-        let profileName = selectedProfile.coreProfile.rawValue
 
         Task(priority: .userInitiated) {
             do {
                 let result = try await engine.deepClean(
                     findings: findings,
-                    profileName: profileName,
+                    profileName: "all",
                     confirmed: true
                 )
                 await MainActor.run {

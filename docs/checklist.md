@@ -5,7 +5,7 @@
 - [ ] Decide distribution path (direct notarized app vs App Store constraints) — pending business decision.
 - [x] Lock safe-delete policy: **move to Trash first** (implemented in `CleanupEngine`).
 - [x] Define protected paths and never-delete zones (implemented in `ScanPolicy` protected/sensitive markers + app-state markers).
-- [x] Create persona cleanup matrix: **Baseline / Developer / Designer / Video Builder** (implemented in `RuleCatalog`).
+- [x] Create persona cleanup matrix: **Baseline / Developer / Designer / Video Builder** (implemented in `RuleCatalog`). CLI retains profile-based scanning; SwiftUI app uses unified `RuleCatalog.all` (all 19 rules, no profile picker).
 
 ## Phase 1 - Core Scanner MVP
 - [x] Define `ScanRule` protocol (id/title/category/risk/path resolver/detector).
@@ -83,6 +83,12 @@
 - [x] Add regression tests for protected path enforcement (PathSafetyTests).
 - [ ] Complete code signing, hardened runtime, and notarization. → **US-4**
 - [ ] Add diagnostics export bundle for support. → **US-4**
+
+## App UX Improvements (post-US-3)
+
+- [x] **By Tool enhancements** — "Other" attribution fixed (System Logs, Temp Files, known apps, bundle-ID extraction); 1 MB minimum threshold suppresses noise; top 10 files ≥ 1 MB shown per tool on expand.
+- [x] **Expand animation fixed** — `.clipped()` + `.opacity` transition on `ToolRollupRow` prevents expanded content from overflowing adjacent rows during spring animation.
+- [x] **Unified scan** — removed profile picker; app always runs `RuleCatalog.all`; By Tool section always visible.
 
 ## Remaining Work — User Stories
 See `docs/user-stories.md` for full scope, acceptance criteria, and session prompts.

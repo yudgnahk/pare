@@ -6,27 +6,24 @@ Each story is a self-contained unit of user-visible value. Stories are sized to 
 
 ---
 
-## US-1 — Developer Scan Dashboard
+## US-1 — Scan Dashboard "By Tool" Breakdown ✅
 
-**As a developer running a scan, I want to see exactly how much space each tool (Xcode, JetBrains, VS Code, Docker) is consuming, so I know where to focus my cleanup effort without digging through individual findings.**
+**As a user running a scan, I want to see exactly how much space each tool or app is consuming, so I know where to focus my cleanup effort without digging through individual findings.**
 
-### What it covers
+### What was delivered
 
-- **SwiftUI**: Add a "By Tool" section to the developer-profile scan results — a collapsed breakdown card per tool (Xcode, JetBrains, VS Code, Docker, Other) showing total reclaimable bytes and finding count. Tap to expand and see the top findings for that tool.
-- **CLI**: Promote the existing per-app rollup (`groupBySourceApp`) from a bare list to a labelled section that only shows on developer/designer/video-builder profiles, and format it with sizes and percentages.
-- **Core**: Move `sourceApp(for:)` attribution logic from `main.swift` into `CleanMyMacCore` as a `ScanReportAnnotator` utility so the SwiftUI app and CLI share the same attribution rules.
+- **SwiftUI**: "By Tool" section always visible (not profile-gated). Collapsible row per app showing total reclaimable bytes, share percentage, and file count. Expand to see the top 10 files ≥ 1 MB for that app.
+- **CLI**: Per-app rollup section on developer/designer/video-builder profiles with sizes and percentages.
+- **Core**: `ScanReportAnnotator` in `CleanMyMacCore` — `sourceApp(for:)` maps findings to apps via ordered path-pattern matching + reverse-DNS bundle ID extraction from `~/Library/Caches/`. `appRollups(from:)` returns `AppRollup` structs with `topFiles: [TopFile]`; apps below 1 MB total fold into "Other".
 
-### Out of scope
+### Attribution coverage
 
-- Changing any scan rules or risk levels
-- Per-finding app attribution in the SwiftUI finding rows (just the summary cards)
+Xcode, JetBrains, VS Code, Docker, Package Managers, Safari, Chrome, Firefox, Adobe, Figma, DaVinci Resolve, Final Cut Pro, Slack, Zoom, Spotify, Teams, Discord, Telegram, 1Password, Notion, Arc, Mail, Music, Photos, iMovie, System Logs, Temp Files, and any app via bundle-ID extraction from cache paths.
 
-### Acceptance criteria
+### UX notes
 
-- Developer CLI output shows a "By Tool" section listing each app with its total size, sorted largest first
-- SwiftUI developer scan result shows collapsible per-tool cards above the category breakdown
-- Shared attribution covers: Xcode, JetBrains, VS Code, Docker, Package Managers, Browsers, Adobe/Figma, DaVinci Resolve, Final Cut Pro
-- Baseline, Designer, and Video Builder profiles continue to work correctly
+- Rows with < 1 MB total are folded into "Other" to avoid noise from hundreds of tiny bundle-ID entries.
+- Expand animation uses `.clipped()` + `.opacity` transition to prevent content overflowing adjacent rows.
 
 ### Key files
 
@@ -55,6 +52,12 @@ Implement US-1 (Developer Scan Dashboard) from docs/user-stories.md.
 
 Run swift test. Launch the app (make run-app), switch to Developer profile, run a scan, and verify the "By Tool" breakdown card appears with collapsible rows.
 ```
+
+---
+
+## Unified Scan (app architecture change) ✅
+
+**Profile picker removed.** The SwiftUI app now always runs `RuleCatalog.all` — the union of all 19 rules across every former profile (baseline + developer + designer + video-builder), deduplicated by rule ID. Results are organised by `ScanCategory` (Category Overview, By Tool, Large Files by Category). The CLI retains profile-based scanning for targeted diagnostic use.
 
 ---
 

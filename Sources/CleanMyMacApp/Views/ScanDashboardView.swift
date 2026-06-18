@@ -61,16 +61,7 @@ struct ScanDashboardView: View {
 
                 Spacer(minLength: 8)
 
-                VStack(alignment: .trailing, spacing: 12) {
-                    Picker("Profile", selection: $viewModel.selectedProfile) {
-                        ForEach(ScanDashboardViewModel.DashboardProfile.allCases) { profile in
-                            Text(profile.rawValue).tag(profile)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 260)
-
-                    HStack(spacing: 10) {
+                HStack(spacing: 10) {
                         if viewModel.isScanning {
                             ScanPulseView()
                                 .frame(width: 20, height: 20)
@@ -132,7 +123,6 @@ struct ScanDashboardView: View {
                             }
                         }
                     }
-                }
             }
         }
     }
@@ -754,6 +744,11 @@ private struct ToolRollupRow: View {
         case "DaVinci Resolve": return "film.fill"
         case "Final Cut Pro": return "scissors"
         case "Package Managers": return "shippingbox"
+        case "System Logs": return "doc.text.fill"
+        case "Temp Files": return "clock.arrow.circlepath"
+        case "Slack": return "message.fill"
+        case "Zoom": return "video.fill"
+        case "Spotify": return "music.note"
         default: return "puzzlepiece.fill"
         }
     }
@@ -794,30 +789,79 @@ private struct ToolRollupRow: View {
             .buttonStyle(.borderless)
 
             if isExpanded {
-                HStack {
-                    Spacer().frame(width: 44)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("\(rollup.fileCount) file\(rollup.fileCount == 1 ? "" : "s") identified")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(AppTheme.textSecondary)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Share bar + file count header
+                    HStack(spacing: 10) {
+                        Spacer().frame(width: 32)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                                     .fill(Color.white.opacity(0.10))
-                                    .frame(height: 6)
+                                    .frame(height: 4)
                                 RoundedRectangle(cornerRadius: 3, style: .continuous)
                                     .fill(AppTheme.accent)
-                                    .frame(width: geo.size.width * rollup.share, height: 6)
+                                    .frame(width: geo.size.width * rollup.share, height: 4)
                             }
                         }
-                        .frame(height: 6)
+                        .frame(height: 4)
+                        Text("\(rollup.fileCount) file\(rollup.fileCount == 1 ? "" : "s")")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .frame(width: 68, alignment: .trailing)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.trailing, 12)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .padding(.bottom, 6)
+
+                    if rollup.topFiles.isEmpty {
+                        Text("No files above 1 MB")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .padding(.leading, 44)
+                            .padding(.bottom, 8)
+                    } else {
+                        ForEach(rollup.topFiles) { file in
+                            HStack(spacing: 10) {
+                                Spacer().frame(width: 32)
+                                Image(systemName: "doc.fill")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
+                                    .frame(width: 12)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(file.fileName)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(AppTheme.textPrimary)
+                                        .lineLimit(1)
+                                    Text(file.abbreviatedParent)
+                                        .font(.system(size: 10, weight: .regular))
+                                        .foregroundStyle(AppTheme.textSecondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Text(formatBytes(file.sizeBytes))
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .foregroundStyle(AppTheme.textPrimary)
+                                    .frame(width: 68, alignment: .trailing)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                        }
+
+                        let remaining = rollup.fileCount - rollup.topFiles.count
+                        if remaining > 0 {
+                            Text("and \(remaining) more file\(remaining == 1 ? "" : "s")")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .padding(.leading, 56)
+                                .padding(.top, 2)
+                                .padding(.bottom, 6)
+                        }
+                    }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
+        .clipped()
         .animation(.spring(response: 0.28, dampingFraction: 0.82), value: isExpanded)
     }
 }
