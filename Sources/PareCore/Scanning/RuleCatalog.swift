@@ -59,4 +59,11 @@ public enum RuleCatalog {
             VideoBuilderReviewRequiredMediaRule()
         ] + baseline
     }
+
+    /// All rules from every profile, deduplicated by rule ID.
+    /// Use this for a single unified scan that covers every category.
+    public static var all: [any ScanRule] {
+        var seen = Set<String>()
+        return (developer + designer + videoBuilder).filter { seen.insert($0.id).inserted }
+    }
 }

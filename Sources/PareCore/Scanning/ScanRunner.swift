@@ -32,52 +32,15 @@ public struct ScanRunner: Sendable {
         }
 
         var findings: [ScanFinding] = []
-        var grouped: [ScanCategory: (bytes: Int64, count: Int)] = [:]
+        var grouped: [ScanCategory: (Int64, Int)] = [:]
 
         for rule in rules {
             guard !Task.isCancelled else { break }
-
-            // Rules that need directory-level reasoning produce findings themselves.
-            if let customFindings = await rule.customScan(environment: environment) {
-                for finding in customFindings where !exclusionList.isExcluded(finding.path) {
-                    findings.append(finding)
-                    let current = grouped[finding.category] ?? (0, 0)
-                    grouped[finding.category] = (
-                        bytes: current.bytes + finding.sizeBytes,
-                        count: current.count + 1
-                    )
-                }
-                continue
-            }
-
-            let directories = rule.targetDirectories(environment: environment)
-            let files = await effectiveTraversal.collectFiles(in: directories)
-
-            for file in files {
-                guard include(file: file, rule: rule) else {
-                    continue
-                }
-                guard !exclusionList.isExcluded(file.url.path) else {
-                    continue
-                }
-
-                findings.append(
-                    ScanFinding(
-                        category: rule.category,
-                        riskLevel: rule.riskLevel,
-                        reason: rule.reason,
-                        path: file.url.path,
-                        sizeBytes: file.sizeBytes,
-                        lastUsed: file.lastModified,
-                        confidence: rule.confidence
-                    )
-                )
-
-                let current = grouped[rule.category] ?? (0, 0)
-                grouped[rule.category] = (
-                    bytes: current.bytes + file.sizeBytes,
-                    count: current.count + 1
-                )
+            let (ruleFindings, ruleGrouped) = await runRule(rule, traversal: effectiveTraversal)
+            findings.append(contentsOf: ruleFindings)
+            for (category, value) in ruleGrouped {
+                let current = grouped[category] ?? (0, 0)
+                grouped[category] = (current.0 + value.0, current.1 + value.1)
             }
         }
 
@@ -85,13 +48,53 @@ public struct ScanRunner: Sendable {
             .map { category, value in
                 ScanCategorySummary(
                     category: category,
-                    reclaimableBytes: value.bytes,
-                    fileCount: value.count
+                    reclaimableBytes: value.0,
+                    fileCount: value.1
                 )
             }
             .sorted { $0.reclaimableBytes > $1.reclaimableBytes }
 
         return ScanReport(findings: findings, summaries: summaries)
+    }
+
+    private func runRule(
+        _ rule: any ScanRule,
+        traversal: any FileTraversing
+    ) async -> ([ScanFinding], [ScanCategory: (Int64, Int)]) {
+        var localFindings: [ScanFinding] = []
+        var localGrouped: [ScanCategory: (Int64, Int)] = [:]
+
+        if let customFindings = await rule.customScan(environment: environment) {
+            for finding in customFindings where !exclusionList.isExcluded(finding.path) {
+                localFindings.append(finding)
+                let current = localGrouped[finding.category] ?? (0, 0)
+                localGrouped[finding.category] = (current.0 + finding.sizeBytes, current.1 + 1)
+            }
+            return (localFindings, localGrouped)
+        }
+
+        let directories = rule.targetDirectories(environment: environment)
+        let files = await traversal.collectFiles(in: directories)
+
+        for file in files {
+            guard !Task.isCancelled else { break }
+            guard include(file: file, rule: rule) else { continue }
+            guard !exclusionList.isExcluded(file.url.path) else { continue }
+
+            localFindings.append(ScanFinding(
+                category: rule.category,
+                riskLevel: rule.riskLevel,
+                reason: rule.reason,
+                path: file.url.path,
+                sizeBytes: file.sizeBytes,
+                lastUsed: file.lastModified,
+                confidence: rule.confidence
+            ))
+            let current = localGrouped[rule.category] ?? (0, 0)
+            localGrouped[rule.category] = (current.0 + file.sizeBytes, current.1 + 1)
+        }
+
+        return (localFindings, localGrouped)
     }
 
     private func include(file: ScannedFile, rule: any ScanRule) -> Bool {
