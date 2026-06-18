@@ -16,7 +16,7 @@ public struct JetBrainsStaleVersionRule: ScanRule {
     public let title = "JetBrains Stale IDE Version Data"
     public let reason = "Application Support data for a superseded JetBrains IDE version"
     public let category: ScanCategory = .developerPackageCaches
-    public let riskLevel: RiskLevel = .review
+    public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.88
 
     private static let minimumAgeSeconds: TimeInterval = 90 * 24 * 60 * 60
@@ -69,7 +69,7 @@ public struct JetBrainsStaleVersionRule: ScanRule {
                     guard Date().timeIntervalSince(mod) >= Self.minimumAgeSeconds else { continue }
                 }
 
-                let size = directorySize(url: older.url)
+                let size = FileSystemUtils.directorySize(url: older.url)
                 let newest = sorted[0]
                 findings.append(ScanFinding(
                     category: category,
@@ -104,29 +104,12 @@ public struct JetBrainsStaleVersionRule: ScanRule {
         let product = String(name[name.startIndex ..< firstDigitIdx])
         let versionStr = String(name[firstDigitIdx...])
 
-        let parts = versionStr.split(separator: ".", maxSplits: 1)
-        guard parts.count == 2,
+        let parts = versionStr.split(separator: ".")
+        guard parts.count >= 2,
               let year = Int(parts[0]), year >= 2000, year <= 2100,
               let minor = Int(parts[1]) else { return nil }
 
         return VersionedDir(url: url, product: product, year: year, minor: minor)
     }
 
-    private func directorySize(url: URL) -> Int64 {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            if let vals = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
-               vals.isRegularFile == true,
-               let size = vals.fileSize {
-                total += Int64(size)
-            }
-        }
-        return total
-    }
 }

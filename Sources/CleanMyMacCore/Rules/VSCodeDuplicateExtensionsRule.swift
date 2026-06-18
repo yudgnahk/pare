@@ -67,7 +67,7 @@ public struct VSCodeDuplicateExtensionsRule: ScanRule {
             let sorted = versions.sorted { compareVersion($0.version, $1.version) == .orderedDescending }
             // sorted[0] is the newest — skip it, flag the rest.
             for older in sorted.dropFirst() {
-                let size = directorySize(url: older.url)
+                let size = FileSystemUtils.directorySize(url: older.url)
                 let lastModified = (try? older.url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
 
                 // Honour minimum age — don't flag dirs modified within 3 days.
@@ -142,22 +142,4 @@ public struct VSCodeDuplicateExtensionsRule: ScanRule {
         return .orderedSame
     }
 
-    private func directorySize(url: URL) -> Int64 {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
-
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            if let vals = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
-               vals.isRegularFile == true,
-               let size = vals.fileSize {
-                total += Int64(size)
-            }
-        }
-        return total
-    }
 }

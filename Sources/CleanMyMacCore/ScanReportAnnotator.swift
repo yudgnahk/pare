@@ -138,6 +138,8 @@ public struct ScanReportAnnotator: Sendable {
         else { return nil }
         guard let last = parts.last, last.count > 2 else { return nil }
         let name = String(last)
+        let genericComponents: Set<String> = ["app", "application", "helper", "agent", "daemon", "service", "framework", "plugin", "extension", "support"]
+        guard !genericComponents.contains(name.lowercased()) else { return nil }
         return name.prefix(1).uppercased() + name.dropFirst()
     }
 

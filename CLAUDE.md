@@ -16,7 +16,7 @@ Swift 5.9 | SwiftUI + AppKit | Swift Package Manager | XCTest | macOS 13+
 Sources/
   App BCore/       # Library — no UI dependencies
     Models/             # ScanFinding, ScanReport, ScanCategory, RiskLevel
-    Scanning/           # ScanRule protocol, ScanRunner, FileSystemTraversal, RuleCatalog, ScanPolicy
+    Scanning/           # ScanRule protocol, ScanRunner, FileSystemTraversal, RuleCatalog, ScanPolicy, FileSystemUtils
     Rules/              # One file per ScanRule implementation
     Cleanup/            # CleanupEngine (actor), CleanupTransaction, ExclusionList
     ScanReportAnnotator.swift  # App-to-findings attribution (sourceApp, appRollups, TopFile)
@@ -50,7 +50,7 @@ swift test --filter ScanRunnerTests # run a single test class
 
 **ScanProfile / RuleCatalog** — four profiles (`baseline`, `developer`, `designer`, `video-builder`) exist for the CLI. The SwiftUI app uses `RuleCatalog.all`, which unions all profiles (19 unique rules, deduplicated by rule ID) so every category is always scanned in one pass. There is no profile picker in the app.
 
-**ScanPolicy** — static guardrail layer shared by scanning and cleanup. Defines protected/sensitive path markers, app-state-sensitive paths (VS Code settings, JetBrains prefs, SSH keys), persona path markers, minimum cache age (3 days), and the large-file threshold (50 MB). Every path must pass `isLowImpactPath` or `matchesPersonaPath` before it can be cleaned.
+**ScanPolicy** — static guardrail layer shared by scanning and cleanup. Defines protected/sensitive path markers, app-state-sensitive paths (VS Code settings, SSH keys, and all major JetBrains IDEs: IntelliJ, PyCharm, WebStorm, PhpStorm, Rider, CLion, RubyMine, Android Studio, Fleet, Aqua, DataSpell, RustRover), persona path markers, per-category minimum ages (logs: 1 day; build artifacts: none; caches: 3 days default), and the large-file threshold (50 MB). Every path must pass `isLowImpactPath` or `matchesPersonaPath` before it can be cleaned.
 
 **CleanupEngine (actor)** — `quickClean` (safe only), `deepClean` (safe + review, requires `confirmed: true`), `clean` (generic). Always moves to Trash (never permanent delete). Re-verifies ScanPolicy on every item at cleanup time as a belt-and-suspenders check. Persists `CleanupTransaction` JSON records to `~/Library/Application Support/App B/transactions/` for undo/restore.
 
@@ -75,6 +75,7 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 - New scan rules go in `Sources/App BCore/Rules/` and must be registered in `RuleCatalog`.
 - Rules that need sibling-directory comparison (e.g. version deduplication) implement `customScan` instead of `include`.
 - `ScanPolicy` is the only place path safety logic lives — never inline path checks in rules or the engine.
+- Shared filesystem utilities (e.g. `directorySize`) live in `FileSystemUtils` — don't duplicate them in individual rules.
 - `CleanupEngine` is an `actor`; `ScanDashboardViewModel` is `@MainActor`. All core types are `Sendable`.
 - Tests use `MockTraversal: FileTraversing` and `TestRule: ScanRule` to inject deterministic file lists without hitting the filesystem.
 
@@ -83,3 +84,5 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 See `docs/checklist.md` for phase completion status. Phases 1–6 are complete. Phase 7 (code signing/notarization) remains open.
 
 The app runs a single unified scan using `RuleCatalog.all`; the CLI retains profile-based scanning. Parallel rule execution was attempted and reverted — Swift 5.9 nested `withTaskGroup` + actor calls caused empty results. The sequential `runRule` loop is the stable approach; `CachedFileTraversal` already parallelises I/O within each individual rule call.
+
+`JetBrainsStaleVersionRule` risk level is `.safe` (older duplicate IDE versions are safe to auto-remove). `LogsAndCrashReportsRule` applies a 1-day minimum age gate so fresh logs are never flagged. `XcodeSimulatorCachesRule` targets only `CoreSimulator/Caches` (not `Devices`) to avoid touching active simulator data. `ScanReportAnnotator` filters generic component names (app, helper, daemon, etc.) from app attribution to reduce noise.
