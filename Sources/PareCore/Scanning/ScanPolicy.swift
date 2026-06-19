@@ -4,20 +4,28 @@ public enum ScanPolicy {
     public static let largeFileThresholdBytes: Int64 = 50 * 1024 * 1024
     public static let defaultCacheMinAgeSeconds: TimeInterval = 3 * 24 * 60 * 60
 
-    private static let lowImpactMarkers = [
-        "/library/caches/",
-        "/library/logs/",
-        "/library/diagnosticreports/",
-        "/tmp/",
-        "/temp/",
-        "temporaryitems",
-        "deriveddata",
-        "/xcode/archives",
-        "_cacache",
-        "coresimulator/caches",
-        "code cache",
-        "gpucache"
-    ]
+    // AI dotfile markers (e.g. "/.continue/cache", "/.tabnine") are appended from app-catalog.json
+    // at first access — add new AI tools to the catalog, not here.
+    private static let lowImpactMarkers: [String] = {
+        let base: [String] = [
+            "/library/caches/",
+            "/library/logs/",
+            "/library/diagnosticreports/",
+            "/tmp/",
+            "/temp/",
+            "temporaryitems",
+            "deriveddata",
+            "/xcode/archives",
+            "_cacache",
+            "coresimulator/caches",
+            "code cache",
+            "gpucache",
+        ]
+        let catalogHomePaths = AppCatalog.shared.entries(forCategory: "ai")
+            .flatMap { $0.homePaths }
+            .map { "/\($0.lowercased())" }
+        return base + catalogHomePaths
+    }()
 
     private static let protectedPathMarkers = [
         "/documents/",
@@ -92,8 +100,35 @@ public enum ScanPolicy {
     public static let developerSafePathMarkers = [
         "/library/caches/com.microsoft.vscode.shipit",
         "/library/application support/code/cachedextensionvsixs",
-        "/library/logs/jetbrains"
+        "/library/logs/jetbrains",
+        // Homebrew download cache — path contains "/downloads/" so isLowImpactPath blocks it;
+        // listed here so matchesPersonaPath can reach it via the personaProtectedPathOverrides gate.
+        "/library/caches/homebrew/downloads",
     ]
+
+    /// Library paths for all AI tools in the catalog, lowercased for path matching.
+    /// Derived from app-catalog.json — add new tools there, not here.
+    public static let aiToolSafePathMarkers: [String] = AppCatalog.shared
+        .entries(forCategory: "ai")
+        .flatMap { $0.libraryPaths }
+        .map { "/library/\($0.lowercased())" }
+
+    /// File extensions that identify macOS installer packages.
+    public static let installerExtensions: Set<String> = ["dmg", "pkg", "iso", "xip"]
+
+    /// Returns `true` for installer files sitting inside `~/Downloads`, `~/Desktop`, or
+    /// iCloud Drive (`~/Library/Mobile Documents/`). ZIP files are included so that
+    /// installer ZIPs found by `InstallerFileRule` (which performs binary verification
+    /// at scan time) can be cleaned by `CleanupEngine` after user confirmation.
+    public static func isInstallerFile(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        guard installerExtensions.contains(ext) || ext == "zip" else { return false }
+        let path = url.path.lowercased()
+        let home = FileManager.default.homeDirectoryForCurrentUser.path.lowercased()
+        return path.hasPrefix(home + "/downloads/")
+            || path.hasPrefix(home + "/desktop/")
+            || path.hasPrefix(home + "/library/mobile documents/")
+    }
 
     public static let developerReviewPathMarkers = [
         "/library/application support/code/user/workspacestorage",
@@ -128,25 +163,36 @@ public enum ScanPolicy {
         "/.idea/"
     ]
 
-    private static let personaProtectedPathOverrides = [
-        "/library/application support/adobe/common/media cache",
-        "/library/application support/adobe/common/peak files",
-        "/library/application support/figma/cache",
-        "/library/application support/figma/desktop/cache",
-        "/library/application support/blackmagic design/davinci resolve/cache",
-        "/library/application support/code/cachedextensionvsixs",
-        "/library/application support/code/user/workspacestorage",
-        "/library/application support/code/user/history",
-        "/library/application support/jetbrains",
-        "/library/containers/com.docker.docker/data/log"
-    ]
+    // AI Application Support cache paths are appended from app-catalog.json at first access.
+    private static let personaProtectedPathOverrides: [String] = {
+        let base: [String] = [
+            "/library/application support/adobe/common/media cache",
+            "/library/application support/adobe/common/peak files",
+            "/library/application support/figma/cache",
+            "/library/application support/figma/desktop/cache",
+            "/library/application support/blackmagic design/davinci resolve/cache",
+            "/library/application support/code/cachedextensionvsixs",
+            "/library/application support/code/user/workspacestorage",
+            "/library/application support/code/user/history",
+            "/library/application support/jetbrains",
+            "/library/containers/com.docker.docker/data/log",
+            "/library/caches/homebrew/downloads",
+        ]
+        let catalogPaths = AppCatalog.shared.entries(forCategory: "ai")
+            .flatMap { $0.libraryPaths }
+            .map { "/library/\($0.lowercased())" }
+        return base + catalogPaths
+    }()
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
         switch category {
-        case .userCaches, .temporaryFiles, .browserCaches, .developerPackageCaches, .developerSimulatorCaches, .designerCaches, .videoBuilderCaches:
-            return defaultCacheMinAgeSeconds
+        case .userCaches, .temporaryFiles, .browserCaches, .developerPackageCaches,
+             .developerSimulatorCaches, .designerCaches, .videoBuilderCaches, .aiToolCaches:
+            return defaultCacheMinAgeSeconds  // 3 days
         case .logsAndCrashReports:
-            return 24 * 60 * 60
+            return 24 * 60 * 60  // 1 day
+        case .installerFiles:
+            return 7 * 24 * 60 * 60  // 7 days — avoid flagging freshly downloaded installers
         case .developerBuildArtifacts:
             return nil
         }

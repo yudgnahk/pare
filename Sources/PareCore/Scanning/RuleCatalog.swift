@@ -26,7 +26,8 @@ public enum RuleCatalog {
             UserCachesRule(),
             TemporaryFilesRule(),
             LogsAndCrashReportsRule(),
-            BrowserCachesRule()
+            BrowserCachesRule(),
+            InstallerFileRule()
         ]
     }
 
@@ -43,7 +44,9 @@ public enum RuleCatalog {
             JetBrainsStaleVersionRule(),
             JetBrainsReviewRequiredRule(),
             WrongPlatformBinariesRule(),
-            DockerLogsReviewRequiredRule()
+            DockerLogsReviewRequiredRule(),
+            AIToolCachesRule(),
+            HomebrewCacheRule()
         ] + baseline
     }
 

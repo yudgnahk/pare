@@ -1,6 +1,6 @@
 SHELL := /bin/zsh
 
-APP := cleanmymac-cli
+APP := pare-cli
 PROFILE ?= baseline
 TOP ?= 20
 ARGS ?=
