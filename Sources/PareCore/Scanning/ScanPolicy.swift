@@ -4,24 +4,28 @@ public enum ScanPolicy {
     public static let largeFileThresholdBytes: Int64 = 50 * 1024 * 1024
     public static let defaultCacheMinAgeSeconds: TimeInterval = 3 * 24 * 60 * 60
 
-    private static let lowImpactMarkers = [
-        "/library/caches/",
-        "/library/logs/",
-        "/library/diagnosticreports/",
-        "/tmp/",
-        "/temp/",
-        "temporaryitems",
-        "deriveddata",
-        "/xcode/archives",
-        "_cacache",
-        "coresimulator/caches",
-        "code cache",
-        "gpucache",
-        // AI tool dotfile caches — not under /library/caches/ so listed explicitly
-        "/.continue/cache",
-        "/.continue/.index",
-        "/.tabnine",
-    ]
+    // AI dotfile markers (e.g. "/.continue/cache", "/.tabnine") are appended from app-catalog.json
+    // at first access — add new AI tools to the catalog, not here.
+    private static let lowImpactMarkers: [String] = {
+        let base: [String] = [
+            "/library/caches/",
+            "/library/logs/",
+            "/library/diagnosticreports/",
+            "/tmp/",
+            "/temp/",
+            "temporaryitems",
+            "deriveddata",
+            "/xcode/archives",
+            "_cacache",
+            "coresimulator/caches",
+            "code cache",
+            "gpucache",
+        ]
+        let catalogHomePaths = AppCatalog.shared.entries(forCategory: "ai")
+            .flatMap { $0.homePaths }
+            .map { "/\($0.lowercased())" }
+        return base + catalogHomePaths
+    }()
 
     private static let protectedPathMarkers = [
         "/documents/",
@@ -102,19 +106,12 @@ public enum ScanPolicy {
         "/library/caches/homebrew/downloads",
     ]
 
-    /// AI tool Application Support cache subdirectories. Electron-based editors (Cursor, Claude,
-    /// Windsurf) write HTTP, compiled JS, and V8 bytecode caches here — all reconstructible on relaunch.
-    public static let aiToolSafePathMarkers = [
-        "/library/application support/cursor/cache",
-        "/library/application support/cursor/cacheddata",
-        "/library/application support/cursor/code cache",
-        "/library/application support/claude/cache",
-        "/library/application support/claude/cacheddata",
-        "/library/application support/claude/code cache",
-        "/library/application support/windsurf/cache",
-        "/library/application support/windsurf/cacheddata",
-        "/library/application support/windsurf/code cache",
-    ]
+    /// Library paths for all AI tools in the catalog, lowercased for path matching.
+    /// Derived from app-catalog.json — add new tools there, not here.
+    public static let aiToolSafePathMarkers: [String] = AppCatalog.shared
+        .entries(forCategory: "ai")
+        .flatMap { $0.libraryPaths }
+        .map { "/library/\($0.lowercased())" }
 
     /// File extensions that identify macOS installer packages.
     public static let installerExtensions: Set<String> = ["dmg", "pkg", "iso", "xip"]
@@ -163,30 +160,26 @@ public enum ScanPolicy {
         "/.idea/"
     ]
 
-    private static let personaProtectedPathOverrides = [
-        "/library/application support/adobe/common/media cache",
-        "/library/application support/adobe/common/peak files",
-        "/library/application support/figma/cache",
-        "/library/application support/figma/desktop/cache",
-        "/library/application support/blackmagic design/davinci resolve/cache",
-        "/library/application support/code/cachedextensionvsixs",
-        "/library/application support/code/user/workspacestorage",
-        "/library/application support/code/user/history",
-        "/library/application support/jetbrains",
-        "/library/containers/com.docker.docker/data/log",
-        // Homebrew download cache
-        "/library/caches/homebrew/downloads",
-        // AI tool Application Support cache subdirectories
-        "/library/application support/cursor/cache",
-        "/library/application support/cursor/cacheddata",
-        "/library/application support/cursor/code cache",
-        "/library/application support/claude/cache",
-        "/library/application support/claude/cacheddata",
-        "/library/application support/claude/code cache",
-        "/library/application support/windsurf/cache",
-        "/library/application support/windsurf/cacheddata",
-        "/library/application support/windsurf/code cache",
-    ]
+    // AI Application Support cache paths are appended from app-catalog.json at first access.
+    private static let personaProtectedPathOverrides: [String] = {
+        let base: [String] = [
+            "/library/application support/adobe/common/media cache",
+            "/library/application support/adobe/common/peak files",
+            "/library/application support/figma/cache",
+            "/library/application support/figma/desktop/cache",
+            "/library/application support/blackmagic design/davinci resolve/cache",
+            "/library/application support/code/cachedextensionvsixs",
+            "/library/application support/code/user/workspacestorage",
+            "/library/application support/code/user/history",
+            "/library/application support/jetbrains",
+            "/library/containers/com.docker.docker/data/log",
+            "/library/caches/homebrew/downloads",
+        ]
+        let catalogPaths = AppCatalog.shared.entries(forCategory: "ai")
+            .flatMap { $0.libraryPaths }
+            .map { "/library/\($0.lowercased())" }
+        return base + catalogPaths
+    }()
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
         switch category {
