@@ -52,9 +52,9 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
 
 ## Phase 2 — Stale App Version Detection
 
-- [ ] Extract version comparison logic from `JetBrainsStaleVersionRule` into `FileSystemUtils.compareVersionStrings(_ a: String, _ b: String) -> ComparisonResult`
-- [ ] Update `JetBrainsStaleVersionRule` to use the shared utility
-- [ ] Implement `StaleAppVersionRule` (`customScan`):
+- [x] Extract version comparison logic from `JetBrainsStaleVersionRule` into `FileSystemUtils.compareVersionStrings(_ a: String, _ b: String) -> ComparisonResult`
+- [x] Update `JetBrainsStaleVersionRule` to use the shared utility
+- [x] Implement `StaleAppVersionRule` (`customScan`):
   - Enumerate `/Applications`, `~/Applications` at depth 1
   - Read `CFBundleIdentifier` + `CFBundleVersion` from each `.app/Contents/Info.plist`
   - Group by bundle ID; skip groups with count == 1
@@ -63,12 +63,12 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
   - Skip `/System/Applications/` entirely
   - Fallback for missing bundle ID: normalise display name (strip trailing digits, "beta", "dev")
   - Do not flag groups where all members share the same `CFBundleVersion`
-- [ ] Write tests in `PareCoreTests`:
+- [x] Write tests in `PareCoreTests`:
   - Two copies same bundle ID → older flagged
   - Same bundle ID, same version → neither flagged
   - Missing bundle ID → name-based fallback groups correctly
   - SIP path excluded
-- [ ] Register in `RuleCatalog.all`
+- [x] Register in `RuleCatalog.all` (added to `baseline` so all profiles include it)
 
 ---
 

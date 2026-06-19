@@ -60,7 +60,10 @@ public struct JetBrainsStaleVersionRule: ScanRule {
         var findings: [ScanFinding] = []
         for (_, versions) in grouped where versions.count > 1 {
             let sorted = versions.sorted { lhs, rhs in
-                lhs.year != rhs.year ? lhs.year > rhs.year : lhs.minor > rhs.minor
+                FileSystemUtils.compareVersionStrings(
+                    "\(lhs.year).\(lhs.minor)",
+                    "\(rhs.year).\(rhs.minor)"
+                ) == .orderedDescending
             }
             // sorted[0] is the newest — flag everything else.
             for older in sorted.dropFirst() {
