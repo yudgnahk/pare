@@ -1,0 +1,626 @@
+import SwiftUI
+import AppKit
+import PareCore
+
+struct AppManagerView: View {
+    @StateObject private var viewModel = AppManagerViewModel()
+
+    var body: some View {
+        ZStack {
+            AppBackgroundView()
+
+            VStack(spacing: 0) {
+                headerBar
+                filterBar
+                    .padding(.horizontal, 20)
+                    .padding(.top, 14)
+                    .padding(.bottom, 10)
+                metricsRow
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 14)
+                appTable
+            }
+        }
+        .sheet(isPresented: $viewModel.showUninstallSheet) {
+            if let app = viewModel.selectedApp {
+                AppUninstallConfirmSheet(viewModel: viewModel, app: app)
+            }
+        }
+        .onAppear {
+            if viewModel.loadState == .idle { viewModel.loadApps() }
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerBar: some View {
+        GlassCard {
+            HStack(alignment: .center, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("App Manager")
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text("Browse, update, and cleanly uninstall installed applications")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 10) {
+                    if viewModel.loadState == .loading {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .scaleEffect(0.7)
+                            .tint(AppTheme.accent)
+                        Button("Cancel") { viewModel.cancelLoad() }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    } else {
+                        PrimaryActionButton(
+                            title: "Refresh",
+                            systemImage: "arrow.clockwise",
+                            isLoading: viewModel.loadState == .loading
+                        ) { viewModel.loadApps() }
+
+                        if viewModel.loadState == .loaded {
+                            PrimaryActionButton(
+                                title: viewModel.checkingUpdates ? "Checking…" : "Check Updates",
+                                systemImage: "arrow.down.circle",
+                                isLoading: viewModel.checkingUpdates
+                            ) { viewModel.checkForUpdates() }
+                                .disabled(viewModel.checkingUpdates)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Filter Bar
+
+    private var filterBar: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .font(.system(size: 13))
+                TextField("Search apps…", text: $viewModel.searchText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundStyle(AppTheme.textPrimary)
+                if !viewModel.searchText.isEmpty {
+                    Button { viewModel.searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(maxWidth: 260)
+
+            Toggle("Hide system apps", isOn: $viewModel.hideSystemApps)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(AppTheme.textSecondary)
+
+            if viewModel.outdatedCount > 0 {
+                Toggle("Updates only (\(viewModel.outdatedCount))", isOn: $viewModel.showOnlyOutdated)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(AppTheme.warning)
+            }
+
+            Spacer()
+
+            sortMenu
+        }
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            ForEach(AppManagerViewModel.SortField.allCases, id: \.self) { field in
+                Button {
+                    viewModel.toggleSort(field)
+                } label: {
+                    if viewModel.sortField == field {
+                        Label(
+                            "\(field.rawValue) \(viewModel.sortAscending ? "↑" : "↓")",
+                            systemImage: viewModel.sortAscending ? "arrow.up" : "arrow.down"
+                        )
+                    } else {
+                        Text(field.rawValue)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.arrow.down")
+                Text("Sort: \(viewModel.sortField.rawValue)")
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(AppTheme.textSecondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        }
+        .menuStyle(.borderlessButton)
+    }
+
+    // MARK: - Metrics Row
+
+    private var metricsRow: some View {
+        HStack(spacing: 12) {
+            metricChip(
+                label: "\(viewModel.apps.count)",
+                sub: "apps installed",
+                color: AppTheme.accent
+            )
+            metricChip(
+                label: ByteCountFormatter.string(fromByteCount: viewModel.totalSizeBytes, countStyle: .file),
+                sub: "total size",
+                color: AppTheme.textSecondary
+            )
+            if viewModel.checkingUpdates {
+                metricChip(label: "Checking…", sub: "for updates", color: AppTheme.warning)
+            } else if viewModel.outdatedCount > 0 {
+                metricChip(
+                    label: "\(viewModel.outdatedCount)",
+                    sub: "updates available",
+                    color: AppTheme.warning
+                )
+            }
+            if case .done(let trashed, let failed) = viewModel.uninstallState {
+                metricChip(
+                    label: "\(trashed) trashed\(failed > 0 ? ", \(failed) failed" : "")",
+                    sub: "last uninstall",
+                    color: failed > 0 ? AppTheme.review : AppTheme.success
+                )
+            }
+            Spacer()
+        }
+    }
+
+    private func metricChip(label: String, sub: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+            Text(sub)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    // MARK: - App Table
+
+    private var appTable: some View {
+        Group {
+            switch viewModel.loadState {
+            case .idle:
+                emptyPrompt(icon: "apps.iphone", text: "Click Refresh to load installed apps")
+            case .loading:
+                loadingPlaceholder
+            case .error(let msg):
+                emptyPrompt(icon: "exclamationmark.triangle", text: msg)
+            case .loaded:
+                if viewModel.filteredApps.isEmpty {
+                    emptyPrompt(icon: "magnifyingglass", text: "No apps match the current filters")
+                } else {
+                    appList
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var appList: some View {
+        ScrollView {
+            LazyVStack(spacing: 2) {
+                tableHeader
+                ForEach(viewModel.filteredApps) { app in
+                    AppRow(app: app, onUninstall: { viewModel.requestUninstall(for: app) })
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
+        }
+    }
+
+    private var tableHeader: some View {
+        HStack(spacing: 0) {
+            Text("Application")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Version")
+                .frame(width: 100, alignment: .leading)
+            Text("Size")
+                .frame(width: 90, alignment: .trailing)
+            Text("Installed")
+                .frame(width: 100, alignment: .trailing)
+            Text("Last Used")
+                .frame(width: 100, alignment: .trailing)
+            Spacer().frame(width: 80)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(AppTheme.textSecondary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+    }
+
+    private var loadingPlaceholder: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .scaleEffect(1.4)
+                .tint(AppTheme.accent)
+            Text("Scanning installed applications…")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+    }
+
+    private func emptyPrompt(icon: String, text: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 40))
+                .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
+            Text(text)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+    }
+}
+
+// MARK: - AppRow
+
+private struct AppRow: View {
+    let app: InstalledApp
+    let onUninstall: () -> Void
+    @State private var isHovered = false
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .none
+        return f
+    }()
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // Icon + name
+            HStack(spacing: 10) {
+                appIcon
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(app.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .lineLimit(1)
+                        if app.isSystemApp {
+                            badge("SIP", color: AppTheme.textSecondary)
+                        }
+                        if app.isMAS {
+                            badge("MAS", color: AppTheme.accent)
+                        }
+                        if app.isHomebrewManaged {
+                            badge("brew", color: AppTheme.success)
+                        }
+                        if app.updateInfo?.hasUpdate == true {
+                            badge("Update", color: AppTheme.warning)
+                        }
+                    }
+                    if let bundleID = app.bundleID {
+                        Text(bundleID)
+                            .font(.system(size: 10, weight: .regular, design: .monospaced))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Version
+            Text(app.version.isEmpty ? "—" : app.version)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(AppTheme.textSecondary)
+                .frame(width: 100, alignment: .leading)
+                .lineLimit(1)
+
+            // Size
+            Text(ByteCountFormatter.string(fromByteCount: app.sizeBytes, countStyle: .file))
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(app.sizeBytes > 500_000_000 ? AppTheme.review : AppTheme.textPrimary)
+                .frame(width: 90, alignment: .trailing)
+
+            // Install date
+            Text(app.installDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                .font(.system(size: 11))
+                .foregroundStyle(AppTheme.textSecondary)
+                .frame(width: 100, alignment: .trailing)
+
+            // Last used
+            Text(app.lastUsed.map { Self.dateFormatter.string(from: $0) } ?? "Never")
+                .font(.system(size: 11))
+                .foregroundStyle(app.lastUsed == nil ? AppTheme.textSecondary.opacity(0.5) : AppTheme.textSecondary)
+                .frame(width: 100, alignment: .trailing)
+
+            // Actions
+            HStack(spacing: 8) {
+                if let info = app.updateInfo, info.hasUpdate, let url = info.updateURL {
+                    Button {
+                        NSWorkspace.shared.open(url)
+                    } label: {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(AppTheme.warning)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Update \(app.name) (\(info.availableVersion) available)")
+                }
+
+                Button {
+                    NSWorkspace.shared.selectFile(app.path, inFileViewerRootedAtPath: "")
+                } label: {
+                    Image(systemName: "folder")
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Reveal in Finder")
+
+                Button(action: onUninstall) {
+                    Image(systemName: "trash")
+                        .foregroundStyle(app.isSystemApp ? AppTheme.textSecondary.opacity(0.3) : AppTheme.review)
+                }
+                .buttonStyle(.borderless)
+                .disabled(app.isSystemApp)
+                .help(app.isSystemApp ? "System apps cannot be removed (SIP-protected)" : "Uninstall \(app.name)")
+            }
+            .frame(width: 80, alignment: .trailing)
+            .opacity(isHovered ? 1 : 0.6)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+        )
+        .onHover { isHovered = $0 }
+        .contextMenu {
+            Button("Open") {
+                NSWorkspace.shared.openApplication(
+                    at: URL(fileURLWithPath: app.path),
+                    configuration: NSWorkspace.OpenConfiguration()
+                )
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.selectFile(app.path, inFileViewerRootedAtPath: "")
+            }
+            Divider()
+            Button("Uninstall…", role: .destructive) { onUninstall() }
+                .disabled(app.isSystemApp)
+        }
+    }
+
+    private var appIcon: some View {
+        Group {
+            let icon = NSWorkspace.shared.icon(forFile: app.path)
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 32, height: 32)
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+    }
+
+    private func badge(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+}
+
+// MARK: - Uninstall Confirm Sheet
+
+struct AppUninstallConfirmSheet: View {
+    @ObservedObject var viewModel: AppManagerViewModel
+    let app: InstalledApp
+
+    private var leftovers: [AppLeftover] { viewModel.pendingLeftovers }
+    private var normalLeftovers: [AppLeftover] { leftovers.filter { !$0.isGroupContainer } }
+    private var groupContainers: [AppLeftover] { leftovers.filter { $0.isGroupContainer } }
+
+    private var totalBytes: Int64 {
+        let base = app.sizeBytes
+        let leftoverBytes = normalLeftovers.reduce(0) { $0 + $1.sizeBytes }
+        let groupBytes = viewModel.includeGroupContainers
+            ? groupContainers.reduce(0) { $0 + $1.sizeBytes } : 0
+        return base + leftoverBytes + groupBytes
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 14) {
+                let icon = NSWorkspace.shared.icon(forFile: app.path)
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Uninstall \(app.name)?")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.primary)
+                    Text(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file) + " will be freed")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(20)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // App bundle
+                    leftoverSection(title: "Application Bundle", items: [
+                        LeftoverRow(
+                            path: app.path,
+                            size: app.sizeBytes,
+                            isGroup: false,
+                            isSelected: .constant(true)
+                        )
+                    ])
+
+                    // Per-category leftovers
+                    let grouped = Dictionary(grouping: normalLeftovers, by: { $0.category })
+                    ForEach(AppLeftoverCategory.allCases, id: \.self) { cat in
+                        if let items = grouped[cat], !items.isEmpty {
+                            leftoverSection(
+                                title: cat.rawValue,
+                                items: items.map { leftover in
+                                    LeftoverRow(
+                                        path: leftover.path,
+                                        size: leftover.sizeBytes,
+                                        isGroup: false,
+                                        isSelected: .constant(true)
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    // Group containers — warning
+                    if !groupContainers.isEmpty {
+                        groupContainerSection
+                    }
+                }
+                .padding(20)
+            }
+            .frame(maxHeight: 380)
+
+            Divider()
+
+            // Footer actions
+            HStack(spacing: 12) {
+                Spacer()
+                Button("Cancel") { viewModel.cancelUninstall() }
+                    .keyboardShortcut(.escape)
+                Button(role: .destructive) {
+                    viewModel.confirmUninstall()
+                } label: {
+                    if viewModel.uninstallState == .uninstalling {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                            .frame(width: 80)
+                    } else {
+                        Text("Move to Trash")
+                    }
+                }
+                .keyboardShortcut(.return)
+                .disabled(viewModel.uninstallState == .uninstalling)
+            }
+            .padding(20)
+        }
+        .frame(width: 560)
+        .background(.regularMaterial)
+    }
+
+    private func leftoverSection(title: String, items: [LeftoverRow]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            VStack(spacing: 2) {
+                ForEach(items.indices, id: \.self) { i in
+                    items[i]
+                }
+            }
+            .padding(10)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+    }
+
+    private var groupContainerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(AppTheme.warning)
+                Text("Shared Data")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+            }
+
+            Text("This data may be shared with other apps in the same suite. Remove only if you are uninstalling all related apps.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+
+            Toggle("Also remove shared group containers", isOn: $viewModel.includeGroupContainers)
+                .font(.system(size: 12, weight: .medium))
+                .toggleStyle(.checkbox)
+
+            if viewModel.includeGroupContainers {
+                VStack(spacing: 2) {
+                    ForEach(groupContainers) { leftover in
+                        LeftoverRow(
+                            path: leftover.path,
+                            size: leftover.sizeBytes,
+                            isGroup: true,
+                            isSelected: .constant(true)
+                        )
+                    }
+                }
+                .padding(10)
+                .background(AppTheme.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+        .padding(14)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct LeftoverRow: View {
+    let path: String
+    let size: Int64
+    let isGroup: Bool
+    @Binding var isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: isGroup ? "folder.badge.questionmark" : "doc")
+                .font(.system(size: 11))
+                .foregroundStyle(isGroup ? AppTheme.warning : AppTheme.textSecondary)
+                .frame(width: 16)
+
+            Text(path)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer()
+
+            if size > 0 {
+                Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}

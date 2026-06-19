@@ -277,6 +277,18 @@ public enum ScanPolicy {
     /// sitting at the TOP LEVEL of `~/Downloads`. This anchoring is intentional:
     /// it avoids falsely matching `.exe` files inside project `downloads/` subdirs
     /// or nested tool caches.
+    /// Returns `true` for apps inside /System/Applications — SIP-protected and cannot be removed.
+    public static func isSystemApp(_ url: URL) -> Bool {
+        url.path.hasPrefix("/System/")
+    }
+
+    /// Returns `true` for paths inside ~/Library/Group Containers.
+    /// These are shared across app suites and must never be auto-selected for deletion.
+    public static func isGroupContainer(_ url: URL) -> Bool {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path.lowercased()
+        return url.path.lowercased().hasPrefix("\(home)/library/group containers/")
+    }
+
     public static func isWrongPlatformBinary(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
         guard nonMacOSDownloadExtensions.contains(ext) else { return false }
