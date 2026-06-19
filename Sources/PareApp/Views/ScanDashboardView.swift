@@ -40,7 +40,7 @@ struct ScanDashboardView: View {
         GlassCard {
             HStack(alignment: .center, spacing: 18) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Clean My Mac")
+                    Text("Pare")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.textPrimary)
 

@@ -6,7 +6,7 @@ struct PareApp: App {
     @StateObject private var historyViewModel = HistoryViewModel()
 
     var body: some Scene {
-        WindowGroup("Clean My Mac") {
+        WindowGroup("Pare") {
             ContentView(scanViewModel: scanViewModel, historyViewModel: historyViewModel)
                 .frame(minWidth: 1024, minHeight: 700)
         }
