@@ -1,6 +1,6 @@
 SHELL := /bin/zsh
 
-APP := cleanmymac-cli
+APP := pare-cli
 PROFILE ?= baseline
 TOP ?= 20
 ARGS ?=
@@ -33,7 +33,7 @@ test:
 start: run-baseline
 
 run-app:
-	swift run CleanMyMacApp
+	swift run PareApp
 
 run:
 	swift run $(APP) --profile $(PROFILE) --top $(TOP) $(ARGS)

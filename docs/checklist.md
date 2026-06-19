@@ -1,4 +1,4 @@
-# Clean My Mac (Pure Swift) - Checklist
+# Pare (Pure Swift) - Checklist
 
 ## Phase 0 - Discovery and Guardrails
 - [x] Define supported macOS version range: **macOS 13+** (set in `Package.swift`).

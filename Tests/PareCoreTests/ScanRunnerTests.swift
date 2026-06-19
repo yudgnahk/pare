@@ -39,11 +39,12 @@ final class ScanRunnerTests: XCTestCase {
 
     func testBaselineRuleIncludesKnownRules() {
         let rules = [any ScanRule].baseline
-        XCTAssertEqual(rules.count, 4)
+        XCTAssertEqual(rules.count, 5)
         XCTAssertTrue(rules.contains(where: { $0.id == "user-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "temporary-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "logs-crash-reports" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "browser-caches" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "installer-files" }))
     }
 
     func testBrowserRuleSkipsSensitiveFiles() {
@@ -127,6 +128,8 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-stale-version" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-review-required" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "docker-logs-review-required" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "ai-tool-caches" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "homebrew-cache" }))
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-vm-data-advanced" }))
         XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
     }
