@@ -16,7 +16,11 @@ public enum ScanPolicy {
         "_cacache",
         "coresimulator/caches",
         "code cache",
-        "gpucache"
+        "gpucache",
+        // AI tool dotfile caches — not under /library/caches/ so listed explicitly
+        "/.continue/cache",
+        "/.continue/.index",
+        "/.tabnine",
     ]
 
     private static let protectedPathMarkers = [
@@ -92,8 +96,39 @@ public enum ScanPolicy {
     public static let developerSafePathMarkers = [
         "/library/caches/com.microsoft.vscode.shipit",
         "/library/application support/code/cachedextensionvsixs",
-        "/library/logs/jetbrains"
+        "/library/logs/jetbrains",
+        // Homebrew download cache — path contains "/downloads/" so isLowImpactPath blocks it;
+        // listed here so matchesPersonaPath can reach it via the personaProtectedPathOverrides gate.
+        "/library/caches/homebrew/downloads",
     ]
+
+    /// AI tool Application Support cache subdirectories. Electron-based editors (Cursor, Claude,
+    /// Windsurf) write HTTP, compiled JS, and V8 bytecode caches here — all reconstructible on relaunch.
+    public static let aiToolSafePathMarkers = [
+        "/library/application support/cursor/cache",
+        "/library/application support/cursor/cacheddata",
+        "/library/application support/cursor/code cache",
+        "/library/application support/claude/cache",
+        "/library/application support/claude/cacheddata",
+        "/library/application support/claude/code cache",
+        "/library/application support/windsurf/cache",
+        "/library/application support/windsurf/cacheddata",
+        "/library/application support/windsurf/code cache",
+    ]
+
+    /// File extensions that identify macOS installer packages.
+    public static let installerExtensions: Set<String> = ["dmg", "pkg", "iso", "xip"]
+
+    /// Returns `true` for installer files sitting inside `~/Downloads` or `~/Desktop`.
+    /// Used by `CleanupEngine` as a safety-guard bypass so that `InstallerFileRule`
+    /// findings (which live in protected paths) can be cleaned after the user confirms.
+    public static func isInstallerFile(_ url: URL) -> Bool {
+        let ext = url.pathExtension.lowercased()
+        guard installerExtensions.contains(ext) else { return false }
+        let path = url.path.lowercased()
+        let home = FileManager.default.homeDirectoryForCurrentUser.path.lowercased()
+        return path.hasPrefix(home + "/downloads/") || path.hasPrefix(home + "/desktop/")
+    }
 
     public static let developerReviewPathMarkers = [
         "/library/application support/code/user/workspacestorage",
@@ -138,15 +173,30 @@ public enum ScanPolicy {
         "/library/application support/code/user/workspacestorage",
         "/library/application support/code/user/history",
         "/library/application support/jetbrains",
-        "/library/containers/com.docker.docker/data/log"
+        "/library/containers/com.docker.docker/data/log",
+        // Homebrew download cache
+        "/library/caches/homebrew/downloads",
+        // AI tool Application Support cache subdirectories
+        "/library/application support/cursor/cache",
+        "/library/application support/cursor/cacheddata",
+        "/library/application support/cursor/code cache",
+        "/library/application support/claude/cache",
+        "/library/application support/claude/cacheddata",
+        "/library/application support/claude/code cache",
+        "/library/application support/windsurf/cache",
+        "/library/application support/windsurf/cacheddata",
+        "/library/application support/windsurf/code cache",
     ]
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
         switch category {
-        case .userCaches, .temporaryFiles, .browserCaches, .developerPackageCaches, .developerSimulatorCaches, .designerCaches, .videoBuilderCaches:
-            return defaultCacheMinAgeSeconds
+        case .userCaches, .temporaryFiles, .browserCaches, .developerPackageCaches,
+             .developerSimulatorCaches, .designerCaches, .videoBuilderCaches, .aiToolCaches:
+            return defaultCacheMinAgeSeconds  // 3 days
         case .logsAndCrashReports:
-            return 24 * 60 * 60
+            return 24 * 60 * 60  // 1 day
+        case .installerFiles:
+            return 7 * 24 * 60 * 60  // 7 days — avoid flagging freshly downloaded installers
         case .developerBuildArtifacts:
             return nil
         }

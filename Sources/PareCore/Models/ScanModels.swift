@@ -10,6 +10,8 @@ public enum ScanCategory: String, CaseIterable, Sendable {
     case developerSimulatorCaches = "Developer Simulator Caches"
     case designerCaches = "Designer Caches"
     case videoBuilderCaches = "Video Builder Caches"
+    case aiToolCaches = "AI Tool Caches"
+    case installerFiles = "Installer Files"
 }
 
 public enum RiskLevel: String, Sendable {
