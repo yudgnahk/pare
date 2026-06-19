@@ -1,4 +1,4 @@
-# Clean My Mac (Pure Swift) - Phase 2 Plan
+# Pare (Pure Swift) - Phase 2 Plan
 
 ## Phase Goal
 Ship a native macOS SwiftUI app target that reuses the existing `PareCore` scanner stack, while keeping CLI parity for debugging and result validation.

@@ -40,7 +40,7 @@ struct ScanDashboardView: View {
         GlassCard {
             HStack(alignment: .center, spacing: 18) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Clean My Mac")
+                    Text("Pare")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.textPrimary)
 
@@ -492,6 +492,10 @@ struct ScanDashboardView: View {
             return Color(red: 0.92, green: 0.62, blue: 0.41)
         case .videoBuilderCaches:
             return Color(red: 0.48, green: 0.77, blue: 0.61)
+        case .aiToolCaches:
+            return Color(red: 0.56, green: 0.76, blue: 0.98)
+        case .installerFiles:
+            return Color(red: 0.85, green: 0.75, blue: 0.45)
         }
     }
 
