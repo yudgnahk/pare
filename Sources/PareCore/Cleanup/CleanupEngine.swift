@@ -126,7 +126,8 @@ public actor CleanupEngine {
             let url = URL(fileURLWithPath: finding.path)
 
             // Re-verify the path is still considered safe by policy.
-            guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url) || ScanPolicy.isWrongPlatformBinary(url) else {
+            guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
+                    || ScanPolicy.isWrongPlatformBinary(url) || ScanPolicy.isInstallerFile(url) else {
                 skipped.append((finding.path, "Path no longer passes safety policy"))
                 continue
             }
@@ -265,6 +266,7 @@ public actor CleanupEngine {
             + ScanPolicy.developerSafePathMarkers
             + ScanPolicy.developerReviewPathMarkers
             + ScanPolicy.developerDockerReviewPathMarkers
+            + ScanPolicy.aiToolSafePathMarkers
 
         return ScanPolicy.matchesPersonaPath(url, allowedMarkers: allPersonaMarkers)
     }
