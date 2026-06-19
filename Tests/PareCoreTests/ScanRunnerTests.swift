@@ -39,12 +39,13 @@ final class ScanRunnerTests: XCTestCase {
 
     func testBaselineRuleIncludesKnownRules() {
         let rules = [any ScanRule].baseline
-        XCTAssertEqual(rules.count, 5)
+        XCTAssertEqual(rules.count, 6)
         XCTAssertTrue(rules.contains(where: { $0.id == "user-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "temporary-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "logs-crash-reports" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "browser-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "installer-files" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "stale-app-version" }))
     }
 
     func testBrowserRuleSkipsSensitiveFiles() {

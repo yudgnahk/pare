@@ -193,7 +193,7 @@ public enum ScanPolicy {
             return 24 * 60 * 60  // 1 day
         case .installerFiles:
             return 7 * 24 * 60 * 60  // 7 days — avoid flagging freshly downloaded installers
-        case .developerBuildArtifacts:
+        case .developerBuildArtifacts, .applications:
             return nil
         }
     }
