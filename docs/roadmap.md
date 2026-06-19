@@ -189,3 +189,4 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
 - [ ] `make run-app` — manual smoke test of changed feature
 - [ ] `gitnexus_impact` run before editing any symbol
 - [ ] `gitnexus_detect_changes` run before committing
+- [ ] Update roadmap artifact after completing each phase
