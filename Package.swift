@@ -22,7 +22,8 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "PareCore"
+            name: "PareCore",
+            resources: [.process("Resources")]
         ),
         .executableTarget(
             name: "PareApp",

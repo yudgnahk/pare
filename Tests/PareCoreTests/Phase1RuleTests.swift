@@ -132,11 +132,58 @@ final class AIToolCachesRuleTests: XCTestCase {
         ))
     }
 
-    // MARK: Target directory count
+    // MARK: Target directories (catalog-driven)
 
-    func testTargetDirectoriesCount() {
+    func testTargetDirectoriesContainsExpectedTools() {
         let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: home))
-        XCTAssertEqual(rule.targetDirectories(environment: env).count, 13)
+        let paths = rule.targetDirectories(environment: env).map { $0.path }
+        // Electron-based editors — Application Support cache subdirs
+        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("Cursor/Cache") }))
+        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("Claude/Cache") }))
+        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("Windsurf/Cache") }))
+        // Copilot — Library/Caches
+        XCTAssertTrue(paths.contains(where: { $0.contains("com.github.copilot-for-xcode") }))
+        // Dotfile tools
+        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("/.tabnine") }))
+        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("/.continue/cache") }))
+        // Catalog is the source of truth — count must be > 0
+        XCTAssertGreaterThan(paths.count, 0)
+    }
+}
+
+// MARK: - AppCatalogTests
+
+final class AppCatalogTests: XCTestCase {
+    func testCatalogLoadsSuccessfully() {
+        XCTAssertGreaterThan(AppCatalog.shared.entries.count, 0)
+        XCTAssertEqual(AppCatalog.shared.version, 1)
+    }
+
+    func testAIEntriesPresent() {
+        let aiEntries = AppCatalog.shared.entries(forCategory: "ai")
+        XCTAssertGreaterThan(aiEntries.count, 0)
+        let ids = aiEntries.map { $0.id }
+        XCTAssertTrue(ids.contains("cursor"))
+        XCTAssertTrue(ids.contains("claude-desktop"))
+        XCTAssertTrue(ids.contains("windsurf"))
+        XCTAssertTrue(ids.contains("tabnine"))
+        XCTAssertTrue(ids.contains("continue-dev"))
+    }
+
+    func testAllEntriesHaveRequiredFields() {
+        for entry in AppCatalog.shared.entries {
+            XCTAssertFalse(entry.id.isEmpty, "Entry missing id")
+            XCTAssertFalse(entry.displayName.isEmpty, "Entry \(entry.id) missing displayName")
+            XCTAssertFalse(entry.category.isEmpty, "Entry \(entry.id) missing category")
+            let hasPaths = !entry.libraryPaths.isEmpty || !entry.homePaths.isEmpty
+            XCTAssertTrue(hasPaths, "Entry \(entry.id) has no paths")
+        }
+    }
+
+    func testAIToolSafePathMarkersAreNonEmpty() {
+        XCTAssertFalse(ScanPolicy.aiToolSafePathMarkers.isEmpty)
+        XCTAssertTrue(ScanPolicy.aiToolSafePathMarkers.contains(where: { $0.contains("cursor") }))
+        XCTAssertTrue(ScanPolicy.aiToolSafePathMarkers.contains(where: { $0.contains("claude") }))
     }
 }
 

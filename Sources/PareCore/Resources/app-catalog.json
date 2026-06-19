@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "cursor",
+      "displayName": "Cursor",
+      "category": "ai",
+      "libraryPaths": [
+        "Application Support/Cursor/Cache",
+        "Application Support/Cursor/CachedData",
+        "Application Support/Cursor/Code Cache"
+      ],
+      "homePaths": []
+    },
+    {
+      "id": "claude-desktop",
+      "displayName": "Claude",
+      "category": "ai",
+      "libraryPaths": [
+        "Application Support/Claude/Cache",
+        "Application Support/Claude/CachedData",
+        "Application Support/Claude/Code Cache"
+      ],
+      "homePaths": []
+    },
+    {
+      "id": "windsurf",
+      "displayName": "Windsurf",
+      "category": "ai",
+      "libraryPaths": [
+        "Application Support/Windsurf/Cache",
+        "Application Support/Windsurf/CachedData",
+        "Application Support/Windsurf/Code Cache"
+      ],
+      "homePaths": []
+    },
+    {
+      "id": "copilot-xcode",
+      "displayName": "GitHub Copilot for Xcode",
+      "category": "ai",
+      "libraryPaths": [
+        "Caches/com.github.copilot-for-xcode"
+      ],
+      "homePaths": []
+    },
+    {
+      "id": "continue-dev",
+      "displayName": "Continue",
+      "category": "ai",
+      "libraryPaths": [],
+      "homePaths": [
+        ".continue/cache",
+        ".continue/.index"
+      ]
+    },
+    {
+      "id": "tabnine",
+      "displayName": "Tabnine",
+      "category": "ai",
+      "libraryPaths": [],
+      "homePaths": [
+        ".tabnine"
+      ]
+    }
+  ]
+}
