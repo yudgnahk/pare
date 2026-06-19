@@ -1,5 +1,5 @@
 import XCTest
-@testable import App BCore
+@testable import PareCore
 
 /// Tests that cache state is never corrupted by cancelled scans, and that force-rescan
 /// correctly bypasses the cache for a full traversal.

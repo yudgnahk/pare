@@ -1,6 +1,6 @@
 import Foundation
 import SwiftUI
-import App BCore
+import PareCore
 
 struct ScanDashboardView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel

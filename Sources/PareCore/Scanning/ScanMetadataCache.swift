@@ -85,7 +85,7 @@ public actor ScanMetadataCache {
             for: .applicationSupportDirectory,
             in: .userDomainMask
         ).first ?? FileManager.default.temporaryDirectory
-        return appSupport.appendingPathComponent("App B/scan-cache.json")
+        return appSupport.appendingPathComponent("Pare/scan-cache.json")
     }
 
     private func save() {

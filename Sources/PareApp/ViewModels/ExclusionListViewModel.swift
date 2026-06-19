@@ -1,5 +1,5 @@
 import Foundation
-import App BCore
+import PareCore
 
 @MainActor
 final class ExclusionListViewModel: ObservableObject {

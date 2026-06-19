@@ -1,5 +1,5 @@
 import XCTest
-@testable import App BCore
+@testable import PareCore
 
 // MARK: - ExclusionList model tests
 
@@ -172,7 +172,7 @@ final class DeepCleanTests: XCTestCase {
 
     override func setUpWithError() throws {
         let base = URL(fileURLWithPath: "/private/tmp/DeepCleanTests-\(UUID().uuidString)")
-        tempDir = base.appending(path: "Library/Caches/com.yudgnahk.pare.deepclean")
+        tempDir = base.appending(path: "Library/Caches/com.pare.deepclean")
         storeDir = URL(fileURLWithPath: "/private/tmp/DeepCleanStore-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
-import App BCore
+import PareCore
 
 @MainActor
 final class ScanDashboardViewModel: ObservableObject {

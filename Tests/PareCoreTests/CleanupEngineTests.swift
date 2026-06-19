@@ -1,5 +1,5 @@
 import XCTest
-@testable import App BCore
+@testable import PareCore
 
 final class CleanupEngineTests: XCTestCase {
 
@@ -13,7 +13,7 @@ final class CleanupEngineTests: XCTestCase {
         // ScanPolicy.isLowImpactPath returns true and the CleanupEngine policy
         // guard doesn't skip them during tests.
         let base = URL(fileURLWithPath: "/private/tmp/CleanupEngineTests-\(UUID().uuidString)")
-        tempDir = base.appending(path: "Library/Caches/com.yudgnahk.pare.test")
+        tempDir = base.appending(path: "Library/Caches/com.pare.test")
         storeDir = URL(fileURLWithPath: "/private/tmp/CleanupEngineStore-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
     }

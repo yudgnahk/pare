@@ -42,7 +42,7 @@ Out of scope:
 - Keep sensitive marker checks active.
 
 2) Add Docker logs review rule
-- New file: `Sources/App BCore/Rules/DockerLogsReviewRequiredRule.swift`
+- New file: `Sources/PareCore/Rules/DockerLogsReviewRequiredRule.swift`
 - Category: `.developerPackageCaches`
 - Risk: `.review`
 - Include logic:
@@ -50,7 +50,7 @@ Out of scope:
   - pass through existing age behavior (or no age gating if not appropriate)
 
 3) Add Docker VM advanced rule
-- New file: `Sources/App BCore/Rules/DockerVMDataAdvancedRule.swift`
+- New file: `Sources/PareCore/Rules/DockerVMDataAdvancedRule.swift`
 - Category: `.developerPackageCaches`
 - Risk: `.advanced`
 - Include logic:
@@ -58,11 +58,11 @@ Out of scope:
   - detect/report only (no cleanup semantics)
 
 4) Wire rules in developer catalog
-- Update `Sources/App BCore/Scanning/RuleCatalog.swift`:
+- Update `Sources/PareCore/Scanning/RuleCatalog.swift`:
   - append Docker review + advanced rules to developer rule list.
 
 5) Add and update tests
-- Update `Tests/App BCoreTests/ScanRunnerTests.swift` for:
+- Update `Tests/PareCoreTests/ScanRunnerTests.swift` for:
   - developer catalog contains Docker rule ids
   - logs rule includes Docker log paths and excludes non-target paths
   - VM rule includes VM data paths and excludes non-target paths

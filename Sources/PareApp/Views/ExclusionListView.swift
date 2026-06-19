@@ -1,5 +1,5 @@
 import SwiftUI
-import App BCore
+import PareCore
 
 struct ExclusionListView: View {
     @ObservedObject var viewModel: ExclusionListViewModel
