@@ -61,6 +61,15 @@
       "homePaths": [
         ".tabnine"
       ]
+    },
+    {
+      "id": "github-copilot-cli",
+      "displayName": "GitHub Copilot CLI",
+      "category": "ai",
+      "libraryPaths": [],
+      "homePaths": [
+        ".copilot/logs"
+      ]
     }
   ]
 }

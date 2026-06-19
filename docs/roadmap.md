@@ -8,41 +8,45 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
 New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.pare`.
 
-- [ ] Update `Package.swift` — product names, target names
-- [ ] Update bundle IDs (`com.yudgnahk.<newname>`) across all targets
-- [ ] Update `AppTheme`, window titles, About panel
-- [ ] Rename `PareApp/`, `PareCore/`, `PareCLI/` source directories
-- [ ] Update `CLAUDE.md` and all docs to reflect new name
-- [ ] Rename the repo
+- [x] Update `Package.swift` — product names, target names
+- [ ] Update bundle IDs (`com.yudgnahk.pare`) across all targets — deferred to Phase 6 (requires Info.plist + signing)
+- [x] Update `AppTheme`, window titles, About panel
+- [x] Rename `PareApp/`, `PareCore/`, `PareCLI/` source directories
+- [x] Update `CLAUDE.md` and all docs to reflect new name
+- [x] Rename the repo
 
 ---
 
 ## Phase 1 — Quick Wins (copy from App A, small effort)
 
 ### AI Tool Cache Rules
-- [ ] `AIToolCachesRule` — target dirs and what each produces:
-  - GitHub Copilot: `~/.copilot/`
-  - Cursor: `~/Library/Application Support/Cursor/Cache/`, `~/Library/Caches/com.todesktop.*/`
-  - Claude desktop: `~/Library/Application Support/Claude/Cache/`
-  - Windsurf: `~/Library/Application Support/Windsurf/Cache/`
-  - Continue.dev: `~/.continue/cache/`
-  - Tabnine: `~/.tabnine/`
-- [ ] Register in `RuleCatalog` (developer profile + `all`)
-- [ ] Add to `CLAUDE.md` Known State
+- [~] `AIToolCachesRule` — target dirs and what each produces:
+  - [x] GitHub Copilot CLI: `~/.copilot/logs/`
+  - [x] Cursor: `~/Library/Application Support/Cursor/Cache/`
+  - [ ] Cursor Todesktop cache: `~/Library/Caches/com.todesktop.*/` — **needs ID verification; not present on test machine**
+  - [x] Claude desktop: `~/Library/Application Support/Claude/Cache/`
+  - [x] Windsurf: `~/Library/Application Support/Windsurf/Cache/`
+  - [x] Continue.dev: `~/.continue/cache/`
+  - [x] Tabnine: `~/.tabnine/`
+- [x] Register in `RuleCatalog` (developer profile + `all`)
 
 ### Homebrew Download Cache Rule
-- [ ] `HomebrewCacheRule` — target: `$(brew --prefix)/Library/Caches/Homebrew/` (bottles + cask downloads)
-- [ ] Use `BrewRunner.homebrewPrefix()` to resolve path; skip rule gracefully if Homebrew not installed
-- [ ] Risk: `.safe` (download cache, always reconstructible)
-- [ ] Register in `RuleCatalog` (developer profile + `all`)
+- [x] `HomebrewCacheRule` — target: `~/Library/Caches/Homebrew/downloads` (bottles + cask downloads)
+- [x] Skip gracefully if Homebrew not installed — cache dir doesn't exist → traversal returns empty (no-op)
+- [x] Risk: `.safe` (download cache, always reconstructible)
+- [x] Register in `RuleCatalog` (developer profile + `all`)
+- Note: full `BrewRunner.homebrewPrefix()` integration deferred to Phase 4 (path is arch-independent)
 
 ### Installer File Finder
-- [ ] `InstallerFileRule` — scan Downloads, Desktop, `~/Library/Mobile Documents/` (iCloud), Telegram downloads
-- [ ] Match: `.dmg`, `.pkg`, `.iso`, `.xip` at any depth (reasonable depth limit: 3)
-- [ ] For `.zip`: inspect first 512 bytes for PK magic; if ZIP, check central directory for `.app` or `Payload/` entries (zipped app installer heuristic)
-- [ ] Risk: `.review` (may be intentionally kept)
-- [ ] Minimum age gate: 7 days (fresh downloads excluded)
-- [ ] Register in `RuleCatalog` (baseline profile + `all`)
+- [x] `InstallerFileRule` — scan locations:
+  - [x] Downloads, Desktop
+  - [x] `~/Library/Mobile Documents/com~apple~CloudDocs/` (iCloud Drive)
+  - [ ] Telegram downloads — path unverifiable (not installed on dev machine); skip
+- [x] Match: `.dmg`, `.pkg`, `.iso`, `.xip` at any depth
+- [x] For `.zip`: inspect PK magic + central directory for `.app/` or `Payload/` entries
+- [x] Risk: `.review` (may be intentionally kept)
+- [x] Minimum age gate: 7 days (fresh downloads excluded)
+- [x] Register in `RuleCatalog` (baseline profile + `all`)
 
 ---
 
