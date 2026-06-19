@@ -146,6 +146,7 @@ final class AIToolCachesRuleTests: XCTestCase {
         // Dotfile tools
         XCTAssertTrue(paths.contains(where: { $0.hasSuffix("/.tabnine") }))
         XCTAssertTrue(paths.contains(where: { $0.hasSuffix("/.continue/cache") }))
+        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("/.copilot/logs") }))
         // Catalog is the source of truth — count must be > 0
         XCTAssertGreaterThan(paths.count, 0)
     }
@@ -168,6 +169,7 @@ final class AppCatalogTests: XCTestCase {
         XCTAssertTrue(ids.contains("windsurf"))
         XCTAssertTrue(ids.contains("tabnine"))
         XCTAssertTrue(ids.contains("continue-dev"))
+        XCTAssertTrue(ids.contains("github-copilot-cli"))
     }
 
     func testAllEntriesHaveRequiredFields() {
@@ -305,11 +307,33 @@ final class InstallerFileRuleTests: XCTestCase {
 
     // MARK: Extension filtering
 
-    func testZipExcluded() {
-        XCTAssertFalse(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Downloads/archive.zip"),
-            resourceValues: oldValues()
-        ))
+    func testGenericZipExcluded() throws {
+        // A ZIP with no .app or Payload/ entries must be excluded.
+        let url = FileManager.default.temporaryDirectory.appending(path: "generic.zip")
+        try Self.makeZipData(entryName: "readme.txt").write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertFalse(rule.include(fileURL: url, resourceValues: oldValues()))
+    }
+
+    func testInstallerZipWithPayloadIncluded() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "App.ipa.zip")
+        try Self.makeZipData(entryName: "Payload/MyApp.app/Info.plist").write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertTrue(rule.include(fileURL: url, resourceValues: oldValues()))
+    }
+
+    func testInstallerZipWithAppBundleIncluded() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "App.zip")
+        try Self.makeZipData(entryName: "MyApp.app/Contents/Info.plist").write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertTrue(rule.include(fileURL: url, resourceValues: oldValues()))
+    }
+
+    func testInstallerZipFreshExcluded() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "FreshApp.zip")
+        try Self.makeZipData(entryName: "Payload/App.app/Info.plist").write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertFalse(rule.include(fileURL: url, resourceValues: freshValues()))
     }
 
     func testExeExcluded() {
@@ -319,14 +343,85 @@ final class InstallerFileRuleTests: XCTestCase {
         ))
     }
 
+    // MARK: iCloud Drive
+
+    func testOldDmgInICloudIncluded() {
+        XCTAssertTrue(rule.include(
+            fileURL: URL(fileURLWithPath: "\(home)/Library/Mobile Documents/com~apple~CloudDocs/App.dmg"),
+            resourceValues: oldValues()
+        ))
+    }
+
     // MARK: Target directories
 
     func testTargetDirectories() {
         let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: home))
         let dirs = rule.targetDirectories(environment: env)
-        XCTAssertEqual(dirs.count, 2)
+        XCTAssertEqual(dirs.count, 3)
         XCTAssertTrue(dirs.contains(where: { $0.path.hasSuffix("/Downloads") }))
         XCTAssertTrue(dirs.contains(where: { $0.path.hasSuffix("/Desktop") }))
+        XCTAssertTrue(dirs.contains(where: { $0.path.contains("Mobile Documents") }))
+    }
+
+    // MARK: ZIP binary builder (test helper)
+
+    /// Builds a minimal valid ZIP archive containing a single stored entry.
+    private static func makeZipData(entryName: String) -> Data {
+        func le32(_ n: Int) -> Data { withUnsafeBytes(of: UInt32(n).littleEndian) { Data($0) } }
+        func le16(_ n: Int) -> Data { withUnsafeBytes(of: UInt16(n).littleEndian) { Data($0) } }
+
+        let nameBytes = Data(entryName.utf8)
+        let content   = Data([0x78]) // single byte payload
+
+        var zip = Data()
+        // Local file header
+        zip += Data([0x50, 0x4B, 0x03, 0x04]) // signature
+        zip += le16(20)                         // version needed
+        zip += le16(0)                          // flags
+        zip += le16(0)                          // compression (stored)
+        zip += le16(0); zip += le16(0)          // mod time, mod date
+        zip += le32(0)                          // CRC-32 (omitted for test)
+        zip += le32(content.count)              // compressed size
+        zip += le32(content.count)              // uncompressed size
+        zip += le16(nameBytes.count)            // filename length
+        zip += le16(0)                          // extra field length
+        zip += nameBytes
+        zip += content
+
+        let cdOffset = zip.count
+
+        // Central directory entry
+        var cd = Data()
+        cd += Data([0x50, 0x4B, 0x01, 0x02])  // signature
+        cd += le16(0x0314)                      // version made by (Unix 2.0)
+        cd += le16(20)                          // version needed
+        cd += le16(0)                          // flags
+        cd += le16(0)                          // compression
+        cd += le16(0); cd += le16(0)           // mod time, mod date
+        cd += le32(0)                          // CRC-32
+        cd += le32(content.count)              // compressed size
+        cd += le32(content.count)              // uncompressed size
+        cd += le16(nameBytes.count)            // filename length
+        cd += le16(0)                          // extra field length
+        cd += le16(0)                          // comment length
+        cd += le16(0)                          // disk start
+        cd += le16(0)                          // internal attributes
+        cd += le32(0)                          // external attributes
+        cd += le32(0)                          // local header offset
+        cd += nameBytes
+        zip += cd
+
+        // End of central directory
+        zip += Data([0x50, 0x4B, 0x05, 0x06])  // signature
+        zip += le16(0)                           // disk number
+        zip += le16(0)                           // disk with CD
+        zip += le16(1)                           // entries on this disk
+        zip += le16(1)                           // total entries
+        zip += le32(cd.count)                    // CD size
+        zip += le32(cdOffset)                    // CD offset
+        zip += le16(0)                           // comment length
+
+        return zip
     }
 }
 
@@ -353,9 +448,22 @@ final class ScanPolicyInstallerTests: XCTestCase {
         ))
     }
 
-    func testZipNotInstallerFile() {
-        XCTAssertFalse(ScanPolicy.isInstallerFile(
-            URL(fileURLWithPath: "\(home)/Downloads/archive.zip")
+    func testZipInDownloadsIsInstallerFile() {
+        // ZIP in Downloads qualifies for the cleanup bypass (content-verified at scan time).
+        XCTAssertTrue(ScanPolicy.isInstallerFile(
+            URL(fileURLWithPath: "\(home)/Downloads/App.zip")
+        ))
+    }
+
+    func testDmgInICloudIsInstallerFile() {
+        XCTAssertTrue(ScanPolicy.isInstallerFile(
+            URL(fileURLWithPath: "\(home)/Library/Mobile Documents/com~apple~CloudDocs/App.dmg")
+        ))
+    }
+
+    func testZipInICloudIsInstallerFile() {
+        XCTAssertTrue(ScanPolicy.isInstallerFile(
+            URL(fileURLWithPath: "\(home)/Library/Mobile Documents/com~apple~CloudDocs/App.zip")
         ))
     }
 

@@ -116,15 +116,18 @@ public enum ScanPolicy {
     /// File extensions that identify macOS installer packages.
     public static let installerExtensions: Set<String> = ["dmg", "pkg", "iso", "xip"]
 
-    /// Returns `true` for installer files sitting inside `~/Downloads` or `~/Desktop`.
-    /// Used by `CleanupEngine` as a safety-guard bypass so that `InstallerFileRule`
-    /// findings (which live in protected paths) can be cleaned after the user confirms.
+    /// Returns `true` for installer files sitting inside `~/Downloads`, `~/Desktop`, or
+    /// iCloud Drive (`~/Library/Mobile Documents/`). ZIP files are included so that
+    /// installer ZIPs found by `InstallerFileRule` (which performs binary verification
+    /// at scan time) can be cleaned by `CleanupEngine` after user confirmation.
     public static func isInstallerFile(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
-        guard installerExtensions.contains(ext) else { return false }
+        guard installerExtensions.contains(ext) || ext == "zip" else { return false }
         let path = url.path.lowercased()
         let home = FileManager.default.homeDirectoryForCurrentUser.path.lowercased()
-        return path.hasPrefix(home + "/downloads/") || path.hasPrefix(home + "/desktop/")
+        return path.hasPrefix(home + "/downloads/")
+            || path.hasPrefix(home + "/desktop/")
+            || path.hasPrefix(home + "/library/mobile documents/")
     }
 
     public static let developerReviewPathMarkers = [
