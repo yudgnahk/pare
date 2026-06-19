@@ -1,21 +1,21 @@
 # Clean My Mac (Pure Swift) - Phase 2 Plan
 
 ## Phase Goal
-Ship a native macOS SwiftUI app target that reuses the existing `CleanMyMacCore` scanner stack, while keeping CLI parity for debugging and result validation.
+Ship a native macOS SwiftUI app target that reuses the existing `PareCore` scanner stack, while keeping CLI parity for debugging and result validation.
 
-Deliver a polished, visually rich, premium-feeling UI inspired by CleanMyMac-level quality, with strong visual hierarchy, motion, and macOS-native fit and finish.
+Deliver a polished, visually rich, premium-feeling UI inspired by Pare-level quality, with strong visual hierarchy, motion, and macOS-native fit and finish.
 
 ## Why This Phase
 - Convert the Phase 1 scanner MVP into a user-facing app shell.
-- Prove architecture reuse (`CleanMyMacCore` shared by app and CLI) before adding cleanup workflows.
+- Prove architecture reuse (`PareCore` shared by app and CLI) before adding cleanup workflows.
 - Establish confidence that UI-driven scans produce the same totals as CLI runs.
 
 ## Scope
 
 ### In Scope
-- Add a macOS SwiftUI app target (for example, `CleanMyMacApp`) in the same workspace/package.
-- Reuse `CleanMyMacCore` directly from the app target with no duplicated scan logic.
-- Keep `cleanmymac-cli` as a diagnostic runner on top of the same core module.
+- Add a macOS SwiftUI app target (for example, `PareApp`) in the same workspace/package.
+- Reuse `PareCore` directly from the app target with no duplicated scan logic.
+- Keep `pare-cli` as a diagnostic runner on top of the same core module.
 - Introduce app state/view model wrapping `ScanRunner` and `RuleCatalog`.
 - Implement profile selector UI for Baseline and Developer profiles.
 - Implement scan trigger UI with loading/progress presentation.
@@ -47,8 +47,8 @@ Deliver a polished, visually rich, premium-feeling UI inspired by CleanMyMac-lev
 ## Implementation Plan
 
 ### 1) App Target and Shared Core Wiring
-- Create `CleanMyMacApp` target and entry point.
-- Link/import `CleanMyMacCore` directly.
+- Create `PareApp` target and entry point.
+- Link/import `PareCore` directly.
 - Add a minimal dependency boundary check to ensure scanning logic lives only in core.
 
 ### 2) State Management and Scan Orchestration
@@ -154,7 +154,7 @@ Deliver a polished, visually rich, premium-feeling UI inspired by CleanMyMac-lev
 ## Current Status Snapshot
 - Completed:
   - SwiftUI app target created and integrated with package
-  - Shared core wiring in app via `CleanMyMacCore`
+  - Shared core wiring in app via `PareCore`
   - Initial premium UI primitives and dashboard implemented
   - Shared scan policy implemented (`50 MB` large-file threshold, `3-day` cache-like age guardrail, low-impact path filtering)
   - Grouped large-file sections (`> 50 MB`) implemented in app UI
@@ -169,7 +169,7 @@ Deliver a polished, visually rich, premium-feeling UI inspired by CleanMyMac-lev
 
 ## Deliverables
 - New SwiftUI macOS app target integrated in the existing workspace.
-- Shared-core architecture verified (app + CLI both use `CleanMyMacCore`).
+- Shared-core architecture verified (app + CLI both use `PareCore`).
 - Working scan flow in app for Baseline and Developer profiles.
 - Results presentation with total reclaimable, category summaries, and top files.
 - Per-category large-file list (greater than 50 MB) with Finder reveal action.
@@ -182,7 +182,7 @@ Deliver a polished, visually rich, premium-feeling UI inspired by CleanMyMac-lev
 ## Definition of Done
 - App target builds and launches locally.
 - App scan succeeds for Baseline and Developer profiles.
-- No scanner logic duplicated outside `CleanMyMacCore`.
+- No scanner logic duplicated outside `PareCore`.
 - CLI remains functional and uses same core code path.
 - App and CLI summary totals are consistent for at least one controlled verification run per profile.
 - Result lists show only low-impact candidates and exclude obvious app-critical data paths.

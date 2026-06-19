@@ -2,7 +2,7 @@
 
 Each story is a self-contained unit of user-visible value. Stories are sized to be meaningful PRs (multiple files, end-to-end feature), not individual rule additions or test tweaks.
 
-> **Priority note:** The SwiftUI app is the primary deliverable. The CLI (`CleanMyMacCLI`) is a secondary diagnostic/testing tool. CLI sub-tasks in each story are optional — implement them only when they are trivial or reuse shared core utilities already needed for the app.
+> **Priority note:** The SwiftUI app is the primary deliverable. The CLI (`PareCLI`) is a secondary diagnostic/testing tool. CLI sub-tasks in each story are optional — implement them only when they are trivial or reuse shared core utilities already needed for the app.
 
 ---
 
@@ -14,7 +14,7 @@ Each story is a self-contained unit of user-visible value. Stories are sized to 
 
 - **SwiftUI**: "By Tool" section always visible (not profile-gated). Collapsible row per app showing total reclaimable bytes, share percentage, and file count. Expand to see the top 10 files ≥ 1 MB for that app.
 - **CLI**: Per-app rollup section on developer/designer/video-builder profiles with sizes and percentages.
-- **Core**: `ScanReportAnnotator` in `CleanMyMacCore` — `sourceApp(for:)` maps findings to apps via ordered path-pattern matching + reverse-DNS bundle ID extraction from `~/Library/Caches/`. `appRollups(from:)` returns `AppRollup` structs with `topFiles: [TopFile]`; apps below 1 MB total fold into "Other".
+- **Core**: `ScanReportAnnotator` in `PareCore` — `sourceApp(for:)` maps findings to apps via ordered path-pattern matching + reverse-DNS bundle ID extraction from `~/Library/Caches/`. `appRollups(from:)` returns `AppRollup` structs with `topFiles: [TopFile]`; apps below 1 MB total fold into "Other".
 
 ### Attribution coverage
 
@@ -27,17 +27,17 @@ Xcode, JetBrains, VS Code, Docker, Package Managers, Safari, Chrome, Firefox, Ad
 
 ### Key files
 
-- `Sources/CleanMyMacCore/` — new `ScanReportAnnotator.swift`
-- `Sources/CleanMyMacCLI/main.swift` — use shared annotator
-- `Sources/CleanMyMacApp/ViewModels/ScanDashboardViewModel.swift` — expose per-tool rollups
-- `Sources/CleanMyMacApp/Views/ScanDashboardView.swift` — "By Tool" section
+- `Sources/PareCore/` — new `ScanReportAnnotator.swift`
+- `Sources/PareCLI/main.swift` — use shared annotator
+- `Sources/PareApp/ViewModels/ScanDashboardViewModel.swift` — expose per-tool rollups
+- `Sources/PareApp/Views/ScanDashboardView.swift` — "By Tool" section
 
 ### Session prompt
 
 ```text
 Implement US-1 (Developer Scan Dashboard) from docs/user-stories.md.
 
-1. Create Sources/CleanMyMacCore/ScanReportAnnotator.swift:
+1. Create Sources/PareCore/ScanReportAnnotator.swift:
    - Move sourceApp(for:) logic from main.swift into a public struct ScanReportAnnotator
    - Add appRollups(from:) → [(app: String, totalBytes: Int64, fileCount: Int)] sorted by size
 
@@ -67,7 +67,7 @@ Run swift test. Launch the app (make run-app), switch to Developer profile, run 
 
 ### What it covers
 
-- **Incremental metadata cache**: `ScanMetadataCache` actor persists per-directory modification timestamps to `~/Library/Application Support/CleanMyMac/scan-cache.json`. On subsequent runs, `FileSystemTraversal` skips directories whose `contentModificationDate` hasn't changed.
+- **Incremental metadata cache**: `ScanMetadataCache` actor persists per-directory modification timestamps to `~/Library/Application Support/Pare/scan-cache.json`. On subsequent runs, `FileSystemTraversal` skips directories whose `contentModificationDate` hasn't changed.
 - **Cache invalidation**: cache entry is invalidated when the directory's `contentModificationDate` changes, or when the profile changes. Manual "Force rescan" clears the cache.
 - **Benchmark**: add `ScanBenchmarkTests` that measures traversal time on the real home directory and asserts the second run is ≥ 30% faster.
 - **Reliability**: add tests that simulate a scan being cancelled mid-run and verify that a subsequent scan completes correctly without stale state.
@@ -80,28 +80,28 @@ Run swift test. Launch the app (make run-app), switch to Developer profile, run 
 ### Acceptance criteria
 
 - Second scan of the same profile is measurably faster (manual benchmark, documented)
-- Cache file is written to `~/Library/Application Support/CleanMyMac/scan-cache.json`
+- Cache file is written to `~/Library/Application Support/Pare/scan-cache.json`
 - Changing profile or calling "Force rescan" triggers a full traversal
 - Cancelled scan followed by a new scan produces correct results
 - `swift test` passes including new benchmark and reliability tests
 
 ### Key files
 
-- `Sources/CleanMyMacCore/Scanning/` — new `ScanMetadataCache.swift`
-- `Sources/CleanMyMacCore/Scanning/FileSystemTraversal.swift` — integrate cache check
-- `Sources/CleanMyMacCore/Scanning/ScanRunner.swift` — pass cache to traversal
-- `Sources/CleanMyMacApp/ViewModels/ScanDashboardViewModel.swift` — expose "Force rescan"
-- `Tests/CleanMyMacCoreTests/` — new `ScanBenchmarkTests.swift`, `ScanReliabilityTests.swift`
+- `Sources/PareCore/Scanning/` — new `ScanMetadataCache.swift`
+- `Sources/PareCore/Scanning/FileSystemTraversal.swift` — integrate cache check
+- `Sources/PareCore/Scanning/ScanRunner.swift` — pass cache to traversal
+- `Sources/PareApp/ViewModels/ScanDashboardViewModel.swift` — expose "Force rescan"
+- `Tests/PareCoreTests/` — new `ScanBenchmarkTests.swift`, `ScanReliabilityTests.swift`
 
 ### Session prompt
 
 ```text
 Implement US-2 (Scan Performance) from docs/user-stories.md.
 
-1. Create Sources/CleanMyMacCore/Scanning/ScanMetadataCache.swift:
+1. Create Sources/PareCore/Scanning/ScanMetadataCache.swift:
    - actor ScanMetadataCache
    - Loads/saves a [String: Date] dictionary (directory path → last-seen mtime) to
-     ~/Library/Application Support/CleanMyMac/scan-cache.json
+     ~/Library/Application Support/Pare/scan-cache.json
    - API: func isFresh(directory: URL, currentMtime: Date) -> Bool
           func update(directory: URL, mtime: Date)
           func invalidate()
@@ -136,7 +136,7 @@ Run swift test. Run make run PROFILE=developer twice and record the time differe
 
 **Cleanup history UI:**
 - New "History" tab in the app
-- Lists past cleanup sessions from `CleanupTransaction` JSON records in `~/Library/Application Support/CleanMyMac/transactions/`
+- Lists past cleanup sessions from `CleanupTransaction` JSON records in `~/Library/Application Support/Pare/transactions/`
 - Each session shows: date, total size moved, item count
 - Expand a session to see individual items; each item has a "Restore" button → calls `CleanupEngine.restore(transaction:itemPath:)`
 - "Clear history" button removes all transaction records
@@ -157,10 +157,10 @@ Run swift test. Run make run PROFILE=developer twice and record the time differe
 
 ### Key files
 
-- `Sources/CleanMyMacApp/Views/Components/` — new `ExcludeButton.swift`, swipe action on `LargeFileRow`/`TopFileRow`
-- `Sources/CleanMyMacApp/Views/` — new `ExclusionListView.swift`, `HistoryView.swift`
-- `Sources/CleanMyMacApp/ViewModels/` — new `ExclusionListViewModel.swift`, `HistoryViewModel.swift`
-- `Sources/CleanMyMacApp/Views/ScanDashboardView.swift` — Settings sheet trigger, History tab
+- `Sources/PareApp/Views/Components/` — new `ExcludeButton.swift`, swipe action on `LargeFileRow`/`TopFileRow`
+- `Sources/PareApp/Views/` — new `ExclusionListView.swift`, `HistoryView.swift`
+- `Sources/PareApp/ViewModels/` — new `ExclusionListViewModel.swift`, `HistoryViewModel.swift`
+- `Sources/PareApp/Views/ScanDashboardView.swift` — Settings sheet trigger, History tab
 
 ### Session prompt
 
@@ -177,7 +177,7 @@ Part A — Exclusion list UI:
 
 Part B — History UI:
 1. Create HistoryViewModel (@MainActor ObservableObject): loads CleanupTransaction records
-   from ~/Library/Application Support/CleanMyMac/transactions/, exposes restore(item:) and
+   from ~/Library/Application Support/Pare/transactions/, exposes restore(item:) and
    clearAll().
 2. Create HistoryView: sectioned List by session date, expandable rows showing individual
    items, Restore button per item, Clear History button in toolbar.
@@ -194,7 +194,7 @@ Run swift test. Launch the app (make run-app) and manually verify exclude and re
 
 ### What it covers
 
-- **Code signing**: add entitlements file (`CleanMyMacApp.entitlements`) with `com.apple.security.files.user-selected.read-write` and hardened runtime enabled in `Package.swift` or Xcode project settings
+- **Code signing**: add entitlements file (`PareApp.entitlements`) with `com.apple.security.files.user-selected.read-write` and hardened runtime enabled in `Package.swift` or Xcode project settings
 - **Notarization workflow**: document or automate the `xcrun notarytool` steps (can be a `make notarize` target with instructions)
 - **Diagnostics export**: `DiagnosticsExporter` in core that produces a JSON bundle containing: app version, macOS version, last scan report summary, rule catalog for the active profile, and anonymised path prefixes. Exposed as "Export Diagnostics…" menu item in the app.
 - **Distribution decision** (pending from Phase 0): document whether direct distribution or App Store is chosen and what entitlements that requires
@@ -214,9 +214,9 @@ Run swift test. Launch the app (make run-app) and manually verify exclude and re
 ### Key files
 
 - `Package.swift` / Xcode project — signing settings, entitlements
-- `CleanMyMacApp.entitlements` — new file
-- `Sources/CleanMyMacCore/` — new `DiagnosticsExporter.swift`
-- `Sources/CleanMyMacApp/` — "Export Diagnostics…" menu item
+- `PareApp.entitlements` — new file
+- `Sources/PareCore/` — new `DiagnosticsExporter.swift`
+- `Sources/PareApp/` — "Export Diagnostics…" menu item
 - `Makefile` — new `notarize` target
 
 ### Session prompt
@@ -224,14 +224,14 @@ Run swift test. Launch the app (make run-app) and manually verify exclude and re
 ```text
 Implement US-4 (Distribution Readiness) from docs/user-stories.md.
 
-1. Create CleanMyMacApp/CleanMyMacApp.entitlements with:
+1. Create PareApp/PareApp.entitlements with:
    - com.apple.security.app-sandbox = true (if targeting App Store) OR
      com.apple.security.cs.allow-unsigned-executable-memory = false (direct distribution)
    - com.apple.security.files.user-selected.read-write = true
    - com.apple.security.files.downloads.read-write = true
    Wire entitlements into Package.swift or the Xcode target.
 
-2. Create Sources/CleanMyMacCore/DiagnosticsExporter.swift:
+2. Create Sources/PareCore/DiagnosticsExporter.swift:
    - struct DiagnosticsBundle: Codable — appVersion, macOSVersion, scanDate,
      profileUsed, categorySummaries (no file paths), ruleIds
    - func export(report: ScanReport, profile: ScanProfile) -> DiagnosticsBundle
@@ -244,5 +244,5 @@ Implement US-4 (Distribution Readiness) from docs/user-stories.md.
    (substituting $APPLE_ID, $TEAM_ID, $APP_PASSWORD env vars).
 
 Run swift test. Build and verify the entitlements are embedded in the binary
-with `codesign -d --entitlements - .build/release/CleanMyMacApp`.
+with `codesign -d --entitlements - .build/release/PareApp`.
 ```

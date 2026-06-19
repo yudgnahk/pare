@@ -39,7 +39,7 @@ Out of scope:
 - Keep existing sensitive marker checks in path matching.
 
 2) Add VS Code review rule
-- New rule file: `Sources/CleanMyMacCore/Rules/VSCodeReviewRequiredStateRule.swift`
+- New rule file: `Sources/PareCore/Rules/VSCodeReviewRequiredStateRule.swift`
 - Category: `.developerPackageCaches` (or new category later if needed)
 - Risk: `.review`
 - Include logic:
@@ -48,7 +48,7 @@ Out of scope:
   - apply default cache-like age policy for `workspaceStorage`
 
 3) Add JetBrains review rule
-- New rule file: `Sources/CleanMyMacCore/Rules/JetBrainsReviewRequiredRule.swift`
+- New rule file: `Sources/PareCore/Rules/JetBrainsReviewRequiredRule.swift`
 - Category: `.developerPackageCaches`
 - Risk: `.review`
 - Include logic:
@@ -57,11 +57,11 @@ Out of scope:
   - apply age filter where appropriate
 
 4) Wire rules into developer catalog
-- Update `Sources/CleanMyMacCore/Scanning/RuleCatalog.swift` developer list.
+- Update `Sources/PareCore/Scanning/RuleCatalog.swift` developer list.
 - Place review rules after safe rules for predictable ordering.
 
 5) Add/expand tests
-- Update `Tests/CleanMyMacCoreTests/ScanRunnerTests.swift`:
+- Update `Tests/PareCoreTests/ScanRunnerTests.swift`:
   - developer catalog includes new rule ids
   - VS Code review rule includes intended paths
   - VS Code review rule excludes sensitive/state-disallowed paths
@@ -104,7 +104,7 @@ Requirements:
 2) Add exclusion markers to suppress active state/config paths (options/workspace/project metadata).
 3) Keep safety guardrails and risk labeling (`REVIEW`) in shared core policy.
 4) Wire new rules into developer profile catalog.
-5) Add/extend tests in `Tests/CleanMyMacCoreTests/ScanRunnerTests.swift` for path inclusion/exclusion and risk labels.
+5) Add/extend tests in `Tests/PareCoreTests/ScanRunnerTests.swift` for path inclusion/exclusion and risk labels.
 6) Run `swift test` and `make run PROFILE=developer TOP=50` and summarize relevant findings.
 
 Constraints:

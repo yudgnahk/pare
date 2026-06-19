@@ -2,39 +2,39 @@
 import PackageDescription
 
 let package = Package(
-    name: "CleanMyMac",
+    name: "Pare",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .library(
-            name: "CleanMyMacCore",
-            targets: ["CleanMyMacCore"]
+            name: "PareCore",
+            targets: ["PareCore"]
         ),
         .executable(
-            name: "CleanMyMacApp",
-            targets: ["CleanMyMacApp"]
+            name: "PareApp",
+            targets: ["PareApp"]
         ),
         .executable(
-            name: "cleanmymac-cli",
-            targets: ["CleanMyMacCLI"]
+            name: "pare-cli",
+            targets: ["PareCLI"]
         )
     ],
     targets: [
         .target(
-            name: "CleanMyMacCore"
+            name: "PareCore"
         ),
         .executableTarget(
-            name: "CleanMyMacApp",
-            dependencies: ["CleanMyMacCore"]
+            name: "PareApp",
+            dependencies: ["PareCore"]
         ),
         .executableTarget(
-            name: "CleanMyMacCLI",
-            dependencies: ["CleanMyMacCore"]
+            name: "PareCLI",
+            dependencies: ["PareCore"]
         ),
         .testTarget(
-            name: "CleanMyMacCoreTests",
-            dependencies: ["CleanMyMacCore"]
+            name: "PareCoreTests",
+            dependencies: ["PareCore"]
         )
     ]
 )

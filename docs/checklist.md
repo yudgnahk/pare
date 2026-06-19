@@ -22,9 +22,9 @@
 - [x] Verify manual baseline run via `make start`.
 
 ## Phase 2 - SwiftUI macOS App Target (Core Reuse)
-- [x] Create a macOS SwiftUI app target (for example, `CleanMyMacApp`) in the same package/workspace.
-- [x] Reuse `CleanMyMacCore` directly from the app target (no duplicated scan logic).
-- [x] Keep `cleanmymac-cli` as a debug/diagnostic runner that uses the same core module.
+- [x] Create a macOS SwiftUI app target (for example, `PareApp`) in the same package/workspace.
+- [x] Reuse `PareCore` directly from the app target (no duplicated scan logic).
+- [x] Keep `pare-cli` as a debug/diagnostic runner that uses the same core module.
 - [x] Add an app state/view model that wraps `ScanRunner` and `RuleCatalog`.
 - [x] Add profile selector UI (Baseline/Developer) wired to existing profile rules.
 - [x] Add scan action UI and show loading/progress state.

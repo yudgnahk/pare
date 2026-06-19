@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project: CleanMyMac (Pure Swift)
+## Project: Pare (Pure Swift)
 
 macOS 13+ disk cleanup tool with three targets sharing a single core library.
 
@@ -14,20 +14,20 @@ Swift 5.9 | SwiftUI + AppKit | Swift Package Manager | XCTest | macOS 13+
 
 ```
 Sources/
-  CleanMyMacCore/       # Library — no UI dependencies
+  PareCore/       # Library — no UI dependencies
     Models/             # ScanFinding, ScanReport, ScanCategory, RiskLevel
     Scanning/           # ScanRule protocol, ScanRunner, FileSystemTraversal, RuleCatalog, ScanPolicy, FileSystemUtils
     Rules/              # One file per ScanRule implementation
     Cleanup/            # CleanupEngine (actor), CleanupTransaction, ExclusionList
     ScanReportAnnotator.swift  # App-to-findings attribution (sourceApp, appRollups, TopFile)
-  CleanMyMacApp/        # SwiftUI macOS app target
+  PareApp/        # SwiftUI macOS app target
     ViewModels/         # ScanDashboardViewModel (@MainActor ObservableObject)
     Views/              # ScanDashboardView + Components/
     Theme/              # AppTheme
-  CleanMyMacCLI/        # CLI diagnostic runner — secondary tool for fast testing only
+  PareCLI/        # CLI diagnostic runner — secondary tool for fast testing only
     main.swift          # @main struct, argparse, formatted output
 Tests/
-  CleanMyMacCoreTests/  # XCTest — ScanRunnerTests, ScanIntegrationTests,
+  PareCoreTests/  # XCTest — ScanRunnerTests, ScanIntegrationTests,
                         #          CleanupEngineTests, ExclusionListTests
 ```
 
@@ -52,9 +52,9 @@ swift test --filter ScanRunnerTests # run a single test class
 
 **ScanPolicy** — static guardrail layer shared by scanning and cleanup. Defines protected/sensitive path markers, app-state-sensitive paths (VS Code settings, SSH keys, and all major JetBrains IDEs: IntelliJ, PyCharm, WebStorm, PhpStorm, Rider, CLion, RubyMine, Android Studio, Fleet, Aqua, DataSpell, RustRover), persona path markers, per-category minimum ages (logs: 1 day; build artifacts: none; caches: 3 days default), and the large-file threshold (50 MB). Every path must pass `isLowImpactPath`, `matchesPersonaPath`, or `isWrongPlatformBinary` before it can be cleaned. `isWrongPlatformBinary` is a narrow bypass for Windows/Linux binaries at the top level of `~/Downloads` only. `effectiveAgeDate(from:)` returns the oldest of creation/modification date for directories so that JetBrains migration activity (which resets mtime) cannot defeat the age gate.
 
-**CleanupEngine (actor)** — `quickClean` (safe only), `deepClean` (safe + review, requires `confirmed: true`), `clean` (generic). Always moves to Trash (never permanent delete). Re-verifies ScanPolicy on every item at cleanup time as a belt-and-suspenders check. Persists `CleanupTransaction` JSON records to `~/Library/Application Support/CleanMyMac/transactions/` for undo/restore.
+**CleanupEngine (actor)** — `quickClean` (safe only), `deepClean` (safe + review, requires `confirmed: true`), `clean` (generic). Always moves to Trash (never permanent delete). Re-verifies ScanPolicy on every item at cleanup time as a belt-and-suspenders check. Persists `CleanupTransaction` JSON records to `~/Library/Application Support/Pare/transactions/` for undo/restore.
 
-**ExclusionList** — user-defined path exclusions (prefix or exact). Loaded by `ScanRunner` and checked after rule matching; persisted to `~/Library/Application Support/CleanMyMac/exclusions.json`.
+**ExclusionList** — user-defined path exclusions (prefix or exact). Loaded by `ScanRunner` and checked after rule matching; persisted to `~/Library/Application Support/Pare/exclusions.json`.
 
 **ScanReportAnnotator** — maps `ScanFinding` paths to source apps (`sourceApp(for:)`) using ordered path-pattern matching plus reverse-DNS bundle ID extraction from `~/Library/Caches/`. `appRollups(from:)` returns per-app totals with the top 10 files ≥ 1 MB each; apps below 1 MB total are folded into "Other".
 
@@ -68,11 +68,11 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 
 ## Priorities
 
-**The SwiftUI app (`CleanMyMacApp`) is the primary deliverable.** The CLI is a secondary diagnostic/fast-testing tool. When implementing features, focus on the app experience first. CLI updates are optional and only warranted when trivial (e.g. already using a shared core utility).
+**The SwiftUI app (`PareApp`) is the primary deliverable.** The CLI is a secondary diagnostic/fast-testing tool. When implementing features, focus on the app experience first. CLI updates are optional and only warranted when trivial (e.g. already using a shared core utility).
 
 ## Conventions
 
-- New scan rules go in `Sources/CleanMyMacCore/Rules/` and must be registered in `RuleCatalog`.
+- New scan rules go in `Sources/PareCore/Rules/` and must be registered in `RuleCatalog`.
 - Rules that need sibling-directory comparison (e.g. version deduplication) implement `customScan` instead of `include`.
 - `ScanPolicy` is the only place path safety logic lives — never inline path checks in rules or the engine.
 - Shared filesystem utilities (e.g. `directorySize`) live in `FileSystemUtils` — don't duplicate them in individual rules.
@@ -92,7 +92,7 @@ The app runs a single unified scan using `RuleCatalog.all`; the CLI retains prof
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **clean-my-mac** (224 symbols, 212 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **pare** (224 symbols, 212 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -108,7 +108,7 @@ This project is indexed by GitNexus as **clean-my-mac** (224 symbols, 212 relati
 
 1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows related to the issue
 2. `gitnexus_context({name: "<suspect function>"})` — see all callers, callees, and process participation
-3. `READ gitnexus://repo/clean-my-mac/process/{processName}` — trace the full execution flow step by step
+3. `READ gitnexus://repo/pare/process/{processName}` — trace the full execution flow step by step
 4. For regressions: `gitnexus_detect_changes({scope: "compare", base_ref: "main"})` — see what your branch changed
 
 ## When Refactoring
@@ -147,10 +147,10 @@ This project is indexed by GitNexus as **clean-my-mac** (224 symbols, 212 relati
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/clean-my-mac/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/clean-my-mac/clusters` | All functional areas |
-| `gitnexus://repo/clean-my-mac/processes` | All execution flows |
-| `gitnexus://repo/clean-my-mac/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/pare/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/pare/clusters` | All functional areas |
+| `gitnexus://repo/pare/processes` | All execution flows |
+| `gitnexus://repo/pare/process/{name}` | Step-by-step execution trace |
 
 ## Self-Check Before Finishing
 
