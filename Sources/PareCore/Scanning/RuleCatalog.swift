@@ -27,7 +27,8 @@ public enum RuleCatalog {
             TemporaryFilesRule(),
             LogsAndCrashReportsRule(),
             BrowserCachesRule(),
-            InstallerFileRule()
+            InstallerFileRule(),
+            StaleAppVersionRule()
         ]
     }
 

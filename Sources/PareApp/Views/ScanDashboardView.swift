@@ -496,6 +496,8 @@ struct ScanDashboardView: View {
             return Color(red: 0.56, green: 0.76, blue: 0.98)
         case .installerFiles:
             return Color(red: 0.85, green: 0.75, blue: 0.45)
+        case .applications:
+            return Color(red: 0.72, green: 0.55, blue: 0.88)
         }
     }
 
