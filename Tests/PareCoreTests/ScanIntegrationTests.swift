@@ -1,5 +1,5 @@
 import XCTest
-@testable import App BCore
+@testable import PareCore
 
 // MARK: - Seeded home-tree helpers
 

@@ -54,6 +54,6 @@ Use the same profile in app and CLI during manual checks, then confirm:
 ## Optional Direct Swift Commands
 
 ```bash
-swift run cleanmymac-cli --profile baseline --top 20
-swift run cleanmymac-cli --profile developer --top 30
+swift run pare-cli --profile baseline --top 20
+swift run pare-cli --profile developer --top 30
 ```

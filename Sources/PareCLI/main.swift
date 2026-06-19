@@ -1,8 +1,8 @@
 import Foundation
-import App BCore
+import PareCore
 
 @main
-struct App BCLI {
+struct PareCLI {
     static func main() async {
         let args = CommandLine.arguments.dropFirst()
         let profile = parseProfile(from: args) ?? .baseline

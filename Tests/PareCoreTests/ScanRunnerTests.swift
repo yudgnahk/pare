@@ -1,5 +1,5 @@
 import XCTest
-@testable import App BCore
+@testable import PareCore
 
 final class ScanRunnerTests: XCTestCase {
     struct MockTraversal: FileTraversing {

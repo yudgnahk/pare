@@ -1,5 +1,5 @@
 import SwiftUI
-import App BCore
+import PareCore
 
 struct TopFileRow: View {
     let path: String

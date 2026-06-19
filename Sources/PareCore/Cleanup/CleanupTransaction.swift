@@ -68,7 +68,7 @@ public struct CleanupTransaction: Codable, Sendable, Identifiable {
 // MARK: - CleanupTransactionStore
 
 /// Persists and retrieves `CleanupTransaction` records as JSON files under
-/// `~/Library/Application Support/App B/transactions/`.
+/// `~/Library/Application Support/Pare/transactions/`.
 public final class CleanupTransactionStore: Sendable {
     public static let shared = CleanupTransactionStore()
 
@@ -80,7 +80,7 @@ public final class CleanupTransactionStore: Sendable {
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             transactionsDirectory = appSupport
-                .appending(path: "App B")
+                .appending(path: "Pare")
                 .appending(path: "transactions")
         }
     }

@@ -2,39 +2,39 @@
 import PackageDescription
 
 let package = Package(
-    name: "App B",
+    name: "Pare",
     platforms: [
         .macOS(.v13)
     ],
     products: [
         .library(
-            name: "App BCore",
-            targets: ["App BCore"]
+            name: "PareCore",
+            targets: ["PareCore"]
         ),
         .executable(
             name: "PareApp",
             targets: ["PareApp"]
         ),
         .executable(
-            name: "cleanmymac-cli",
-            targets: ["App BCLI"]
+            name: "pare-cli",
+            targets: ["PareCLI"]
         )
     ],
     targets: [
         .target(
-            name: "App BCore"
+            name: "PareCore"
         ),
         .executableTarget(
             name: "PareApp",
-            dependencies: ["App BCore"]
+            dependencies: ["PareCore"]
         ),
         .executableTarget(
-            name: "App BCLI",
-            dependencies: ["App BCore"]
+            name: "PareCLI",
+            dependencies: ["PareCore"]
         ),
         .testTarget(
-            name: "App BCoreTests",
-            dependencies: ["App BCore"]
+            name: "PareCoreTests",
+            dependencies: ["PareCore"]
         )
     ]
 )

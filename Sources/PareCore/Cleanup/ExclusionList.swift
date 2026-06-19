@@ -81,7 +81,7 @@ public struct ExclusionList: Codable, Sendable {
 // MARK: - ExclusionStore
 
 /// Persists a single `ExclusionList` as JSON at
-/// `~/Library/Application Support/App B/exclusions.json`.
+/// `~/Library/Application Support/Pare/exclusions.json`.
 public final class ExclusionStore: Sendable {
     public static let shared = ExclusionStore()
 
@@ -93,7 +93,7 @@ public final class ExclusionStore: Sendable {
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
             self.fileURL = appSupport
-                .appending(path: "App B")
+                .appending(path: "Pare")
                 .appending(path: "exclusions.json")
         }
     }
