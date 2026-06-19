@@ -1,4 +1,4 @@
-# Clean My Mac (Pure Swift) - Plan
+# Pare (Pure Swift) - Plan
 
 ## Goal
 Build a native macOS cleaning app in pure Swift that safely finds and removes reclaimable storage with a focus on developer, designer, and video workflows.

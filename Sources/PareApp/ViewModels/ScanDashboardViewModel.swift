@@ -220,10 +220,10 @@ final class ScanDashboardViewModel: ObservableObject {
                 revealFeedback = nil
                 cleanupState = .idle
                 state = .success
-
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                    resultsVisible = true
-                }
+                // Set directly — the view's .animation(value:) modifier handles the
+                // spring + per-row delay. Wrapping in withAnimation here would override
+                // the view's implicit animation and lose the staggered delay.
+                resultsVisible = true
             }
         }
     }

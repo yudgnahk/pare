@@ -4,41 +4,41 @@
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:clean-my-mac}",
-            "name": "Debug cleanmymac-cli",
-            "target": "cleanmymac-cli",
+            "cwd": "${workspaceFolder}",
+            "name": "Debug pare-cli",
+            "target": "pare-cli",
             "configuration": "debug",
-            "preLaunchTask": "swift: Build Debug cleanmymac-cli"
+            "preLaunchTask": "swift: Build Debug pare-cli"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:clean-my-mac}",
-            "name": "Release cleanmymac-cli",
-            "target": "cleanmymac-cli",
+            "cwd": "${workspaceFolder}",
+            "name": "Release pare-cli",
+            "target": "pare-cli",
             "configuration": "release",
-            "preLaunchTask": "swift: Build Release cleanmymac-cli"
+            "preLaunchTask": "swift: Build Release pare-cli"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:clean-my-mac}",
-            "name": "Debug CleanMyMacApp",
-            "target": "CleanMyMacApp",
+            "cwd": "${workspaceFolder}",
+            "name": "Debug PareApp",
+            "target": "PareApp",
             "configuration": "debug",
-            "preLaunchTask": "swift: Build Debug CleanMyMacApp"
+            "preLaunchTask": "swift: Build Debug PareApp"
         },
         {
             "type": "swift",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:clean-my-mac}",
-            "name": "Release CleanMyMacApp",
-            "target": "CleanMyMacApp",
+            "cwd": "${workspaceFolder}",
+            "name": "Release PareApp",
+            "target": "PareApp",
             "configuration": "release",
-            "preLaunchTask": "swift: Build Release CleanMyMacApp"
+            "preLaunchTask": "swift: Build Release PareApp"
         }
     ]
 }
