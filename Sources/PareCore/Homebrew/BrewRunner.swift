@@ -95,6 +95,93 @@ public struct BrewRunner: Sendable {
         }
     }
 
+    /// Runs a brew subcommand that requires admin privileges.
+    ///
+    /// Brew must run as the current user — it cannot run as root. It calls
+    /// `/usr/bin/sudo` internally for privileged steps (pkgutil, system deletes).
+    /// We inject the password by placing a temporary `sudo` wrapper first on PATH;
+    /// the wrapper pipes the password to `sudo -S` so the user is never prompted.
+    /// The temp directory is deleted the moment the stream finishes.
+    public func streamPrivileged(_ args: [String], password: String) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            do {
+                let tempDir = try createSudoWrapper(password: password)
+                Task {
+                    defer { try? FileManager.default.removeItem(atPath: tempDir) }
+                    guard let brewPath else {
+                        continuation.finish(throwing: BrewError.notInstalled)
+                        return
+                    }
+
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: brewPath)
+                    process.arguments = args
+                    process.standardInput = FileHandle.nullDevice
+
+                    var env = makeEnvironment()
+                    env["PATH"] = "\(tempDir):" + (env["PATH"] ?? "/usr/local/bin:/usr/bin:/bin")
+                    process.environment = env
+
+                    let stdoutPipe = Pipe()
+                    let stderrPipe = Pipe()
+                    process.standardOutput = stdoutPipe
+                    process.standardError = stderrPipe
+
+                    do { try process.run() } catch {
+                        continuation.finish(throwing: error)
+                        return
+                    }
+
+                    await withTaskGroup(of: Void.self) { group in
+                        group.addTask {
+                            do {
+                                for try await line in stdoutPipe.fileHandleForReading.bytes.lines {
+                                    continuation.yield(line)
+                                }
+                            } catch {}
+                        }
+                        group.addTask {
+                            do {
+                                for try await line in stderrPipe.fileHandleForReading.bytes.lines {
+                                    continuation.yield(line)
+                                }
+                            } catch {}
+                        }
+                    }
+
+                    process.waitUntilExit()
+                    if process.terminationStatus != 0 {
+                        continuation.finish(throwing: BrewError.failed(exitCode: process.terminationStatus, stderr: ""))
+                    } else {
+                        continuation.finish()
+                    }
+                }
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+    }
+
+    private func createSudoWrapper(password: String) throws -> String {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("pare-sudo-\(UUID().uuidString)")
+            .path
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true, attributes: nil)
+
+        let wrapperPath = "\(tempDir)/sudo"
+        // Single-quote the password to handle most special chars.
+        // A literal ' becomes '\'' (end quote, escaped quote, reopen quote).
+        let escaped = password.replacingOccurrences(of: "'", with: "'\\''")
+        let script = "#!/bin/sh\nprintf '%s\\n' '\(escaped)' | /usr/bin/sudo -S \"$@\"\n"
+        try script.write(toFile: wrapperPath, atomically: true, encoding: .utf8)
+        // 700: only this process can read/execute — minimise the exposure window.
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o700)],
+            ofItemAtPath: wrapperPath
+        )
+        return tempDir
+    }
+
     /// Runs a brew subcommand and streams output lines as they arrive.
     /// Yields both stdout and stderr lines interleaved.
     public func stream(_ args: [String]) -> AsyncThrowingStream<String, Error> {

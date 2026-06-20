@@ -27,6 +27,13 @@ struct HomebrewManagerView: View {
         .sheet(isPresented: $viewModel.showOperationSheet) {
             BrewOperationSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showingPasswordPromptSheet) {
+            PasswordPromptSheet(
+                label: viewModel.pendingPrivilegedLabel,
+                onConfirm: { viewModel.executePrivileged(password: $0) },
+                onCancel: { viewModel.cancelPasswordPrompt() }
+            )
+        }
         .onAppear {
             if viewModel.loadState == .idle { viewModel.load() }
         }
@@ -146,13 +153,29 @@ struct HomebrewManagerView: View {
                     .foregroundStyle(AppTheme.textSecondary)
                     .onChange(of: viewModel.showAllFormulae) { _ in viewModel.reloadFormulae() }
             }
+
+            if viewModel.selectedTab == .casks {
+                let count = viewModel.orphanedCasksCount
+                Toggle(
+                    count > 0 ? "Orphaned only (\(count))" : "Orphaned only",
+                    isOn: $viewModel.showOnlyOrphaned
+                )
+                .toggleStyle(.checkbox)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(count > 0 ? AppTheme.warning : AppTheme.textSecondary)
+                .disabled(count == 0 && !viewModel.showOnlyOrphaned)
+            }
         }
     }
 
     private func tabLabel(_ tab: HomebrewManagerViewModel.Tab) -> String {
         switch tab {
         case .formulae: return "Formulae (\(viewModel.formulae.count))"
-        case .casks: return "Casks (\(viewModel.casks.count))"
+        case .casks:
+            let orphaned = viewModel.casks.filter(\.isOrphaned).count
+            return orphaned > 0
+                ? "Casks (\(viewModel.casks.count), \(orphaned) orphaned)"
+                : "Casks (\(viewModel.casks.count))"
         case .outdated:
             let n = viewModel.outdated.count
             return n > 0 ? "Outdated (\(n))" : "Outdated"
@@ -228,30 +251,76 @@ struct HomebrewManagerView: View {
             if viewModel.filteredCasks.isEmpty {
                 emptyPrompt(icon: "app.badge", text: "No casks match the current filters")
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        casksHeader
-                        ForEach(viewModel.filteredCasks) { cask in
-                            CaskRow(cask: cask) {
-                                viewModel.uninstall(cask: cask)
+                VStack(spacing: 0) {
+                    if !viewModel.selectedCaskTokens.isEmpty {
+                        caskSelectionBar
+                    }
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            casksHeader
+                            ForEach(viewModel.filteredCasks) { cask in
+                                CaskRow(
+                                    cask: cask,
+                                    isSelected: viewModel.selectedCaskTokens.contains(cask.token),
+                                    onToggle: { viewModel.toggleCaskSelection(cask.token) },
+                                    onUninstall: { viewModel.uninstall(cask: cask) }
+                                )
                             }
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private var caskSelectionBar: some View {
+        HStack(spacing: 12) {
+            Text("\(viewModel.selectedCaskTokens.count) selected")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(AppTheme.textPrimary)
+            Spacer()
+            Button("Clear") { viewModel.clearCaskSelection() }
+                .buttonStyle(.borderless)
+                .font(.system(size: 12))
+                .foregroundStyle(AppTheme.textSecondary)
+            Button {
+                viewModel.uninstallSelectedCasks()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "trash.fill")
+                    Text("Uninstall \(viewModel.selectedCaskTokens.count) Casks")
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(AppTheme.warning, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(AppTheme.warning.opacity(0.08))
+    }
+
     private var casksHeader: some View {
         HStack {
+            Toggle("", isOn: Binding(
+                get: { viewModel.allFilteredCasksSelected },
+                set: { _ in viewModel.toggleSelectAllCasks() }
+            ))
+            .toggleStyle(.checkbox)
+            .labelsHidden()
+            .frame(width: 28)
+
             Text("Token").frame(maxWidth: .infinity, alignment: .leading)
             Text("Version").frame(width: 140, alignment: .leading)
             Text("App").frame(width: 180, alignment: .leading)
             Text("Installed").frame(width: 100, alignment: .trailing)
-            Spacer().frame(width: 50)
+            Spacer().frame(width: 60)
         }
         .font(.system(size: 11, weight: .semibold))
         .foregroundStyle(AppTheme.textSecondary)
@@ -469,6 +538,8 @@ private struct FormulaRow: View {
 
 private struct CaskRow: View {
     let cask: BrewCask
+    let isSelected: Bool
+    let onToggle: () -> Void
     let onUninstall: () -> Void
     @State private var isHovered = false
 
@@ -478,15 +549,31 @@ private struct CaskRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            Toggle("", isOn: Binding(get: { isSelected }, set: { _ in onToggle() }))
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .frame(width: 28)
+
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(cask.token)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
+                        .foregroundStyle(cask.isOrphaned ? AppTheme.warning : AppTheme.textPrimary)
                         .lineLimit(1)
+                    if cask.isOrphaned {
+                        badge("orphaned", color: AppTheme.warning)
+                    }
+                    if cask.requiresSudo {
+                        badge("admin", color: AppTheme.textSecondary)
+                    }
                     if cask.autoUpdates {
                         badge("auto", color: AppTheme.accent)
                     }
+                }
+                if cask.isOrphaned {
+                    Text("App not found — removed without brew uninstall")
+                        .font(.system(size: 10))
+                        .foregroundStyle(AppTheme.warning.opacity(0.8))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -497,9 +584,9 @@ private struct CaskRow: View {
                 .frame(width: 140, alignment: .leading)
                 .lineLimit(1)
 
-            Text(cask.installedAppNames.first ?? "—")
+            Text(cask.isOrphaned ? "—" : (cask.installedAppNames.first ?? "—"))
                 .font(.system(size: 12))
-                .foregroundStyle(AppTheme.textSecondary)
+                .foregroundStyle(cask.isOrphaned ? AppTheme.textSecondary.opacity(0.4) : AppTheme.textSecondary)
                 .frame(width: 180, alignment: .leading)
                 .lineLimit(1)
 
@@ -509,19 +596,33 @@ private struct CaskRow: View {
                 .frame(width: 100, alignment: .trailing)
 
             Button(action: onUninstall) {
-                Image(systemName: "trash")
-                    .foregroundStyle(AppTheme.review)
+                HStack(spacing: 4) {
+                    Image(systemName: cask.isOrphaned ? "trash.fill" : "trash")
+                    if cask.isOrphaned {
+                        Text("Clean up")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(AppTheme.warning)
             }
             .buttonStyle(.borderless)
-            .help("Uninstall \(cask.token)")
-            .frame(width: 50, alignment: .trailing)
-            .opacity(isHovered ? 1 : 0.5)
+            .help(cask.isOrphaned
+                  ? "Remove \(cask.token) from Homebrew records (app already deleted)"
+                  : "Uninstall \(cask.token)")
+            .frame(width: cask.isOrphaned ? 90 : 60, alignment: .trailing)
+            .opacity(isHovered ? 1 : (cask.isOrphaned ? 0.8 : 0.5))
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, cask.isOrphaned ? 12 : 10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+                .fill(
+                    isSelected
+                        ? AppTheme.accent.opacity(0.1)
+                        : cask.isOrphaned
+                            ? AppTheme.warning.opacity(isHovered ? 0.12 : 0.07)
+                            : Color.white.opacity(isHovered ? 0.06 : 0)
+                )
         )
         .onHover { isHovered = $0 }
     }
@@ -668,6 +769,60 @@ private struct MigrateCandidateRow: View {
                 .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
         )
         .onHover { isHovered = $0 }
+    }
+}
+
+// MARK: - PasswordPromptSheet
+
+struct PasswordPromptSheet: View {
+    let label: String
+    let onConfirm: (String) -> Void
+    let onCancel: () -> Void
+
+    @State private var password = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 14) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(AppTheme.warning)
+                Text("Administrator Password Required")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                Text("This cask modifies system directories and package receipts. Enter your macOS administrator password to continue.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 380)
+                SecureField("Password", text: $password)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 280)
+                    .focused($focused)
+                    .onSubmit { if !password.isEmpty { onConfirm(password) } }
+            }
+            .padding(.top, 28)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+
+            Divider()
+
+            HStack {
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.escape)
+                Spacer()
+                Button("Uninstall") { onConfirm(password) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(AppTheme.warning)
+                    .disabled(password.isEmpty)
+                    .keyboardShortcut(.return)
+            }
+            .padding(20)
+        }
+        .frame(width: 460)
+        .background(.regularMaterial)
+        .onAppear { focused = true }
     }
 }
 

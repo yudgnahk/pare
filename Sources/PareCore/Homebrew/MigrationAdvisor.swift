@@ -47,11 +47,15 @@ public actor MigrationAdvisor {
             }
         }
 
+        // Ground-truth set of tokens already in the Caskroom — AppInventory does not
+        // reliably set isHomebrewManaged, so we check the filesystem directly.
+        let managedTokens = Self.installedCaskTokens()
+
         var seen = Set<String>()  // deduplicate by cask token
         var results: [MigrationCandidate] = []
 
         for app in installedApps {
-            guard !app.isHomebrewManaged, !app.isSystemApp else { continue }
+            guard !app.isSystemApp else { continue }
 
             var matchedToken: String?
 
@@ -68,7 +72,10 @@ public actor MigrationAdvisor {
                 }
             }
 
-            guard let token = matchedToken, !seen.contains(token) else { continue }
+            // Skip tokens already adopted into Homebrew or already listed.
+            guard let token = matchedToken,
+                  !seen.contains(token),
+                  !managedTokens.contains(token) else { continue }
             seen.insert(token)
 
             results.append(MigrationCandidate(
@@ -116,5 +123,24 @@ public actor MigrationAdvisor {
 
     private func saveCatalog(_ data: Data) {
         try? data.write(to: cacheFileURL(), options: .atomic)
+    }
+
+    /// Returns the set of cask tokens that are currently in the Caskroom on disk.
+    /// A token directory with at least one version subdirectory means Homebrew
+    /// manages that cask — including apps adopted via `brew install --cask --adopt`.
+    private static func installedCaskTokens() -> Set<String> {
+        let caskrooms = ["/opt/homebrew/Caskroom", "/usr/local/Caskroom"]
+        var tokens = Set<String>()
+        for caskroom in caskrooms {
+            guard let entries = try? FileManager.default.contentsOfDirectory(atPath: caskroom) else { continue }
+            for token in entries {
+                let versionDir = "\(caskroom)/\(token)"
+                if let versions = try? FileManager.default.contentsOfDirectory(atPath: versionDir),
+                   !versions.isEmpty {
+                    tokens.insert(token)
+                }
+            }
+        }
+        return tokens
     }
 }

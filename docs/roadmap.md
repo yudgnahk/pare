@@ -103,33 +103,39 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
 
 ---
 
-## Phase 4 — Homebrew Manager
+## Phase 4 — Homebrew Manager ✓
 
 ### Core
-- [ ] `BrewRunner` — process wrapper
+- [x] `BrewRunner` — process wrapper
   - Detect prefix (check `/opt/homebrew/bin/brew` then `/usr/local/bin/brew`)
   - Set `HOMEBREW_NO_AUTO_UPDATE=1` and `HOME`
-  - Read stdout + stderr concurrently (pipe deadlock prevention)
-- [ ] `BrewInventory` actor — `brew info --json=v2 --installed`
+  - Read stdout + stderr concurrently via `DispatchQueue` drain + `terminationHandler` (pipe deadlock prevention)
+  - `standardInput = FileHandle.nullDevice` prevents brew subprocess from inheriting the app's terminal stdin
+  - `streamPrivileged(_:password:)` — injects password via a temporary `sudo` wrapper on PATH for pkg-based casks; wrapper deleted immediately after the stream closes
+- [x] `BrewInventory` actor — `brew info --json=v2 --installed`
   - Parse formulae (name, version, install date, `installed_on_request`)
   - Parse casks (token, version, `auto_updates`, installed app names)
+  - Orphaned cask detection: cross-check `artifacts[].app[]` against `/Applications`, `~/Applications`, `/System/Applications`; pkg-based casks (no `app` artifact) use `artifacts[].uninstall[].delete[]` full paths
+  - `requiresSudo` detection: casks with `pkgutil` entries or system `/Library/` delete paths in their uninstall stanza
   - Default view: user-requested only (`installed_on_request: true`); toggle for all
-- [ ] `BrewOutdatedChecker` — `brew outdated --json=v2 --greedy`
+- [x] `BrewOutdatedChecker` — `brew outdated --json=v2 --greedy`
   - Respect `pinned: true`
-  - Tag `auto_updates: true` casks with "(auto)" badge
-- [ ] `MigrationAdvisor`
-  - Fetch `https://formulae.brew.sh/api/cask.json` (24-hour cache)
+  - Tag `auto_updates: true` casks with "auto" badge
+- [x] `MigrationAdvisor`
+  - Fetch `https://formulae.brew.sh/api/cask.json` (24-hour on-disk cache)
   - Match installed apps by artifact app name and bundle ID (`artifacts[].uninstall[].quit`)
   - Exclude already Homebrew-managed apps
   - Prefer `brew install --cask --adopt <token>` (Homebrew ≥ 3.5)
-- [ ] `BrewFormula`, `BrewCask`, `OutdatedPackage`, `MigrationCandidate` value types
+- [x] `BrewFormula`, `BrewCask` (with `isOrphaned`, `requiresSudo`), `BrewOutdatedPackage`, `MigrationCandidate` value types
 
 ### SwiftUI
-- [ ] `HomebrewManagerViewModel` (`@MainActor ObservableObject`)
-- [ ] `HomebrewManagerView` — segmented: Formulae / Casks / Outdated / Migrate
-- [ ] `BrewOperationSheet` — streaming log output for upgrade/uninstall/migrate
-- [ ] "Not installed" placeholder with install instructions if Homebrew absent
-- [ ] Integrate into main navigation
+- [x] `HomebrewManagerViewModel` (`@MainActor ObservableObject`)
+- [x] `HomebrewManagerView` — custom Button-based tab picker (avoids `NSSegmentedControl` focus-theft): Formulae / Casks / Outdated / Migrate
+- [x] `BrewOperationSheet` — streaming log output with semantic line coloring
+- [x] `PasswordPromptSheet` — `SecureField` for sudo-requiring casks; password injected via temp wrapper, never stored after operation
+- [x] Casks tab: orphaned badge + amber tint, "admin" badge, multi-select with bulk uninstall bar, "Orphaned only" filter toggle
+- [x] "Not installed" placeholder with install instructions if Homebrew absent
+- [x] Integrate into main navigation
 
 ---
 

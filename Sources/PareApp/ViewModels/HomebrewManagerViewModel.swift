@@ -44,6 +44,8 @@ final class HomebrewManagerViewModel: ObservableObject {
     @Published var migrationCandidates: [MigrationCandidate] = []
     @Published var searchText = ""
     @Published var showAllFormulae = false
+    @Published var showOnlyOrphaned = false
+    @Published var selectedCaskTokens: Set<String> = []
 
     @Published var operationState: OperationState = .idle
     @Published var operationLog: [String] = []
@@ -60,11 +62,24 @@ final class HomebrewManagerViewModel: ObservableObject {
     }
 
     var filteredCasks: [BrewCask] {
-        guard !searchText.isEmpty else { return casks }
-        return casks.filter {
+        var base: [BrewCask] = searchText.isEmpty ? casks : casks.filter {
             $0.token.localizedCaseInsensitiveContains(searchText)
                 || $0.installedAppNames.contains { $0.localizedCaseInsensitiveContains(searchText) }
         }
+        if showOnlyOrphaned {
+            base = base.filter(\.isOrphaned)
+        }
+        // Orphaned casks float to the top so they are immediately visible.
+        return base.sorted { a, b in
+            if a.isOrphaned != b.isOrphaned { return a.isOrphaned }
+            return a.token.localizedCaseInsensitiveCompare(b.token) == .orderedAscending
+        }
+    }
+
+    var orphanedCasksCount: Int { casks.filter(\.isOrphaned).count }
+
+    var allFilteredCasksSelected: Bool {
+        !filteredCasks.isEmpty && filteredCasks.allSatisfy { selectedCaskTokens.contains($0.token) }
     }
 
     var filteredOutdated: [BrewOutdatedPackage] {
@@ -145,10 +160,54 @@ final class HomebrewManagerViewModel: ObservableObject {
     }
 
     func uninstall(cask: BrewCask) {
-        runOperation(label: "Uninstalling \(cask.token)…", args: ["uninstall", "--cask", cask.token])
+        let args = ["uninstall", "--cask", cask.token]
+        if cask.requiresSudo {
+            showPasswordPrompt(label: "Uninstalling \(cask.token)…", args: args)
+        } else {
+            runOperation(label: "Uninstalling \(cask.token)…", args: args)
+        }
+    }
+
+    func toggleCaskSelection(_ token: String) {
+        if selectedCaskTokens.contains(token) {
+            selectedCaskTokens.remove(token)
+        } else {
+            selectedCaskTokens.insert(token)
+        }
+    }
+
+    func toggleSelectAllCasks() {
+        if allFilteredCasksSelected {
+            selectedCaskTokens = []
+        } else {
+            filteredCasks.forEach { selectedCaskTokens.insert($0.token) }
+        }
+    }
+
+    func clearCaskSelection() {
+        selectedCaskTokens = []
+    }
+
+    func uninstallSelectedCasks() {
+        let selected = casks.filter { selectedCaskTokens.contains($0.token) }
+        guard !selected.isEmpty else { return }
+        let tokens = selected.map(\.token).sorted()
+        let label = tokens.count == 1
+            ? "Uninstalling \(tokens[0])…"
+            : "Uninstalling \(tokens.count) casks…"
+        let args = ["uninstall", "--cask"] + tokens
+        if selected.contains(where: \.requiresSudo) {
+            showPasswordPrompt(label: label, args: args)
+        } else {
+            runOperation(label: label, args: args)
+        }
+        selectedCaskTokens = []
     }
 
     func migrate(candidate: MigrationCandidate) {
+        // Optimistic removal — count drops instantly without waiting for the background reload.
+        // If the operation fails, dismissOperation() → load() restores the real list.
+        migrationCandidates.removeAll { $0.caskToken == candidate.caskToken }
         runOperation(
             label: "Adopting \(candidate.appName)…",
             args: ["install", "--cask", "--adopt", candidate.caskToken]
@@ -159,12 +218,51 @@ final class HomebrewManagerViewModel: ObservableObject {
         operationState = .idle
         operationLog = []
         showOperationSheet = false
-
-        // Reload after any operation completes
+        selectedCaskTokens = []
         if loadState == .loaded { load() }
     }
 
     // MARK: - Private
+
+    // MARK: - Privileged (sudo-required) casks
+
+    @Published var showingPasswordPromptSheet = false
+    private(set) var pendingPrivilegedLabel = ""
+    private var pendingPrivilegedArgs: [String] = []
+
+    private func showPasswordPrompt(label: String, args: [String]) {
+        pendingPrivilegedLabel = label
+        pendingPrivilegedArgs = args
+        showingPasswordPromptSheet = true
+    }
+
+    func executePrivileged(password: String) {
+        showingPasswordPromptSheet = false
+        runPrivilegedOperation(label: pendingPrivilegedLabel, args: pendingPrivilegedArgs, password: password)
+    }
+
+    func cancelPasswordPrompt() {
+        showingPasswordPromptSheet = false
+    }
+
+    private func runPrivilegedOperation(label: String, args: [String], password: String) {
+        operationLog = []
+        operationState = .running(label: label)
+        showOperationSheet = true
+
+        Task {
+            do {
+                for try await line in BrewRunner.shared.streamPrivileged(args, password: password) {
+                    self.operationLog.append(line)
+                }
+                self.operationState = .succeeded
+            } catch let error as BrewError {
+                self.operationState = .failed(error.localizedDescription)
+            } catch {
+                self.operationState = .failed(error.localizedDescription)
+            }
+        }
+    }
 
     private func runOperation(label: String, args: [String]) {
         operationLog = []

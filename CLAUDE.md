@@ -83,6 +83,8 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 
 See `docs/checklist.md` for phase completion status. Phases 1–6 are complete. Phase 7 (code signing/notarization) remains open.
 
+Roadmap Phases 0–4 are complete (see `docs/roadmap.md`). Phase 5 (browser artifacts, project artifact purge, system optimizer, disk analyzer) and Phase 6 (distribution) remain open.
+
 The app runs a single unified scan using `RuleCatalog.all`; the CLI retains profile-based scanning. Parallel rule execution was attempted and reverted — Swift 5.9 nested `withTaskGroup` + actor calls caused empty results. The sequential `runRule` loop is the stable approach; `CachedFileTraversal` already parallelises I/O within each individual rule call.
 
 `JetBrainsStaleVersionRule` risk level is `.safe` (older duplicate IDE versions are safe to auto-remove). Its 90-day age gate uses `ScanPolicy.effectiveAgeDate` (oldest of creation/mtime) so that JetBrains migration activity — which updates a settings directory's mtime to today — cannot hide a genuinely stale version. `LogsAndCrashReportsRule` applies a 1-day minimum age gate so fresh logs are never flagged. `XcodeSimulatorCachesRule` targets only `CoreSimulator/Caches` (not `Devices`) to avoid touching active simulator data. `ScanReportAnnotator` filters generic component names (app, helper, daemon, etc.) from app attribution to reduce noise.
