@@ -80,16 +80,36 @@ struct HomebrewManagerView: View {
         }
     }
 
-    // MARK: - Tab picker (own row so it never overlaps the search field)
+    // MARK: - Tab picker
+    // Uses plain Buttons instead of Picker(.segmented) — NSSegmentedControl
+    // auto-grabs key focus and swallows keystrokes before the TextField sees them.
 
     private var tabPickerRow: some View {
-        Picker("", selection: $viewModel.selectedTab) {
+        HStack(spacing: 2) {
             ForEach(HomebrewManagerViewModel.Tab.allCases, id: \.self) { tab in
-                Text(tabLabel(tab)).tag(tab)
+                Button { viewModel.selectedTab = tab } label: {
+                    Text(tabLabel(tab))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(
+                            viewModel.selectedTab == tab
+                                ? AppTheme.textPrimary
+                                : AppTheme.textSecondary
+                        )
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(
+                            viewModel.selectedTab == tab
+                                ? Color.white.opacity(0.18)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        )
+                }
+                .buttonStyle(.borderless)
             }
+            Spacer()
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        .padding(3)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     // MARK: - Filter bar (search + contextual toggle only)
