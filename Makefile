@@ -33,7 +33,7 @@ test:
 start: run-baseline
 
 run-app:
-	swift run PareApp
+	swift build && open .build/debug/PareApp.app
 
 run:
 	swift run $(APP) --profile $(PROFILE) --top $(TOP) $(ARGS)

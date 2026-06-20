@@ -37,43 +37,62 @@ public struct BrewRunner: Sendable {
 
     /// Runs a brew subcommand and returns combined stdout output.
     /// Throws `BrewError.notInstalled` or `BrewError.failed` on non-zero exit.
+    ///
+    /// Pipe draining uses DispatchQueue (OS-managed pthread pool) rather than
+    /// Swift cooperative threads so blocking reads never starve the concurrency
+    /// runtime. `terminationHandler` replaces `waitUntilExit()` for the same
+    /// reason. `standardInput = .nullDevice` prevents brew from inheriting the
+    /// terminal's stdin and becoming the foreground process group, which would
+    /// intercept keystrokes before macOS routes them to the GUI window.
     public func run(_ args: [String]) async throws -> String {
         guard let brewPath else { throw BrewError.notInstalled }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: brewPath)
-        process.arguments = args
-        process.environment = makeEnvironment()
+        return try await withCheckedThrowingContinuation { continuation in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: brewPath)
+            process.arguments = args
+            process.environment = makeEnvironment()
+            process.standardInput = FileHandle.nullDevice
 
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
 
-        try process.run()
+            // Drain both pipes on background OS threads (not cooperative pool).
+            let drainGroup = DispatchGroup()
+            let stdoutBuffer = LockedBuffer()
+            let stderrBuffer = LockedBuffer()
 
-        // Read stdout and stderr concurrently to prevent pipe deadlock.
-        var stdoutData = Data()
-        var stderrData = Data()
-
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+            drainGroup.enter()
+            DispatchQueue.global(qos: .utility).async {
+                stdoutBuffer.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
+                drainGroup.leave()
             }
-            group.addTask {
-                stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+
+            drainGroup.enter()
+            DispatchQueue.global(qos: .utility).async {
+                stderrBuffer.append(stderrPipe.fileHandleForReading.readDataToEndOfFile())
+                drainGroup.leave()
+            }
+
+            process.terminationHandler = { proc in
+                drainGroup.wait()
+                let stdout = String(data: stdoutBuffer.data, encoding: .utf8) ?? ""
+                if proc.terminationStatus == 0 {
+                    continuation.resume(returning: stdout)
+                } else {
+                    let stderr = String(data: stderrBuffer.data, encoding: .utf8) ?? ""
+                    continuation.resume(throwing: BrewError.failed(exitCode: proc.terminationStatus, stderr: stderr))
+                }
+            }
+
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(throwing: error)
             }
         }
-
-        process.waitUntilExit()
-
-        let status = process.terminationStatus
-        let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-        guard status == 0 else {
-            let stderr = String(data: stderrData, encoding: .utf8) ?? ""
-            throw BrewError.failed(exitCode: status, stderr: stderr)
-        }
-        return stdout
     }
 
     /// Runs a brew subcommand and streams output lines as they arrive.
@@ -90,6 +109,7 @@ public struct BrewRunner: Sendable {
                 process.executableURL = URL(fileURLWithPath: brewPath)
                 process.arguments = args
                 process.environment = makeEnvironment()
+                process.standardInput = FileHandle.nullDevice
 
                 let stdoutPipe = Pipe()
                 let stderrPipe = Pipe()
@@ -119,7 +139,6 @@ public struct BrewRunner: Sendable {
                 }
 
                 process.waitUntilExit()
-
                 let status = process.terminationStatus
                 if status != 0 {
                     continuation.finish(throwing: BrewError.failed(exitCode: status, stderr: ""))
@@ -137,5 +156,19 @@ public struct BrewRunner: Sendable {
         env["HOMEBREW_NO_AUTO_UPDATE"] = "1"
         env["HOME"] = FileManager.default.homeDirectoryForCurrentUser.path
         return env
+    }
+}
+
+// Thread-safe buffer for draining subprocess pipes across DispatchQueue threads.
+private final class LockedBuffer: @unchecked Sendable {
+    private var _data = Data()
+    private let lock = NSLock()
+
+    func append(_ d: Data) {
+        lock.withLock { _data.append(d) }
+    }
+
+    var data: Data {
+        lock.withLock { _data }
     }
 }
