@@ -1,6 +1,7 @@
 SHELL := /bin/zsh
 
 APP := pare-cli
+APP_BUNDLE := .build/debug/PareApp.app
 PROFILE ?= baseline
 TOP ?= 20
 ARGS ?=
@@ -32,8 +33,11 @@ test:
 
 start: run-baseline
 
-run-app:
-	swift build && open .build/debug/PareApp.app
+run-app: build
+	mkdir -p $(APP_BUNDLE)/Contents/MacOS
+	cp .build/debug/PareApp $(APP_BUNDLE)/Contents/MacOS/PareApp
+	cp scripts/AppInfo.plist $(APP_BUNDLE)/Contents/Info.plist
+	open $(APP_BUNDLE)
 
 run:
 	swift run $(APP) --profile $(PROFILE) --top $(TOP) $(ARGS)
