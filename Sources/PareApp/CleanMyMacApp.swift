@@ -26,6 +26,11 @@ struct ContentView: View {
                     Label("Scan", systemImage: "magnifyingglass")
                 }
 
+            AppManagerView()
+                .tabItem {
+                    Label("Apps", systemImage: "apps.iphone")
+                }
+
             HistoryView(viewModel: historyViewModel)
                 .tabItem {
                     Label("History", systemImage: "clock.arrow.circlepath")

@@ -75,31 +75,31 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
 ## Phase 3 — App Manager
 
 ### Core (no UI yet — backend only)
-- [ ] `AppInventory` actor — discovery + metadata fetch
+- [x] `AppInventory` actor — discovery + metadata fetch
   - Scan `/Applications`, `/System/Applications`, `~/Applications`
   - Supplement with `NSMetadataQuery` for Setapp and other non-standard locations
   - Per-app: name, bundle ID, version, size (`totalFileAllocatedSizeKey`), install date, last-used (`kMDItemLastUsedDate`), MAS flag, SIP flag
   - Fetch concurrently with `withTaskGroup`
-- [ ] `AppUninstaller` — leftover scan + Trash
+- [x] `AppUninstaller` — leftover scan + Trash
   - Key by bundle ID across all leftover locations (see `app-manager.md` for full list)
   - Detect Homebrew-managed apps via caskroom receipt; prefer `brew uninstall --zap`
   - Group Container: detect, surface as warning, never auto-select
-  - Always use `NSWorkspace.recycle`, never `FileManager.removeItem`
-- [ ] `OutdatedChecker` — version check
+  - Always uses `FileManager.trashItem`, never `removeItem`
+- [x] `OutdatedChecker` — version check
   - Sparkle: read `SUFeedURL`, fetch appcast, parse `<sparkle:version>`
   - MAS: iTunes Lookup API, batch ≤ 25, retry with backoff
   - Run both channels in parallel
-- [ ] `InstalledApp`, `AppLeftover`, `UpdateInfo` value types (all `Sendable`)
-- [ ] Add `isSystemApp`, `isGroupContainer` to `ScanPolicy`
+- [x] `InstalledApp`, `AppLeftover`, `UpdateInfo` value types (all `Sendable`)
+- [x] Add `isSystemApp`, `isGroupContainer` to `ScanPolicy`
 
 ### SwiftUI (after backend is solid)
-- [ ] `AppManagerViewModel` (`@MainActor ObservableObject`)
-- [ ] `AppManagerView` — sortable table (`Table` on macOS 13+)
+- [x] `AppManagerViewModel` (`@MainActor ObservableObject`)
+- [x] `AppManagerView` — sortable list with filter bar
   - Columns: icon, name, version, size, install date, last used
-  - Sort by any column
-  - Filter bar: search, hide SIP, only outdated, only duplicates
-- [ ] `AppUninstallConfirmSheet` — leftover preview, Group Container warning, confirm → Trash
-- [ ] Integrate into main navigation (tab or sidebar item)
+  - Sort by any column (name, size, install date, last used)
+  - Filter bar: search, hide SIP apps, only outdated
+- [x] `AppUninstallConfirmSheet` — leftover preview, Group Container warning, confirm → Trash
+- [x] Integrate into main navigation (Apps tab)
 
 ---
 
