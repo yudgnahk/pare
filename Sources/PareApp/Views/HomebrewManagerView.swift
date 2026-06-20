@@ -13,9 +13,12 @@ struct HomebrewManagerView: View {
             } else {
                 VStack(spacing: 0) {
                     headerBar
-                    filterBar
+                    tabPickerRow
                         .padding(.horizontal, 20)
                         .padding(.top, 14)
+                        .padding(.bottom, 6)
+                    filterBar
+                        .padding(.horizontal, 20)
                         .padding(.bottom, 10)
                     tabContent
                 }
@@ -77,7 +80,19 @@ struct HomebrewManagerView: View {
         }
     }
 
-    // MARK: - Filter bar
+    // MARK: - Tab picker (own row so it never overlaps the search field)
+
+    private var tabPickerRow: some View {
+        Picker("", selection: $viewModel.selectedTab) {
+            ForEach(HomebrewManagerViewModel.Tab.allCases, id: \.self) { tab in
+                Text(tabLabel(tab)).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    // MARK: - Filter bar (search + contextual toggle only)
 
     private var filterBar: some View {
         HStack(spacing: 12) {
@@ -100,15 +115,7 @@ struct HomebrewManagerView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .frame(maxWidth: 240)
-
-            Picker("", selection: $viewModel.selectedTab) {
-                ForEach(HomebrewManagerViewModel.Tab.allCases, id: \.self) { tab in
-                    Text(tabLabel(tab)).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 420)
+            .frame(maxWidth: 260)
 
             Spacer()
 
