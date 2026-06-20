@@ -152,7 +152,11 @@ struct HomebrewManagerView: View {
     private func tabLabel(_ tab: HomebrewManagerViewModel.Tab) -> String {
         switch tab {
         case .formulae: return "Formulae (\(viewModel.formulae.count))"
-        case .casks: return "Casks (\(viewModel.casks.count))"
+        case .casks:
+            let orphaned = viewModel.casks.filter(\.isOrphaned).count
+            return orphaned > 0
+                ? "Casks (\(viewModel.casks.count), \(orphaned) orphaned)"
+                : "Casks (\(viewModel.casks.count))"
         case .outdated:
             let n = viewModel.outdated.count
             return n > 0 ? "Outdated (\(n))" : "Outdated"
@@ -482,11 +486,19 @@ private struct CaskRow: View {
                 HStack(spacing: 6) {
                     Text(cask.token)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
+                        .foregroundStyle(cask.isOrphaned ? AppTheme.warning : AppTheme.textPrimary)
                         .lineLimit(1)
+                    if cask.isOrphaned {
+                        badge("orphaned", color: AppTheme.warning)
+                    }
                     if cask.autoUpdates {
                         badge("auto", color: AppTheme.accent)
                     }
+                }
+                if cask.isOrphaned {
+                    Text("App not found — removed without brew uninstall")
+                        .font(.system(size: 10))
+                        .foregroundStyle(AppTheme.warning.opacity(0.8))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -497,9 +509,9 @@ private struct CaskRow: View {
                 .frame(width: 140, alignment: .leading)
                 .lineLimit(1)
 
-            Text(cask.installedAppNames.first ?? "—")
+            Text(cask.isOrphaned ? "—" : (cask.installedAppNames.first ?? "—"))
                 .font(.system(size: 12))
-                .foregroundStyle(AppTheme.textSecondary)
+                .foregroundStyle(cask.isOrphaned ? AppTheme.textSecondary.opacity(0.4) : AppTheme.textSecondary)
                 .frame(width: 180, alignment: .leading)
                 .lineLimit(1)
 
@@ -509,19 +521,31 @@ private struct CaskRow: View {
                 .frame(width: 100, alignment: .trailing)
 
             Button(action: onUninstall) {
-                Image(systemName: "trash")
-                    .foregroundStyle(AppTheme.review)
+                HStack(spacing: 4) {
+                    Image(systemName: cask.isOrphaned ? "trash.fill" : "trash")
+                    if cask.isOrphaned {
+                        Text("Clean up")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(AppTheme.warning)
             }
             .buttonStyle(.borderless)
-            .help("Uninstall \(cask.token)")
-            .frame(width: 50, alignment: .trailing)
-            .opacity(isHovered ? 1 : 0.5)
+            .help(cask.isOrphaned
+                  ? "Remove \(cask.token) from Homebrew records (app already deleted)"
+                  : "Uninstall \(cask.token)")
+            .frame(width: cask.isOrphaned ? 90 : 50, alignment: .trailing)
+            .opacity(isHovered ? 1 : (cask.isOrphaned ? 0.8 : 0.5))
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, cask.isOrphaned ? 12 : 10)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
+                .fill(
+                    cask.isOrphaned
+                        ? AppTheme.warning.opacity(isHovered ? 0.12 : 0.07)
+                        : Color.white.opacity(isHovered ? 0.06 : 0)
+                )
         )
         .onHover { isHovered = $0 }
     }

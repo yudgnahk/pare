@@ -60,12 +60,23 @@ final class HomebrewManagerViewModel: ObservableObject {
     }
 
     var filteredCasks: [BrewCask] {
-        guard !searchText.isEmpty else { return casks }
-        return casks.filter {
-            $0.token.localizedCaseInsensitiveContains(searchText)
-                || $0.installedAppNames.contains { $0.localizedCaseInsensitiveContains(searchText) }
+        let base: [BrewCask]
+        if searchText.isEmpty {
+            base = casks
+        } else {
+            base = casks.filter {
+                $0.token.localizedCaseInsensitiveContains(searchText)
+                    || $0.installedAppNames.contains { $0.localizedCaseInsensitiveContains(searchText) }
+            }
+        }
+        // Orphaned casks float to the top so they are immediately visible.
+        return base.sorted { a, b in
+            if a.isOrphaned != b.isOrphaned { return a.isOrphaned }
+            return a.token.localizedCaseInsensitiveCompare(b.token) == .orderedAscending
         }
     }
+
+    var orphanedCasksCount: Int { casks.filter(\.isOrphaned).count }
 
     var filteredOutdated: [BrewOutdatedPackage] {
         guard !searchText.isEmpty else { return outdated }

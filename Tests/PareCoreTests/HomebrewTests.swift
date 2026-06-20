@@ -73,6 +73,66 @@ final class HomebrewTests: XCTestCase {
         XCTAssertTrue(cask.autoUpdates)
     }
 
+    func testBrewCaskIsOrphanedDefault() {
+        let cask = BrewCask(
+            token: "cursor",
+            version: "0.42.0",
+            autoUpdates: false,
+            installedAppNames: ["Cursor.app"],
+            installDate: nil
+        )
+        XCTAssertFalse(cask.isOrphaned)
+    }
+
+    func testBrewCaskIsOrphanedWhenSet() {
+        let cask = BrewCask(
+            token: "cursor",
+            version: "0.42.0",
+            autoUpdates: false,
+            installedAppNames: ["Cursor.app"],
+            installDate: nil,
+            isOrphaned: true
+        )
+        XCTAssertTrue(cask.isOrphaned)
+    }
+
+    // MARK: - Orphaned detection logic
+
+    func testOrphanedDetectionNoAppNames() {
+        // CLI-only casks with no app artifacts are never flagged as orphaned.
+        XCTAssertFalse(detectOrphaned(appNames: [], searchDirs: ["/Applications"]))
+    }
+
+    func testOrphanedDetectionAppExists() {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HomebrewOrphanTest-\(Int.random(in: 1000...9999))")
+        let appDir = tmp.appendingPathComponent("Applications")
+        let appBundle = appDir.appendingPathComponent("Cursor.app")
+        try? FileManager.default.createDirectory(at: appBundle, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        XCTAssertFalse(detectOrphaned(appNames: ["Cursor.app"], searchDirs: [appDir.path]))
+    }
+
+    func testOrphanedDetectionAppMissing() {
+        XCTAssertTrue(detectOrphaned(appNames: ["Cursor.app"], searchDirs: ["/tmp/nonexistent-dir"]))
+    }
+
+    func testOrphanedDetectionAnyAppSuffices() {
+        // If a cask installs multiple apps and at least one exists, it is not orphaned.
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HomebrewOrphanMulti-\(Int.random(in: 1000...9999))")
+        let appDir = tmp.appendingPathComponent("Applications")
+        let appBundle = appDir.appendingPathComponent("SomeHelper.app")
+        try? FileManager.default.createDirectory(at: appBundle, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        XCTAssertFalse(detectOrphaned(
+            appNames: ["MainApp.app", "SomeHelper.app"],
+            searchDirs: [appDir.path]
+        ))
+    }
+
     // MARK: - BrewOutdatedPackage
 
     func testOutdatedFormulaProperties() {
@@ -462,6 +522,15 @@ final class HomebrewTests: XCTestCase {
 // MARK: - Test helpers
 
 private extension HomebrewTests {
+
+    func detectOrphaned(appNames: [String], searchDirs: [String]) -> Bool {
+        guard !appNames.isEmpty else { return false }
+        return !appNames.contains { appName in
+            searchDirs.contains { dir in
+                FileManager.default.fileExists(atPath: "\(dir)/\(appName)")
+            }
+        }
+    }
 
     /// Calls BrewInventory's internal parse logic via reflection-free helper.
     /// We test the observable outcome (public API) by exercising BrewInventory from
