@@ -31,6 +31,11 @@ struct ContentView: View {
                     Label("Apps", systemImage: "apps.iphone")
                 }
 
+            HomebrewManagerView()
+                .tabItem {
+                    Label("Homebrew", systemImage: "shippingbox")
+                }
+
             HistoryView(viewModel: historyViewModel)
                 .tabItem {
                     Label("History", systemImage: "clock.arrow.circlepath")
