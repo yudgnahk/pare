@@ -6,6 +6,7 @@ struct ScanDashboardView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
     @StateObject private var exclusionListViewModel = ExclusionListViewModel()
     @State private var showSettings = false
+    @State private var showProjectPaths = false
 
     var body: some View {
         ZStack {
@@ -33,6 +34,9 @@ struct ScanDashboardView: View {
         }
         .sheet(isPresented: $showSettings) {
             ExclusionListView(viewModel: exclusionListViewModel)
+        }
+        .sheet(isPresented: $showProjectPaths) {
+            ProjectScanPathsView()
         }
     }
 
@@ -91,6 +95,16 @@ struct ScanDashboardView: View {
                             .buttonStyle(.borderless)
                             .help("Clear the scan cache and do a full traversal")
                         }
+
+                        Button {
+                            showProjectPaths = true
+                        } label: {
+                            Image(systemName: "folder.badge.plus")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Manage project scan paths")
 
                         Button {
                             exclusionListViewModel.load()
@@ -498,6 +512,8 @@ struct ScanDashboardView: View {
             return Color(red: 0.85, green: 0.75, blue: 0.45)
         case .applications:
             return Color(red: 0.72, green: 0.55, blue: 0.88)
+        case .projectArtifacts:
+            return Color(red: 0.94, green: 0.72, blue: 0.37)
         }
     }
 
