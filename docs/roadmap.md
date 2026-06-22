@@ -106,30 +106,30 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
 ## Phase 4 — Homebrew Manager
 
 ### Core
-- [ ] `BrewRunner` — process wrapper
+- [x] `BrewRunner` — process wrapper
   - Detect prefix (check `/opt/homebrew/bin/brew` then `/usr/local/bin/brew`)
   - Set `HOMEBREW_NO_AUTO_UPDATE=1` and `HOME`
   - Read stdout + stderr concurrently (pipe deadlock prevention)
-- [ ] `BrewInventory` actor — `brew info --json=v2 --installed`
+- [x] `BrewInventory` actor — `brew info --json=v2 --installed`
   - Parse formulae (name, version, install date, `installed_on_request`)
   - Parse casks (token, version, `auto_updates`, installed app names)
   - Default view: user-requested only (`installed_on_request: true`); toggle for all
-- [ ] `BrewOutdatedChecker` — `brew outdated --json=v2 --greedy`
+- [x] `BrewOutdatedChecker` — `brew outdated --json=v2 --greedy`
   - Respect `pinned: true`
   - Tag `auto_updates: true` casks with "(auto)" badge
-- [ ] `MigrationAdvisor`
+- [x] `MigrationAdvisor`
   - Fetch `https://formulae.brew.sh/api/cask.json` (24-hour cache)
   - Match installed apps by artifact app name and bundle ID (`artifacts[].uninstall[].quit`)
   - Exclude already Homebrew-managed apps
   - Prefer `brew install --cask --adopt <token>` (Homebrew ≥ 3.5)
-- [ ] `BrewFormula`, `BrewCask`, `OutdatedPackage`, `MigrationCandidate` value types
+- [x] `BrewFormula`, `BrewCask`, `OutdatedPackage`, `MigrationCandidate` value types
 
 ### SwiftUI
-- [ ] `HomebrewManagerViewModel` (`@MainActor ObservableObject`)
-- [ ] `HomebrewManagerView` — segmented: Formulae / Casks / Outdated / Migrate
-- [ ] `BrewOperationSheet` — streaming log output for upgrade/uninstall/migrate
-- [ ] "Not installed" placeholder with install instructions if Homebrew absent
-- [ ] Integrate into main navigation
+- [x] `HomebrewManagerViewModel` (`@MainActor ObservableObject`)
+- [x] `HomebrewManagerView` — segmented: Formulae / Casks / Outdated / Migrate
+- [x] `BrewOperationSheet` — streaming log output for upgrade/uninstall/migrate
+- [x] "Not installed" placeholder with install instructions if Homebrew absent
+- [x] Integrate into main navigation
 
 ---
 
@@ -174,7 +174,85 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
 
 ---
 
-## Phase 6 — Polish & Distribution
+## Phase 6 — Developer Ecosystem Breadth
+
+Spec: `docs/features/phase-6-developer-breadth.md`
+
+### Package Manager Cache Rules
+- [ ] `PythonCachesRule` — pip, Poetry, uv, pyenv download cache (NOT Python runtimes)
+- [ ] `RubyCachesRule` — gem download cache, Bundler cache, rbenv download cache (NOT installed versions)
+- [ ] `JavaBuildCachesRule` — Gradle caches + wrapper dists, Maven local repo, Ivy2 cache
+- [ ] `RustCachesRule` — Cargo registry cache + src, git checkouts, rustup downloads
+- [ ] `GoCachesRule` — Go build cache (`~/Library/Caches/go-build/`), module download cache
+- [ ] Register all in `RuleCatalog` (developer profile + `all`)
+
+### Project Artifact Purge v2 — Smart Discovery
+The Phase 5 implementation hardcodes scan paths. Replace with Spotlight-based project discovery:
+- [ ] `ProjectRootDiscovery` actor — `NSMetadataQuery` search for `.git` directories + language signal files (`Package.swift`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `Gemfile`) scoped to user home
+- [ ] Deduplicate to project roots: resolve each signal to its parent, drop descendants within 3 path components of an ancestor (submodule heuristic)
+- [ ] Filter out system paths, `node_modules/`, `vendor/`, `.Trash/`
+- [ ] Persist confirmed roots to `~/Library/Application Support/Pare/project-roots.json`
+- [ ] `ProjectArtifactsRule` (customScan) — scan confirmed roots for artifact patterns; 7-day age gate per artifact directory
+- [ ] Artifact patterns: `node_modules/`, `target/`, `venv/`/`.venv/`, `__pycache__/`, `.gradle/`, `.bundle/`, `.next/`, `.nuxt/`, `.parcel-cache/`, `.turbo/`, `.nx/`, `dist/`
+- [ ] UI: "Project Roots" card in Scan tab — discovered roots with checkboxes (opt-out), "Rescan" button, "Add folder…" for manual addition
+
+---
+
+## Phase 7 — Platform Completeness
+
+Spec: `docs/features/phase-7-platform-completeness.md`
+
+### Docker Full Cleanup
+- [ ] `DockerStorageRule` (extends/replaces `DockerLogsRule`) — detect Docker VM disk image size (`Docker.raw`), report as `.advanced` finding (detect only; deleting the image is too destructive)
+- [ ] Add Docker log paths to existing rule (lifecycle logs, Desktop logs)
+- [ ] `docker system prune` action in Maintenance tab (Phase 8) — safest way to reclaim Docker space
+
+### iOS / iPadOS Backup Management
+- [ ] `MobileSyncBackupsRule` (customScan) — enumerate `~/Library/Application Support/MobileSync/Backup/`
+- [ ] Parse `Info.plist` per backup for device name, iOS version, last backup date
+- [ ] Group by device; flag oldest backups per device as `.review` if > 1 backup exists, or any backup > 180 days old
+- [ ] "Device Backups" card in Scan tab showing device name, iOS version, backup date, size
+
+### Browser Review Data
+- [ ] `BrowserReviewDataRule` — history databases, cookies, form data, IndexedDB, WebSQL for Safari, Chrome, Firefox, Brave, Arc, Edge
+- [ ] Risk: `.review` for all (personal data); 30-day minimum age gate
+- [ ] Distinct from existing `BrowserCachesRule` (which stays `.safe`)
+
+---
+
+## Phase 8 — Productivity & System Health
+
+Spec: `docs/features/phase-8-productivity-system.md`
+
+### Cloud & Productivity App Cleanup
+- [ ] `ProductivityCachesRule` — extend `app-catalog.json` with `"productivity"` category
+- [ ] Targets: Slack workspace cache, Zoom cache + cloud recordings folder, Google Drive FS cache, Dropbox logs, Microsoft Teams cache, OneDrive cache, Office temp files
+- [ ] Risk: `.safe` for caches, `.review` for recording/document folders
+
+### Orphaned Launch Agents
+- [ ] `OrphanedLaunchAgentsRule` (customScan) — scan `~/Library/LaunchAgents/*.plist`
+- [ ] Parse `Program` / `ProgramArguments[0]` from each plist; check if binary exists
+- [ ] Flag plist as `.review` if binary is missing; include missing binary path in `reason`
+- [ ] Skip plists with shell variable expansion in paths (can't resolve reliably)
+- [ ] 30-day age gate on the plist file itself
+
+### Maintenance Tab
+- [ ] New SwiftUI tab "Maintenance" (icon: `wrench.and.screwdriver`) — one-shot system actions, not file deletions
+- [ ] `MaintenanceAction` struct (id, title, description, estimatedSeconds, requiresSudo, run: () async throws -> Void)
+- [ ] `MaintenanceViewModel` (@MainActor) — tracks running / completed / error state per action
+- [ ] `MaintenanceView` — card grid; each card shows title, description, status, "Run" button
+- [ ] Initial actions (no sudo required):
+  1. **Flush DNS cache** — `dscacheutil -flushcache; killall -HUP mDNSResponder`
+  2. **Rebuild Launch Services** — `lsregister -kill -r -domain local -domain system -domain user`
+  3. **Restart Finder** — `killall Finder`
+  4. **Vacuum SQLite databases** — Mail, Safari, Messages envelope indices
+  5. **Docker system prune** — `docker system prune -f` (shown only if Docker is installed + running)
+- [ ] Actions run via `NSTask`; stdout/stderr streamed to an inline log view
+- [ ] Validate on macOS 13, 14, 15 before shipping
+
+---
+
+## Phase 9 — Polish & Distribution
 
 - [ ] Code signing — Developer ID Application certificate
 - [ ] Hardened Runtime entitlements audit
