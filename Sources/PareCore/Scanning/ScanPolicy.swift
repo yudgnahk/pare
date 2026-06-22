@@ -154,6 +154,51 @@ public enum ScanPolicy {
         "/library/containers/com.docker.docker/data/log"
     ]
 
+    /// Shader and GPU caches stored by Chromium-based browsers in Application Support.
+    public static let browserExtendedSafePathMarkers: [String] = [
+        "/library/application support/google/chrome/grshadercache",
+        "/library/application support/microsoft edge/grshadercache",
+        "/library/application support/BraveSoftware/brave-browser/grshadercache",
+        "/library/application support/arc/user data/grshadercache",
+        "/library/application support/com.operasoftware.opera/grshadercache",
+    ]
+
+    /// Session restore, WebSQL, IndexedDB, and local storage for Chromium-based browsers.
+    public static let browserExtendedReviewPathMarkers: [String] = [
+        "/library/application support/google/chrome/default/sessions",
+        "/library/application support/google/chrome/default/databases",
+        "/library/application support/google/chrome/default/indexeddb",
+        "/library/application support/google/chrome/default/local storage",
+        "/library/application support/microsoft edge/default/sessions",
+        "/library/application support/microsoft edge/default/databases",
+        "/library/application support/microsoft edge/default/indexeddb",
+        "/library/application support/microsoft edge/default/local storage",
+        "/library/application support/BraveSoftware/brave-browser/default/sessions",
+        "/library/application support/BraveSoftware/brave-browser/default/databases",
+        "/library/application support/BraveSoftware/brave-browser/default/indexeddb",
+        "/library/application support/BraveSoftware/brave-browser/default/local storage",
+        "/library/application support/arc/user data/default/sessions",
+        "/library/application support/arc/user data/default/databases",
+        "/library/application support/arc/user data/default/indexeddb",
+        "/library/application support/arc/user data/default/local storage",
+        "/library/application support/com.operasoftware.opera/default/sessions",
+        "/library/application support/com.operasoftware.opera/default/databases",
+        "/library/application support/com.operasoftware.opera/default/indexeddb",
+        "/library/application support/com.operasoftware.opera/default/local storage",
+    ]
+
+    /// Directory names that identify project build artifacts (e.g. node_modules, dist, venv).
+    /// Used by `ProjectArtifactRule` and `CleanupEngine` to allow safely cleaning user project trees.
+    public static let projectArtifactDirectoryNames: Set<String> = [
+        "node_modules", "target", "venv", ".venv", "__pycache__",
+        "build", ".gradle", ".bundle", "dist", ".next", ".nuxt", ".cache",
+    ]
+
+    /// Returns `true` when the URL's last path component is a known build-artifact directory name.
+    public static func isProjectArtifact(_ url: URL) -> Bool {
+        projectArtifactDirectoryNames.contains(url.lastPathComponent.lowercased())
+    }
+
     public static let developerReviewExclusionMarkers = [
         "/options/",
         "/workspace.xml",
@@ -181,7 +226,7 @@ public enum ScanPolicy {
         let catalogPaths = AppCatalog.shared.entries(forCategory: "ai")
             .flatMap { $0.libraryPaths }
             .map { "/library/\($0.lowercased())" }
-        return base + catalogPaths
+        return base + catalogPaths + browserExtendedSafePathMarkers + browserExtendedReviewPathMarkers
     }()
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
@@ -195,6 +240,8 @@ public enum ScanPolicy {
             return 7 * 24 * 60 * 60  // 7 days — avoid flagging freshly downloaded installers
         case .developerBuildArtifacts, .applications:
             return nil
+        case .projectArtifacts:
+            return 7 * 24 * 60 * 60  // 7 days — avoid flagging freshly created build dirs
         }
     }
 

@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import PareCore
 
 struct HistoryView: View {
@@ -24,6 +26,17 @@ struct HistoryView: View {
                     Spacer()
 
                     if !viewModel.transactions.isEmpty {
+                        Menu {
+                            Button("Export as JSON…") { exportJSON() }
+                            Button("Export as CSV…") { exportCSV() }
+                        } label: {
+                            Label("Export", systemImage: "square.and.arrow.up")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .help("Export cleanup history")
+
                         Button(role: .destructive) {
                             viewModel.clearAll()
                         } label: {
@@ -104,6 +117,38 @@ struct HistoryView: View {
             }
         }
         .onAppear { viewModel.load() }
+    }
+
+    // MARK: Export
+
+    private func exportJSON() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "pare-history.json"
+        panel.message = "Choose where to save the cleanup history"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(viewModel.transactions) else { return }
+        try? data.write(to: url, options: .atomicWrite)
+    }
+
+    private func exportCSV() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "pare-history.csv"
+        panel.message = "Choose where to save the cleanup history as CSV"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        var rows = ["date,profile,file_path,size_bytes,risk_level,is_dry_run"]
+        for tx in viewModel.transactions {
+            let date = tx.timestamp.ISO8601Format()
+            for item in tx.items {
+                let escapedPath = item.originalPath.replacingOccurrences(of: "\"", with: "\"\"")
+                rows.append("\(date),\(tx.profileName),\"\(escapedPath)\",\(item.sizeBytes),\(item.riskLevelRaw),\(tx.isDryRun)")
+            }
+        }
+        let csv = rows.joined(separator: "\n")
+        try? csv.data(using: .utf8)?.write(to: url, options: .atomicWrite)
     }
 }
 
