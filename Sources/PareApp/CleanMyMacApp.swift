@@ -36,6 +36,11 @@ struct ContentView: View {
                     Label("Homebrew", systemImage: "shippingbox")
                 }
 
+            DiskAnalyzerView()
+                .tabItem {
+                    Label("Disk", systemImage: "externaldrive.badge.magnifyingglass")
+                }
+
             HistoryView(viewModel: historyViewModel)
                 .tabItem {
                     Label("History", systemImage: "clock.arrow.circlepath")
