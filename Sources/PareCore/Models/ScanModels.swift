@@ -13,6 +13,7 @@ public enum ScanCategory: String, CaseIterable, Sendable {
     case aiToolCaches = "AI Tool Caches"
     case installerFiles = "Installer Files"
     case applications = "Applications"
+    case projectArtifacts = "Project Artifacts"
 }
 
 public enum RiskLevel: String, Sendable {

@@ -136,34 +136,41 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
 ## Phase 5 — Medium Priority Gaps
 
 ### Browser Extended Artifact Cleanup
-- [ ] Extend existing browser cache rules to cover:
-  - Crash reports, session restore, WebSQL, IndexedDB
-  - Shader caches, GPU caches
-  - Targets: Chrome, Firefox, Safari, Brave, Arc, Edge, Opera
+- [x] Extend `BrowserCachesRule` to add Arc, Edge, Opera to `targetDirectories`
+- [x] `BrowserExtendedArtifactsRule` (`customScan`) covers:
+  - Shader / GPU caches in Application Support for Chrome, Edge, Brave, Arc, Opera → `.safe`
+  - Session restore, WebSQL, IndexedDB, local storage for same browsers → `.review`
+  - Note: browser crash reports already covered by `LogsAndCrashReportsRule` (DiagnosticReports)
+- [x] Added `browserExtendedSafePathMarkers` / `browserExtendedReviewPathMarkers` to `ScanPolicy` + `personaProtectedPathOverrides`
+- [x] `CleanupEngine.isPersonaPath` includes new markers so paths pass the re-verify guard
 
 ### Project Artifact Purge
-- [ ] New rule or standalone scanner — recursive directory tree walk from user-supplied root paths
-- [ ] Targets: `node_modules/`, `target/` (Rust), `venv/`, `__pycache__/`, `build/`, `.gradle/`, `.bundle/`, `dist/`, `.next/`, `.nuxt/`
-- [ ] 7-day minimum age gate
-- [ ] Expose "add scan path" UI so users can point at their Projects folder
+- [x] `ProjectScanPathStore` — persists user-supplied root paths in `UserDefaults`
+- [x] `ProjectArtifactRule` (`customScan`) — recursive walk (depth ≤ 5) of user roots
+  - Targets: `node_modules/`, `target/`, `venv/`, `.venv/`, `__pycache__/`, `build/`, `.gradle/`, `.bundle/`, `dist/`, `.next/`, `.nuxt/`, `.cache/`
+  - 7-day minimum age gate
+  - Prunes descent into matched artifact dirs (no double-counting nested node_modules)
+- [x] `ScanPolicy.isProjectArtifact()` + `CleanupEngine` bypass so paths in user project trees are cleanable
+- [x] `ProjectScanPathsView` sheet accessible from new folder button in Scan header
+- [x] Registered in `RuleCatalog.baseline` (included in `all`)
 
 ### System Optimizer
 - [ ] Requires admin privileges — use `SMJobBless` or `AuthorizationExecuteWithPrivileges`
 - [ ] Tasks: DNS flush, Finder refresh, LaunchServices rebuild, SQLite VACUUM (Mail/Safari/Messages), broken pref repair
 - [ ] Each task is individually toggleable; show estimated time
 - [ ] This is the riskiest phase — validate on macOS 13, 14, 15 before shipping
+- Note: deferred — too risky without hardware validation on multiple macOS versions
 
 ### Disk Analyzer Drill-Down
-- [ ] `SwiftUI.OutlineGroup` tree view rooted at a user-chosen directory
-- [ ] Size bar per row (proportional to parent)
-- [ ] Sort by size; highlight items matching existing scan findings
-- [ ] "Reveal in Finder" and "Move to Trash" actions per row
+- [x] `DiskAnalyzerView` + `DiskAnalyzerViewModel` — new "Disk" tab
+  - Async tree scan (depth ≤ 4, top-50 children per node, sorted by size)
+  - Size bar per row proportional to parent (colour shifts red for items > 50% of parent)
+  - "Reveal in Finder" and "Move to Trash" actions on hover
+- [ ] Highlight items matching existing scan findings (deferred — requires cross-ViewModel wiring)
 
 ### History / Audit Log UI
-- [ ] Read existing `CleanupTransaction` JSON from `~/Library/Application Support/<AppName>/transactions/`
-- [ ] List view: timestamp, operation type, file count, total size freed
-- [ ] Detail view: per-file paths, risk level, outcome (trashed / skipped)
-- [ ] Export as JSON or CSV
+- [x] List view with expandable detail already existed (Phase 3/4)
+- [x] Export as JSON (`NSSavePanel` → pretty-printed) and CSV (per-item rows) via Export menu in History header
 
 ---
 

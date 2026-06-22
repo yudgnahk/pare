@@ -15,7 +15,10 @@ public struct BrowserCachesRule: ScanRule {
             environment.homeDirectory.appending(path: "Library/Caches/Google/Chrome"),
             environment.homeDirectory.appending(path: "Library/Caches/com.apple.Safari"),
             environment.homeDirectory.appending(path: "Library/Caches/Firefox"),
-            environment.homeDirectory.appending(path: "Library/Caches/BraveSoftware")
+            environment.homeDirectory.appending(path: "Library/Caches/BraveSoftware"),
+            environment.homeDirectory.appending(path: "Library/Caches/Microsoft Edge"),
+            environment.homeDirectory.appending(path: "Library/Caches/com.operasoftware.Opera"),
+            environment.homeDirectory.appending(path: "Library/Application Support/Arc/User Data/Default/Cache"),
         ]
     }
 
