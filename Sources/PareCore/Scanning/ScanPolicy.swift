@@ -188,10 +188,31 @@ public enum ScanPolicy {
     ]
 
     /// Directory names that identify project build artifacts (e.g. node_modules, dist, venv).
-    /// Used by `ProjectArtifactRule` and `CleanupEngine` to allow safely cleaning user project trees.
+    /// Used by `ProjectArtifactRule`, `ProjectArtifactsRule`, and `CleanupEngine` to allow safely
+    /// cleaning user project trees.
     public static let projectArtifactDirectoryNames: Set<String> = [
         "node_modules", "target", "venv", ".venv", "__pycache__",
         "build", ".gradle", ".bundle", "dist", ".next", ".nuxt", ".cache",
+        ".parcel-cache", ".turbo", ".nx",
+    ]
+
+    /// Path markers for polyglot package manager caches stored in dotfiles (Python/Ruby/Rust/Go/Java).
+    /// These paths are NOT under ~/Library/Caches/ so they don't pass `isLowImpactPath` without help.
+    /// Registered in `CleanupEngine.isPersonaPath` so findings from the Phase 6 cache rules can be cleaned.
+    public static let developerPackageCacheMarkers: [String] = [
+        "/.pyenv/cache",
+        "/.cargo/registry/cache",
+        "/.cargo/registry/src",
+        "/.cargo/git/",
+        "/.rustup/downloads",
+        "/go/pkg/mod/cache",
+        "/.gradle/caches",
+        "/.gradle/wrapper/dists",
+        "/.m2/repository",
+        "/.ivy2/cache",
+        "/.gem/ruby/",
+        "/.bundle/cache",
+        "/.rbenv/cache",
     ]
 
     /// Returns `true` when the URL's last path component is a known build-artifact directory name.
