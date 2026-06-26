@@ -203,20 +203,20 @@ The Phase 5 implementation hardcodes scan paths. Replace with Spotlight-based pr
 Spec: `docs/features/phase-7-platform-completeness.md`
 
 ### Docker Full Cleanup
-- [ ] `DockerStorageRule` (extends/replaces `DockerLogsRule`) — detect Docker VM disk image size (`Docker.raw`), report as `.advanced` finding (detect only; deleting the image is too destructive)
-- [ ] Add Docker log paths to existing rule (lifecycle logs, Desktop logs)
+- [x] `DockerStorageRule` (extends/replaces `DockerLogsRule`) — detect Docker VM disk image size (`Docker.raw`), report as `.advanced` finding (detect only; deleting the image is too destructive)
+- [x] Add Docker log paths to existing rule (lifecycle logs, Desktop logs)
 - [ ] `docker system prune` action in Maintenance tab (Phase 8) — safest way to reclaim Docker space
 
 ### iOS / iPadOS Backup Management
-- [ ] `MobileSyncBackupsRule` (customScan) — enumerate `~/Library/Application Support/MobileSync/Backup/`
-- [ ] Parse `Info.plist` per backup for device name, iOS version, last backup date
-- [ ] Group by device; flag oldest backups per device as `.review` if > 1 backup exists, or any backup > 180 days old
+- [x] `MobileSyncBackupsRule` (customScan) — enumerate `~/Library/Application Support/MobileSync/Backup/`
+- [x] Parse `Info.plist` per backup for device name, iOS version, last backup date
+- [x] Group by device; flag oldest backups per device as `.review` if > 1 backup exists, or any backup > 180 days old
 - [ ] "Device Backups" card in Scan tab showing device name, iOS version, backup date, size
 
 ### Browser Review Data
-- [ ] `BrowserReviewDataRule` — history databases, cookies, form data, IndexedDB, WebSQL for Safari, Chrome, Firefox, Brave, Arc, Edge
-- [ ] Risk: `.review` for all (personal data); 30-day minimum age gate
-- [ ] Distinct from existing `BrowserCachesRule` (which stays `.safe`)
+- [x] `BrowserReviewDataRule` — history databases, cookies, form data, IndexedDB, WebSQL for Safari, Chrome, Firefox, Brave, Arc, Edge
+- [x] Risk: `.review` for all (personal data); 30-day minimum age gate
+- [x] Distinct from existing `BrowserCachesRule` (which stays `.safe`)
 
 ---
 
