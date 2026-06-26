@@ -267,6 +267,7 @@ public actor CleanupEngine {
             + ScanPolicy.developerSafePathMarkers
             + ScanPolicy.developerReviewPathMarkers
             + ScanPolicy.developerDockerReviewPathMarkers
+            + ScanPolicy.developerPackageCacheMarkers
             + ScanPolicy.aiToolSafePathMarkers
             + ScanPolicy.browserExtendedSafePathMarkers
             + ScanPolicy.browserExtendedReviewPathMarkers

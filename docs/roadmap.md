@@ -179,22 +179,22 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
 Spec: `docs/features/phase-6-developer-breadth.md`
 
 ### Package Manager Cache Rules
-- [ ] `PythonCachesRule` — pip, Poetry, uv, pyenv download cache (NOT Python runtimes)
-- [ ] `RubyCachesRule` — gem download cache, Bundler cache, rbenv download cache (NOT installed versions)
-- [ ] `JavaBuildCachesRule` — Gradle caches + wrapper dists, Maven local repo, Ivy2 cache
-- [ ] `RustCachesRule` — Cargo registry cache + src, git checkouts, rustup downloads
-- [ ] `GoCachesRule` — Go build cache (`~/Library/Caches/go-build/`), module download cache
-- [ ] Register all in `RuleCatalog` (developer profile + `all`)
+- [x] `PythonCachesRule` — pip, Poetry, uv, pyenv download cache (NOT Python runtimes)
+- [x] `RubyCachesRule` — gem download cache, Bundler cache, rbenv download cache (NOT installed versions)
+- [x] `JavaBuildCachesRule` — Gradle caches + wrapper dists, Maven local repo, Ivy2 cache
+- [x] `RustCachesRule` — Cargo registry cache + src, git checkouts, rustup downloads
+- [x] `GoCachesRule` — Go build cache (`~/Library/Caches/go-build/`), module download cache
+- [x] Register all in `RuleCatalog` (developer profile + `all`)
 
 ### Project Artifact Purge v2 — Smart Discovery
 The Phase 5 implementation hardcodes scan paths. Replace with Spotlight-based project discovery:
-- [ ] `ProjectRootDiscovery` actor — `NSMetadataQuery` search for `.git` directories + language signal files (`Package.swift`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `Gemfile`) scoped to user home
-- [ ] Deduplicate to project roots: resolve each signal to its parent, drop descendants within 3 path components of an ancestor (submodule heuristic)
-- [ ] Filter out system paths, `node_modules/`, `vendor/`, `.Trash/`
-- [ ] Persist confirmed roots to `~/Library/Application Support/Pare/project-roots.json`
-- [ ] `ProjectArtifactsRule` (customScan) — scan confirmed roots for artifact patterns; 7-day age gate per artifact directory
-- [ ] Artifact patterns: `node_modules/`, `target/`, `venv/`/`.venv/`, `__pycache__/`, `.gradle/`, `.bundle/`, `.next/`, `.nuxt/`, `.parcel-cache/`, `.turbo/`, `.nx/`, `dist/`
-- [ ] UI: "Project Roots" card in Scan tab — discovered roots with checkboxes (opt-out), "Rescan" button, "Add folder…" for manual addition
+- [x] `ProjectRootDiscovery` actor — `NSMetadataQuery` search for `.git` directories + language signal files (`Package.swift`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `Gemfile`) scoped to user home
+- [x] Deduplicate to project roots: resolve each signal to its parent, drop descendants within 3 path components of an ancestor (submodule heuristic)
+- [x] Filter out system paths, `node_modules/`, `vendor/`, `.Trash/`
+- [x] Persist confirmed roots to `~/Library/Application Support/Pare/project-roots.json`
+- [x] `ProjectArtifactsRule` (customScan) — scan confirmed roots for artifact patterns; 7-day age gate per artifact directory
+- [x] Artifact patterns: `node_modules/`, `target/`, `venv/`/`.venv/`, `__pycache__/`, `.gradle/`, `.bundle/`, `.next/`, `.nuxt/`, `.parcel-cache/`, `.turbo/`, `.nx/`, `dist/`
+- [x] UI: "Project Roots" card in Scan tab — discovered roots with checkboxes (opt-out), "Rescan" button, "Add folder…" for manual addition
 
 ---
 
