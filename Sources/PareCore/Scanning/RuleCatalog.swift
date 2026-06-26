@@ -49,7 +49,13 @@ public enum RuleCatalog {
             WrongPlatformBinariesRule(),
             DockerLogsReviewRequiredRule(),
             AIToolCachesRule(),
-            HomebrewCacheRule()
+            HomebrewCacheRule(),
+            PythonCachesRule(),
+            RubyCachesRule(),
+            JavaBuildCachesRule(),
+            RustCachesRule(),
+            GoCachesRule(),
+            ProjectArtifactsRule(),
         ] + baseline
     }
 
