@@ -220,6 +220,34 @@ public enum ScanPolicy {
         "/library/application support/mobilesync/backup",
     ]
 
+    /// Safe cache paths for common productivity and collaboration apps.
+    public static let productivitySafePathMarkers: [String] = [
+        "/library/application support/slack/cache",
+        "/library/application support/slack/cacheddata",
+        "/library/caches/com.tinyspeck.slackmacgap",
+        "/library/caches/us.zoom.xos",
+        "/library/caches/com.google.drivefs.finderext",
+        "/library/caches/com.dropbox.client2",
+        "/library/application support/microsoft/teams/cache",
+        "/library/caches/com.microsoft.teams2",
+        "/library/caches/com.microsoft.teams",
+        "/library/caches/com.microsoft.onedrive-mac",
+        "/library/caches/com.microsoft.word",
+        "/library/caches/com.microsoft.excel",
+        "/library/caches/com.microsoft.powerpoint",
+        "/library/caches/com.microsoft.outlook",
+    ]
+
+    /// Review-risk paths for productivity apps (recordings, document folders).
+    public static let productivityReviewPathMarkers: [String] = [
+        "/documents/zoom",
+    ]
+
+    /// Path marker for user-level launch agents.
+    public static let launchAgentPathMarkers: [String] = [
+        "/library/launchagents/",
+    ]
+
     public static let browserExtendedReviewPathMarkers: [String] = [
         "/library/application support/google/chrome/default/sessions",
         "/library/application support/google/chrome/default/databases",
@@ -305,6 +333,7 @@ public enum ScanPolicy {
             .map { "/library/\($0.lowercased())" }
         return base + catalogPaths + browserExtendedSafePathMarkers + browserExtendedReviewPathMarkers
             + browserReviewDataPathMarkers + developerDockerSafePathMarkers + mobileSyncBackupPathMarkers
+            + productivitySafePathMarkers + productivityReviewPathMarkers
     }()
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
@@ -322,6 +351,10 @@ public enum ScanPolicy {
             return 7 * 24 * 60 * 60  // 7 days — avoid flagging freshly created build dirs
         case .deviceBackups:
             return 30 * 24 * 60 * 60  // 30 days — don't flag recent backups
+        case .productivityCaches:
+            return defaultCacheMinAgeSeconds  // 3 days
+        case .launchAgents:
+            return 30 * 24 * 60 * 60  // 30 days — don't flag recently installed agents
         }
     }
 
