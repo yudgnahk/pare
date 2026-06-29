@@ -81,7 +81,7 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 
 ## Known State
 
-See `docs/checklist.md` for phase completion status. Phases 1–6 are complete. Phase 7 (code signing/notarization) remains open.
+See `docs/roadmap.md` for phase completion status. Phases 1–8 are complete (Phase 8 Maintenance Tab merged). Phase 9 (code signing, notarization, distribution) remains open.
 
 The app runs a single unified scan using `RuleCatalog.all`; the CLI retains profile-based scanning. Parallel rule execution was attempted and reverted — Swift 5.9 nested `withTaskGroup` + actor calls caused empty results. The sequential `runRule` loop is the stable approach; `CachedFileTraversal` already parallelises I/O within each individual rule call.
 
@@ -92,7 +92,7 @@ The app runs a single unified scan using `RuleCatalog.all`; the CLI retains prof
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **pare** (362 symbols, 349 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **pare** (471 symbols, 457 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
