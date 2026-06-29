@@ -28,9 +28,11 @@ public enum RuleCatalog {
             LogsAndCrashReportsRule(),
             BrowserCachesRule(),
             BrowserExtendedArtifactsRule(),
+            BrowserReviewDataRule(),
             InstallerFileRule(),
             StaleAppVersionRule(),
-            ProjectArtifactRule()
+            ProjectArtifactRule(),
+            MobileSyncBackupsRule(),
         ]
     }
 
@@ -47,7 +49,7 @@ public enum RuleCatalog {
             JetBrainsStaleVersionRule(),
             JetBrainsReviewRequiredRule(),
             WrongPlatformBinariesRule(),
-            DockerLogsReviewRequiredRule(),
+            DockerStorageRule(),
             AIToolCachesRule(),
             HomebrewCacheRule(),
             PythonCachesRule(),

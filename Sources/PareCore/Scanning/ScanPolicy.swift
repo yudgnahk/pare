@@ -151,7 +151,20 @@ public enum ScanPolicy {
     ]
 
     public static let developerDockerReviewPathMarkers = [
-        "/library/containers/com.docker.docker/data/log"
+        "/library/containers/com.docker.docker/data/log",
+        "/library/containers/com.docker.docker/data/vms",
+        "/library/group containers/group.com.docker/log",
+    ]
+
+    public static let developerDockerSafePathMarkers: [String] = [
+        "/library/containers/com.docker.docker/data/log",
+        "/library/containers/com.docker.docker/data/lifecycle-server.log",
+        "/library/group containers/group.com.docker/log",
+    ]
+
+    /// Detect-only marker for Docker.raw — `.advanced` risk, cannot be safely deleted.
+    public static let developerDockerAdvancedPathMarkers: [String] = [
+        "/library/containers/com.docker.docker/data/vms/0/data/docker.raw",
     ]
 
     /// Shader and GPU caches stored by Chromium-based browsers in Application Support.
@@ -164,6 +177,49 @@ public enum ScanPolicy {
     ]
 
     /// Session restore, WebSQL, IndexedDB, and local storage for Chromium-based browsers.
+    public static let browserReviewDataPathMarkers: [String] = [
+        // Safari
+        "/library/safari/history.db",
+        "/library/safari/cookies.binarycookies",
+        "/library/safari/databases",
+        "/library/safari/localstorage",
+        // Chrome
+        "/library/application support/google/chrome/default/history",
+        "/library/application support/google/chrome/default/cookies",
+        "/library/application support/google/chrome/default/web data",
+        "/library/application support/google/chrome/default/indexeddb",
+        "/library/application support/google/chrome/default/databases",
+        // Brave
+        "/library/application support/bravesoftware/brave-browser/default/history",
+        "/library/application support/bravesoftware/brave-browser/default/cookies",
+        "/library/application support/bravesoftware/brave-browser/default/web data",
+        "/library/application support/bravesoftware/brave-browser/default/indexeddb",
+        "/library/application support/bravesoftware/brave-browser/default/databases",
+        // Edge
+        "/library/application support/microsoft edge/default/history",
+        "/library/application support/microsoft edge/default/cookies",
+        "/library/application support/microsoft edge/default/web data",
+        "/library/application support/microsoft edge/default/indexeddb",
+        "/library/application support/microsoft edge/default/databases",
+        // Arc
+        "/library/application support/arc/user data/default/history",
+        "/library/application support/arc/user data/default/cookies",
+        "/library/application support/arc/user data/default/web data",
+        "/library/application support/arc/user data/default/indexeddb",
+        "/library/application support/arc/user data/default/databases",
+        // Opera
+        "/library/application support/com.operasoftware.opera/default/history",
+        "/library/application support/com.operasoftware.opera/default/cookies",
+        "/library/application support/com.operasoftware.opera/default/web data",
+        "/library/application support/com.operasoftware.opera/default/indexeddb",
+        "/library/application support/com.operasoftware.opera/default/databases",
+    ]
+
+    /// iOS / iPadOS backup directory markers.
+    public static let mobileSyncBackupPathMarkers: [String] = [
+        "/library/application support/mobilesync/backup",
+    ]
+
     public static let browserExtendedReviewPathMarkers: [String] = [
         "/library/application support/google/chrome/default/sessions",
         "/library/application support/google/chrome/default/databases",
@@ -173,10 +229,10 @@ public enum ScanPolicy {
         "/library/application support/microsoft edge/default/databases",
         "/library/application support/microsoft edge/default/indexeddb",
         "/library/application support/microsoft edge/default/local storage",
-        "/library/application support/BraveSoftware/brave-browser/default/sessions",
-        "/library/application support/BraveSoftware/brave-browser/default/databases",
-        "/library/application support/BraveSoftware/brave-browser/default/indexeddb",
-        "/library/application support/BraveSoftware/brave-browser/default/local storage",
+        "/library/application support/bravesoftware/brave-browser/default/sessions",
+        "/library/application support/bravesoftware/brave-browser/default/databases",
+        "/library/application support/bravesoftware/brave-browser/default/indexeddb",
+        "/library/application support/bravesoftware/brave-browser/default/local storage",
         "/library/application support/arc/user data/default/sessions",
         "/library/application support/arc/user data/default/databases",
         "/library/application support/arc/user data/default/indexeddb",
@@ -248,6 +304,7 @@ public enum ScanPolicy {
             .flatMap { $0.libraryPaths }
             .map { "/library/\($0.lowercased())" }
         return base + catalogPaths + browserExtendedSafePathMarkers + browserExtendedReviewPathMarkers
+            + browserReviewDataPathMarkers + developerDockerSafePathMarkers + mobileSyncBackupPathMarkers
     }()
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
@@ -263,6 +320,8 @@ public enum ScanPolicy {
             return nil
         case .projectArtifacts:
             return 7 * 24 * 60 * 60  // 7 days — avoid flagging freshly created build dirs
+        case .deviceBackups:
+            return 30 * 24 * 60 * 60  // 30 days — don't flag recent backups
         }
     }
 

@@ -524,6 +524,8 @@ struct ScanDashboardView: View {
             return Color(red: 0.72, green: 0.55, blue: 0.88)
         case .projectArtifacts:
             return Color(red: 0.94, green: 0.72, blue: 0.37)
+        case .deviceBackups:
+            return Color.indigo
         }
     }
 
