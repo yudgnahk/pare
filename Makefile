@@ -6,7 +6,7 @@ PROFILE ?= baseline
 TOP ?= 20
 ARGS ?=
 
-.PHONY: help build test run start run-app run-baseline run-developer run-designer run-video-builder clean
+.PHONY: help build test run start run-app run-baseline run-developer run-designer run-video-builder release clean
 
 help:
 	@printf "Targets:\n"
@@ -19,11 +19,13 @@ help:
 	@printf "  make run-developer        Run developer scan\n"
 	@printf "  make run-designer         Run designer scan\n"
 	@printf "  make run-video-builder    Run video-builder scan\n"
+	@printf "  make release              Build signed + notarized DMG (requires env vars — see scripts/release.sh)\n"
 	@printf "  make clean                Remove .build artifacts\n"
 	@printf "\nExamples:\n"
 	@printf "  make start\n"
 	@printf "  make run PROFILE=developer TOP=50\n"
 	@printf "  make run PROFILE=video-builder TOP=30\n"
+	@printf "  CERT_NAME='Developer ID Application: ...' APPLE_ID=you@example.com NOTARY_PASSWORD=xxxx TEAM_ID=ABCD1234EF make release\n"
 
 build:
 	swift build
@@ -54,5 +56,8 @@ run-designer:
 run-video-builder:
 	swift run $(APP) --profile video-builder --top $(TOP) $(ARGS)
 
+release:
+	bash scripts/release.sh
+
 clean:
-	rm -rf .build
+	rm -rf .build dist
