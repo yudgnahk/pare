@@ -171,6 +171,13 @@ final class ScanDashboardViewModel: ObservableObject {
         latestFindings.filter { $0.riskLevel == .review }.count
     }
 
+    var deviceBackupFindings: [FindingItem] {
+        latestFindings
+            .filter { $0.category == .deviceBackups }
+            .sorted { $0.sizeBytes > $1.sizeBytes }
+            .map(FindingItem.init)
+    }
+
     func cancelScan() {
         scanTask?.cancel()
         scanTask = nil
