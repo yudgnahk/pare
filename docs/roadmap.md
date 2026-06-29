@@ -211,7 +211,7 @@ Spec: `docs/features/phase-7-platform-completeness.md`
 - [x] `MobileSyncBackupsRule` (customScan) — enumerate `~/Library/Application Support/MobileSync/Backup/`
 - [x] Parse `Info.plist` per backup for device name, iOS version, last backup date
 - [x] Group by device; flag oldest backups per device as `.review` if > 1 backup exists, or any backup > 180 days old
-- [ ] "Device Backups" card in Scan tab showing device name, iOS version, backup date, size
+- [x] "Device Backups" card in Scan tab showing device name, iOS version, backup date, size
 
 ### Browser Review Data
 - [x] `BrowserReviewDataRule` — history databases, cookies, form data, IndexedDB, WebSQL for Safari, Chrome, Firefox, Brave, Arc, Edge

@@ -19,6 +19,7 @@ struct ScanDashboardView: View {
                     cleanupStatusBanner
                     metrics
                     projectRootsSection
+                    deviceBackupsSection
                     summaries
                     byToolBreakdown
                     largeFilesByCategory
@@ -47,6 +48,13 @@ struct ScanDashboardView: View {
         // Show the card when discovery has run (so user sees results) OR there are manual entries.
         if projectRootsViewModel.hasRunDiscovery || projectRootsViewModel.hasAnyRoots {
             ProjectRootsCard(viewModel: projectRootsViewModel)
+        }
+    }
+
+    @ViewBuilder
+    private var deviceBackupsSection: some View {
+        if !viewModel.deviceBackupFindings.isEmpty {
+            DeviceBackupsCard(viewModel: viewModel)
         }
     }
 
