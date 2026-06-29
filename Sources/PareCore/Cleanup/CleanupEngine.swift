@@ -267,10 +267,14 @@ public actor CleanupEngine {
             + ScanPolicy.developerSafePathMarkers
             + ScanPolicy.developerReviewPathMarkers
             + ScanPolicy.developerDockerReviewPathMarkers
+            + ScanPolicy.developerDockerSafePathMarkers
+            + ScanPolicy.developerDockerAdvancedPathMarkers
             + ScanPolicy.developerPackageCacheMarkers
             + ScanPolicy.aiToolSafePathMarkers
             + ScanPolicy.browserExtendedSafePathMarkers
             + ScanPolicy.browserExtendedReviewPathMarkers
+            + ScanPolicy.browserReviewDataPathMarkers
+            + ScanPolicy.mobileSyncBackupPathMarkers
 
         return ScanPolicy.matchesPersonaPath(url, allowedMarkers: allPersonaMarkers)
     }

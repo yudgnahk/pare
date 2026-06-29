@@ -33,4 +33,10 @@ public enum FileSystemUtils {
         }
         return total
     }
+
+    public static func fileSize(url: URL) -> Int64 {
+        guard let vals = try? url.resourceValues(forKeys: [.fileSizeKey]),
+              let size = vals.fileSize else { return 0 }
+        return Int64(size)
+    }
 }
