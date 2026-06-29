@@ -534,6 +534,10 @@ struct ScanDashboardView: View {
             return Color(red: 0.94, green: 0.72, blue: 0.37)
         case .deviceBackups:
             return Color.indigo
+        case .productivityCaches:
+            return Color.teal
+        case .launchAgents:
+            return Color.orange
         }
     }
 
