@@ -41,6 +41,11 @@ struct ContentView: View {
                     Label("Disk", systemImage: "externaldrive.badge.magnifyingglass")
                 }
 
+            MaintenanceView()
+                .tabItem {
+                    Label("Maintenance", systemImage: "wrench.and.screwdriver")
+                }
+
             HistoryView(viewModel: historyViewModel)
                 .tabItem {
                     Label("History", systemImage: "clock.arrow.circlepath")

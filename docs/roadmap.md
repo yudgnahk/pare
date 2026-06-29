@@ -237,17 +237,18 @@ Spec: `docs/features/phase-8-productivity-system.md`
 - [x] 30-day age gate on the plist file itself
 
 ### Maintenance Tab
-- [ ] New SwiftUI tab "Maintenance" (icon: `wrench.and.screwdriver`) — one-shot system actions, not file deletions
-- [ ] `MaintenanceAction` struct (id, title, description, estimatedSeconds, requiresSudo, run: () async throws -> Void)
-- [ ] `MaintenanceViewModel` (@MainActor) — tracks running / completed / error state per action
-- [ ] `MaintenanceView` — card grid; each card shows title, description, status, "Run" button
-- [ ] Initial actions (no sudo required):
+- [x] New SwiftUI tab "Maintenance" (icon: `wrench.and.screwdriver`) — one-shot system actions, not file deletions
+- [x] `MaintenanceAction` struct (id, title, description, estimatedSeconds, requiresSudo) — in `PareCore/Maintenance/`
+- [x] `MaintenanceRunner` (PareCore) — executes actions, streams stdout/stderr via `AsyncThrowingStream`
+- [x] `MaintenanceViewModel` (@MainActor) — tracks running / completed / error state per action
+- [x] `MaintenanceView` — 2-column card grid; each card shows icon, title, description, status badge, Run button, expandable inline log
+- [x] Initial actions (no sudo required):
   1. **Flush DNS cache** — `dscacheutil -flushcache; killall -HUP mDNSResponder`
   2. **Rebuild Launch Services** — `lsregister -kill -r -domain local -domain system -domain user`
   3. **Restart Finder** — `killall Finder`
-  4. **Vacuum SQLite databases** — Mail, Safari, Messages envelope indices
-  5. **Docker system prune** — `docker system prune -f` (shown only if Docker is installed + running)
-- [ ] Actions run via `NSTask`; stdout/stderr streamed to an inline log view
+  4. **Vacuum SQLite databases** — Mail (version-scanned), Safari History, Messages
+  5. **Docker system prune** — `docker system prune -f` (shown only if Docker daemon is running)
+- [x] Actions stream stdout/stderr to an expandable inline log per card (auto-expands on first output)
 - [ ] Validate on macOS 13, 14, 15 before shipping
 
 ---
