@@ -106,6 +106,14 @@ chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
 cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
 
+# Copy icon (run scripts/generate-icon.sh first if missing)
+if [ -f "$SCRIPTS_DIR/AppIcon.icns" ]; then
+    cp "$SCRIPTS_DIR/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    echo "   ✓ AppIcon.icns copied"
+else
+    echo "   ⚠  AppIcon.icns not found — run: bash scripts/generate-icon.sh"
+fi
+
 # Update version/build in the bundle's plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP_BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER"       "$APP_BUNDLE/Contents/Info.plist"

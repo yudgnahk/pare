@@ -1,0 +1,558 @@
+
+<title>Pare — Visual Identity</title>
+<meta name="description" content="Brand identity for Pare, the macOS disk cleanup utility.">
+
+<style>
+  :root {
+    --ink:          #0D1520;
+    --marine:       #152030;
+    --surface:      #1A2D40;
+    --seafoam:      #5CC8BC;
+    --seafoam-light:#8DE8E0;
+    --seafoam-deep: #238C82;
+    --chalk:        #E4EDF2;
+    --fog:          #7A9BB0;
+    --chalk-warm:   #EDF2F5;
+    --border:       rgba(255,255,255,0.07);
+    --font:         -apple-system, 'Helvetica Neue', system-ui, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--ink);
+    color: var(--chalk);
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    line-height: 1.5;
+  }
+
+  .page {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 0 2.5rem 6rem;
+  }
+
+  /* ── Masthead ────────────────────────────────────────── */
+  .masthead {
+    padding: 5rem 0 4.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .masthead-left { display: flex; align-items: baseline; gap: 1.25rem; }
+  .masthead-name {
+    font-size: 1.125rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--chalk);
+  }
+  .masthead-slash { color: var(--fog); }
+  .masthead-title-sm {
+    font-size: 1.125rem;
+    font-weight: 300;
+    color: var(--fog);
+  }
+  .masthead-version {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--fog);
+    opacity: 0.6;
+  }
+
+  /* ── Section chrome ──────────────────────────────────── */
+  .section {
+    padding-top: 4.5rem;
+  }
+  .section-label {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--seafoam);
+    margin-bottom: 2rem;
+    opacity: 0.8;
+  }
+
+  /* ── Hero ────────────────────────────────────────────── */
+  .hero {
+    padding: 5.5rem 0 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2.5rem;
+  }
+  .hero-icon { display: flex; align-items: center; justify-content: center; }
+  .hero-text { text-align: center; max-width: 520px; }
+  .hero-wordmark {
+    font-size: clamp(3.5rem, 10vw, 6rem);
+    font-weight: 100;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    color: var(--chalk);
+    line-height: 1;
+    margin-bottom: 0.75rem;
+    padding-right: 0.45em; /* compensate for tracking on last char */
+  }
+  .hero-tagline {
+    font-size: 0.8125rem;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    color: var(--fog);
+    text-transform: uppercase;
+  }
+
+  /* ── The Mark description ────────────────────────────── */
+  .mark-description {
+    margin-top: 3rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  .mark-card {
+    background: var(--marine);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+  }
+  .mark-card-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--seafoam);
+    margin-bottom: 0.5rem;
+    opacity: 0.85;
+  }
+  .mark-card-text {
+    font-size: 0.8125rem;
+    font-weight: 300;
+    color: var(--chalk);
+    line-height: 1.65;
+    opacity: 0.85;
+  }
+
+  /* ── Lockups ─────────────────────────────────────────── */
+  .lockups-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  .lockup {
+    border-radius: 12px;
+    padding: 3rem 2.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.125rem;
+    border: 1px solid var(--border);
+  }
+  .lockup-dark  { background: var(--surface); }
+  .lockup-light { background: var(--chalk-warm); }
+  .lockup-wordmark {
+    font-size: 2rem;
+    font-weight: 200;
+    letter-spacing: 0.18em;
+    line-height: 1;
+    padding-right: 0.18em;
+  }
+  .lockup-wordmark-dark  { color: var(--chalk); }
+  .lockup-wordmark-light { color: #1A2D40; }
+  .lockup-bg-label {
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 0.625rem;
+    opacity: 0.4;
+  }
+  .lockup-bg-label-dark  { color: var(--chalk); }
+  .lockup-bg-label-light { color: #1A2D40; }
+  .lockup-inner { display: flex; flex-direction: column; }
+
+  /* ── Palette ─────────────────────────────────────────── */
+  .palette-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 0.875rem;
+  }
+  .swatch { display: flex; flex-direction: column; gap: 0.625rem; }
+  .swatch-color {
+    height: 80px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .swatch-name {
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--chalk);
+    opacity: 0.7;
+  }
+  .swatch-hex {
+    font-size: 0.6875rem;
+    font-weight: 400;
+    color: var(--fog);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+  .swatch-role {
+    font-size: 0.5625rem;
+    font-weight: 400;
+    color: var(--fog);
+    opacity: 0.5;
+    letter-spacing: 0.04em;
+    margin-top: -0.25rem;
+  }
+
+  /* ── Typography ──────────────────────────────────────── */
+  .type-specimen {
+    background: var(--marine);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .type-row {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .type-row:last-child { border-bottom: none; }
+  .type-sample { flex: 1; }
+  .type-meta {
+    flex-shrink: 0;
+    text-align: right;
+    font-size: 0.625rem;
+    color: var(--fog);
+    opacity: 0.55;
+    letter-spacing: 0.08em;
+    line-height: 1.8;
+  }
+  .ts-display   { font-size: 2.5rem; font-weight: 100; letter-spacing: 0.32em; color: var(--chalk); text-transform: uppercase; }
+  .ts-title     { font-size: 1.5rem; font-weight: 300; letter-spacing: 0.08em; color: var(--chalk); }
+  .ts-heading   { font-size: 1rem;   font-weight: 400; color: var(--chalk); }
+  .ts-body      { font-size: 0.9375rem; font-weight: 400; color: var(--chalk); opacity: 0.75; line-height: 1.6; max-width: 480px; }
+  .ts-label     { font-size: 0.625rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--seafoam); }
+  .ts-caption   { font-size: 0.75rem; font-weight: 400; color: var(--fog); }
+
+  /* ── At Scale ────────────────────────────────────────── */
+  .sizes-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 2.5rem;
+    padding: 2.5rem;
+    background: var(--marine);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .size-item { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+  .size-label {
+    font-size: 0.5625rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fog);
+    opacity: 0.5;
+  }
+
+  /* ── Divider ─────────────────────────────────────────── */
+  .rule {
+    height: 1px;
+    background: var(--border);
+    margin-top: 4.5rem;
+  }
+
+  /* ── Footer ──────────────────────────────────────────── */
+  .footer {
+    padding-top: 2.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .footer-text {
+    font-size: 0.625rem;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fog);
+    opacity: 0.35;
+  }
+
+  @media (max-width: 640px) {
+    .page { padding: 0 1.25rem 4rem; }
+    .lockups-grid { grid-template-columns: 1fr; }
+    .palette-grid { grid-template-columns: repeat(3, 1fr); }
+    .mark-description { grid-template-columns: 1fr; }
+    .sizes-row { gap: 1.25rem; flex-wrap: wrap; padding: 1.5rem; }
+  }
+</style>
+
+<div class="page">
+
+  <!-- Masthead -->
+  <header class="masthead">
+    <div class="masthead-left">
+      <span class="masthead-name">Pare</span>
+      <span class="masthead-slash">/</span>
+      <span class="masthead-title-sm">Visual Identity</span>
+    </div>
+    <span class="masthead-version">Version 1.0 · 2025</span>
+  </header>
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-icon" id="icon-hero"></div>
+    <div class="hero-text">
+      <div class="hero-wordmark">Pare</div>
+      <div class="hero-tagline">macOS Disk Cleanup Utility</div>
+    </div>
+  </div>
+
+  <!-- The Mark -->
+  <section class="section">
+    <div class="section-label">The Mark</div>
+    <div class="mark-description">
+      <div class="mark-card">
+        <div class="mark-card-label">Concept</div>
+        <div class="mark-card-text">
+          A storage disk — a circle — reduced by a single clean stroke.
+          The chord cut references the act of paring: deliberate, surgical removal.
+          The fresh-cut edge catches ambient light. The removed piece disappears into the dark.
+        </div>
+      </div>
+      <div class="mark-card">
+        <div class="mark-card-label">Principles</div>
+        <div class="mark-card-text">
+          Geometry only. No ornamentation, no drop shadows, no texture.
+          One mark — the circle — one action — the cut.
+          The icon reads clearly at 16&times;16 px and holds at 1024&times;1024.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lockups -->
+  <section class="section">
+    <div class="section-label">Lockups</div>
+    <div class="lockups-grid">
+      <div>
+        <div class="lockup lockup-dark">
+          <div id="icon-lockup-dark"></div>
+          <div class="lockup-inner">
+            <span class="lockup-wordmark lockup-wordmark-dark">Pare</span>
+          </div>
+        </div>
+        <div class="lockup-bg-label lockup-bg-label-dark">Dark surface</div>
+      </div>
+      <div>
+        <div class="lockup lockup-light">
+          <div id="icon-lockup-light"></div>
+          <div class="lockup-inner">
+            <span class="lockup-wordmark lockup-wordmark-light">Pare</span>
+          </div>
+        </div>
+        <div class="lockup-bg-label lockup-bg-label-light">Light surface</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Palette -->
+  <section class="section">
+    <div class="section-label">Palette</div>
+    <div class="palette-grid">
+      <div class="swatch">
+        <div class="swatch-color" style="background:#0D1520;"></div>
+        <div class="swatch-name">Ink</div>
+        <div class="swatch-hex">#0D1520</div>
+        <div class="swatch-role">Page ground</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#1A2D40;"></div>
+        <div class="swatch-name">Marine</div>
+        <div class="swatch-hex">#1A2D40</div>
+        <div class="swatch-role">Raised surface</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#5CC8BC;"></div>
+        <div class="swatch-name">Seafoam</div>
+        <div class="swatch-hex">#5CC8BC</div>
+        <div class="swatch-role">Primary mark</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#8DE8E0;"></div>
+        <div class="swatch-name">Mist</div>
+        <div class="swatch-hex">#8DE8E0</div>
+        <div class="swatch-role">Highlight</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#E4EDF2;"></div>
+        <div class="swatch-name">Chalk</div>
+        <div class="swatch-hex">#E4EDF2</div>
+        <div class="swatch-role">Typography</div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#7A9BB0;"></div>
+        <div class="swatch-name">Fog</div>
+        <div class="swatch-hex">#7A9BB0</div>
+        <div class="swatch-role">Secondary text</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Typography -->
+  <section class="section">
+    <div class="section-label">Typography</div>
+    <div class="type-specimen">
+      <div class="type-row">
+        <div class="type-sample ts-display">Pare</div>
+        <div class="type-meta">SF Pro Display<br>Weight 100 · +0.32em</div>
+      </div>
+      <div class="type-row">
+        <div class="type-sample ts-title">Clean. Deliberate. Precise.</div>
+        <div class="type-meta">SF Pro Display<br>Weight 300 · +0.08em</div>
+      </div>
+      <div class="type-row">
+        <div class="type-sample ts-heading">Scan Results — 4.2 GB identified</div>
+        <div class="type-meta">SF Pro Text<br>Weight 400</div>
+      </div>
+      <div class="type-row">
+        <div class="type-sample ts-body">
+          Pare scans your disk and surfaces what can safely go.
+          Each finding is ranked by size and risk level.
+          Nothing moves without your confirmation.
+        </div>
+        <div class="type-meta">SF Pro Text<br>Weight 400 · 1.6 leading</div>
+      </div>
+      <div class="type-row">
+        <div class="type-sample ts-label">Developer Caches · Safe</div>
+        <div class="type-meta">SF Pro Text<br>Weight 600 · +0.14em</div>
+      </div>
+      <div class="type-row">
+        <div class="type-sample ts-caption">Last scanned 3 minutes ago · 127 items</div>
+        <div class="type-meta">SF Pro Text<br>Weight 400 · 11 pt</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Sizes -->
+  <section class="section">
+    <div class="section-label">At Scale</div>
+    <div class="sizes-row">
+      <div class="size-item">
+        <div id="icon-128"></div>
+        <div class="size-label">128 pt</div>
+      </div>
+      <div class="size-item">
+        <div id="icon-64"></div>
+        <div class="size-label">64 pt</div>
+      </div>
+      <div class="size-item">
+        <div id="icon-32"></div>
+        <div class="size-label">32 pt</div>
+      </div>
+      <div class="size-item">
+        <div id="icon-16"></div>
+        <div class="size-label">16 pt</div>
+      </div>
+      <div style="flex:1;"></div>
+      <div class="size-item" style="align-items:flex-start;">
+        <div style="font-size:0.6875rem;font-weight:300;color:var(--fog);line-height:1.7;max-width:200px;opacity:0.7;">
+          The chord cut remains legible at the smallest sizes.
+          The two endpoints of the cut create a visual anchor
+          that distinguishes the mark from a plain circle.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="rule"></div>
+  <footer class="footer">
+    <span class="footer-text">Pare Visual Identity · com.yudgnahk.pare</span>
+    <span class="footer-text">macOS 13+ · SF Pro system typeface</span>
+  </footer>
+
+</div>
+
+<script>
+  /* ── Icon generator ──────────────────────────────────────────────────────
+     Circle (cx=60, cy=60, r=42) with lower-right chord removed.
+     Point A (22° from east):  (98.9, 75.7)
+     Point B (117° from east): (40.9, 97.4)
+     Main arc: M A → large arc counter-clockwise → B → Z (chord close)
+  ────────────────────────────────────────────────────────────────────────── */
+  function pareIcon(uid, px) {
+    const bg   = `bg${uid}`;
+    const disk = `dk${uid}`;
+    const hl   = `hl${uid}`;
+    return `
+<svg width="${px}" height="${px}" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="${bg}" x1="10%" y1="0%" x2="90%" y2="100%">
+      <stop offset="0%"   stop-color="#1C3348"/>
+      <stop offset="100%" stop-color="#0A1420"/>
+    </linearGradient>
+    <radialGradient id="${disk}" cx="36%" cy="28%" r="68%">
+      <stop offset="0%"   stop-color="#9AECE5"/>
+      <stop offset="45%"  stop-color="#5CC8BC"/>
+      <stop offset="100%" stop-color="#1F7870"/>
+    </radialGradient>
+    <radialGradient id="${hl}" cx="38%" cy="25%" r="55%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.22)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Icon background -->
+  <rect width="120" height="120" rx="26" fill="url(#${bg})"/>
+
+  <!-- Disk: circle cx=60 cy=60 r=42, lower-right segment removed by chord A→B -->
+  <!-- A=(98.9,75.7) at 22°  B=(40.9,97.4) at 117°  large-arc=1 sweep=0 -->
+  <path d="M 98.9 75.7 A 42 42 0 1 0 40.9 97.4 Z"
+        fill="url(#${disk})"
+        stroke="rgba(255,255,255,0.09)"
+        stroke-width="1.2"/>
+
+  <!-- Ambient highlight on upper portion of disk -->
+  <path d="M 98.9 75.7 A 42 42 0 1 0 40.9 97.4 Z"
+        fill="url(#${hl})"/>
+
+  <!-- Shadow on cut face (depth) — drawn slightly behind and below the line -->
+  <line x1="40.0" y1="98.1" x2="99.7" y2="76.4"
+        stroke="rgba(0,0,0,0.55)"
+        stroke-width="3"
+        stroke-linecap="round"/>
+
+  <!-- Highlight on cut face — the freshly-cut edge -->
+  <line x1="40.9" y1="97.4" x2="98.9" y2="75.7"
+        stroke="rgba(220,248,246,0.78)"
+        stroke-width="1.4"
+        stroke-linecap="round"/>
+</svg>`;
+  }
+
+  /* Inject at each site */
+  const targets = [
+    { id: 'icon-hero',         px: 220, uid: 'h' },
+    { id: 'icon-lockup-dark',  px: 48,  uid: 'ld' },
+    { id: 'icon-lockup-light', px: 48,  uid: 'll' },
+    { id: 'icon-128',          px: 128, uid: 'a' },
+    { id: 'icon-64',           px: 64,  uid: 'b' },
+    { id: 'icon-32',           px: 32,  uid: 'c' },
+    { id: 'icon-16',           px: 16,  uid: 'd' },
+  ];
+  targets.forEach(({ id, px, uid }) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = pareIcon(uid, px);
+  });
+</script>
