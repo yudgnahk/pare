@@ -33,6 +33,8 @@ public enum RuleCatalog {
             StaleAppVersionRule(),
             ProjectArtifactRule(),
             MobileSyncBackupsRule(),
+            ProductivityCachesRule(),
+            OrphanedLaunchAgentsRule(),
         ]
     }
 

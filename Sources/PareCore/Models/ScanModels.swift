@@ -15,6 +15,8 @@ public enum ScanCategory: String, CaseIterable, Sendable {
     case applications = "Applications"
     case projectArtifacts = "Project Artifacts"
     case deviceBackups = "Device Backups"
+    case productivityCaches = "Productivity Caches"
+    case launchAgents = "Launch Agents"
 }
 
 public enum RiskLevel: String, Sendable {

@@ -225,16 +225,16 @@ Spec: `docs/features/phase-7-platform-completeness.md`
 Spec: `docs/features/phase-8-productivity-system.md`
 
 ### Cloud & Productivity App Cleanup
-- [ ] `ProductivityCachesRule` — extend `app-catalog.json` with `"productivity"` category
-- [ ] Targets: Slack workspace cache, Zoom cache + cloud recordings folder, Google Drive FS cache, Dropbox logs, Microsoft Teams cache, OneDrive cache, Office temp files
-- [ ] Risk: `.safe` for caches, `.review` for recording/document folders
+- [x] `ProductivityCachesRule` — Slack, Zoom, Google Drive FS, Dropbox, Teams, OneDrive, Office caches
+- [x] Targets: Slack workspace cache, Zoom cache + cloud recordings folder, Google Drive FS cache, Dropbox cache, Microsoft Teams cache, OneDrive cache, Office caches
+- [x] Risk: `.safe` for caches, `.review` for Zoom recordings folder
 
 ### Orphaned Launch Agents
-- [ ] `OrphanedLaunchAgentsRule` (customScan) — scan `~/Library/LaunchAgents/*.plist`
-- [ ] Parse `Program` / `ProgramArguments[0]` from each plist; check if binary exists
-- [ ] Flag plist as `.review` if binary is missing; include missing binary path in `reason`
-- [ ] Skip plists with shell variable expansion in paths (can't resolve reliably)
-- [ ] 30-day age gate on the plist file itself
+- [x] `OrphanedLaunchAgentsRule` (customScan) — scan `~/Library/LaunchAgents/*.plist`
+- [x] Parse `Program` / `ProgramArguments[0]` from each plist; check if binary exists
+- [x] Flag plist as `.review` if binary is missing; include missing binary path in `reason`
+- [x] Skip plists with shell variable expansion in paths (can't resolve reliably)
+- [x] 30-day age gate on the plist file itself
 
 ### Maintenance Tab
 - [ ] New SwiftUI tab "Maintenance" (icon: `wrench.and.screwdriver`) — one-shot system actions, not file deletions
