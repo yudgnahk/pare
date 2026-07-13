@@ -13,6 +13,8 @@ public struct PackageManagerCachesRule: ScanRule {
     public func targetDirectories(environment: ScanEnvironment) -> [URL] {
         [
             environment.homeDirectory.appending(path: ".npm/_cacache"),
+            // npx package extract cache — often larger than _cacache (Mole parity).
+            environment.homeDirectory.appending(path: ".npm/_npx"),
             environment.homeDirectory.appending(path: "Library/Caches/Yarn"),
             environment.homeDirectory.appending(path: "Library/Caches/pnpm"),
             environment.homeDirectory.appending(path: "Library/Caches/CocoaPods"),
@@ -21,9 +23,15 @@ public struct PackageManagerCachesRule: ScanRule {
     }
 
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
-        guard ScanPolicy.isLowImpactPath(fileURL) else {
-            return false
-        }
+        let path = fileURL.path
+        // Persona markers for home-relative npm paths (not under Library/Caches).
+        let npmMarkers = ["/.npm/_cacache", "/.npm/_npx"]
+        let allowed = ScanPolicy.isLowImpactPath(fileURL)
+            || npmMarkers.contains(where: { path.contains($0) })
+        guard allowed else { return false }
+
+        // npx extracts are disposable package trees; skip multi-day age gate.
+        if path.contains("/.npm/_npx") { return true }
 
         return ScanPolicy.passesMinimumAge(
             for: resourceValues,

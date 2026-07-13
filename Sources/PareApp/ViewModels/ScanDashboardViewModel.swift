@@ -121,6 +121,14 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var cleanupState: CleanupState = .idle
     @Published var showCleanConfirmation = false
     @Published var showDeepCleanConfirmation = false
+    @Published var showSelectedCleanConfirmation = false
+    /// Paths selected for clean. SAFE findings start selected; REVIEW start unselected.
+    @Published var selectedPaths: Set<String> = []
+    /// Scan progress for 3-step hero (1...3) and status line.
+    @Published private(set) var scanStep: Int = 1
+    @Published private(set) var scanStepTitle: String = ""
+    @Published private(set) var scanRulesCompleted: Int = 0
+    @Published private(set) var scanRulesTotal: Int = 0
     /// Most recent transaction, used to offer undo.
     private var lastTransaction: CleanupTransaction?
     /// Raw findings kept after scan so cleanup can reference them.
@@ -171,6 +179,71 @@ final class ScanDashboardViewModel: ObservableObject {
         latestFindings.filter { $0.riskLevel == .review }.count
     }
 
+    var selectedCandidatesCount: Int {
+        latestFindings.filter { selectedPaths.contains($0.path) && $0.riskLevel != .advanced }.count
+    }
+
+    var selectedCandidatesBytes: Int64 {
+        latestFindings
+            .filter { selectedPaths.contains($0.path) && $0.riskLevel != .advanced }
+            .reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    var selectedReviewCount: Int {
+        latestFindings.filter {
+            selectedPaths.contains($0.path) && $0.riskLevel == .review
+        }.count
+    }
+
+    func isSelected(path: String) -> Bool { selectedPaths.contains(path) }
+
+    func toggleSelection(path: String) {
+        if selectedPaths.contains(path) {
+            selectedPaths.remove(path)
+        } else if let finding = latestFindings.first(where: { $0.path == path }),
+                  finding.riskLevel != .advanced {
+            selectedPaths.insert(path)
+        }
+    }
+
+    func selectAllSafe() {
+        selectedPaths = Set(latestFindings.filter { $0.riskLevel == .safe }.map(\.path))
+    }
+
+    func clearSelection() {
+        selectedPaths = []
+    }
+
+    func toggleCategory(_ category: ScanCategory, includeReview: Bool = false) {
+        let inCategory = latestFindings.filter {
+            $0.category == category
+                && $0.riskLevel != .advanced
+                && (includeReview || $0.riskLevel == .safe)
+        }
+        let paths = Set(inCategory.map(\.path))
+        let allSelected = !paths.isEmpty && paths.isSubset(of: selectedPaths)
+        if allSelected {
+            selectedPaths.subtract(paths)
+        } else {
+            selectedPaths.formUnion(paths)
+        }
+    }
+
+    func categorySelectionState(_ category: ScanCategory) -> CategorySelectState {
+        let paths = latestFindings
+            .filter { $0.category == category && $0.riskLevel == .safe }
+            .map(\.path)
+        guard !paths.isEmpty else { return .none }
+        let selected = paths.filter { selectedPaths.contains($0) }.count
+        if selected == 0 { return .none }
+        if selected == paths.count { return .all }
+        return .partial
+    }
+
+    enum CategorySelectState {
+        case none, partial, all
+    }
+
     var deviceBackupFindings: [FindingItem] {
         latestFindings
             .filter { $0.category == .deviceBackups }
@@ -183,12 +256,20 @@ final class ScanDashboardViewModel: ObservableObject {
         scanTask = nil
         state = .idle
         resultsVisible = false
+        scanRulesCompleted = 0
+        scanRulesTotal = 0
+        scanStepTitle = ""
+        scanStep = 1
     }
 
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
         state = .scanning
+        scanStep = 1
+        scanStepTitle = "Scanning system & app caches…"
+        scanRulesCompleted = 0
+        scanRulesTotal = 0
         // Only hide results on the first scan; subsequent scans keep old results
         // visible so the screen doesn't go blank while scanning.
         if latestFindings.isEmpty {
@@ -201,7 +282,24 @@ final class ScanDashboardViewModel: ObservableObject {
             let rules = RuleCatalog.all
             let exclusionList = (try? ExclusionStore.shared.load()) ?? .empty
             let runner = ScanRunner(exclusionList: exclusionList, cache: cache)
-            let report = await runner.run(rules: rules, forceRescan: forceRescan)
+            let totalRules = rules.count
+            await MainActor.run { self.scanRulesTotal = totalRules }
+
+            let report = await runner.run(rules: rules, forceRescan: forceRescan) { completed, total, title in
+                Task { @MainActor in
+                    self.scanRulesCompleted = completed
+                    self.scanRulesTotal = total
+                    self.scanStepTitle = title
+                    let fraction = Double(completed) / Double(max(total, 1))
+                    if fraction < 0.34 {
+                        self.scanStep = 1
+                    } else if fraction < 0.67 {
+                        self.scanStep = 2
+                    } else {
+                        self.scanStep = 3
+                    }
+                }
+            }
 
             // If the task was cancelled, don't update UI with partial results.
             guard !Task.isCancelled else { return }
@@ -213,10 +311,13 @@ final class ScanDashboardViewModel: ObservableObject {
             let largeFilesByCategory = Self.makeLargeFileGroups(from: report.findings)
             let toolRollups = Self.makeToolRollups(from: report.findings)
             let finishedAt = Date()
+            // Default selection: all SAFE; REVIEW off (Local Storage, etc.).
+            let defaultSelected = Set(report.findings.filter { $0.riskLevel == .safe }.map(\.path))
 
             await MainActor.run {
                 scanTask = nil
                 latestFindings = report.findings
+                selectedPaths = defaultSelected
                 totalReclaimableBytes = report.totalReclaimableBytes
                 summaries = report.summaries.map(SummaryItem.init(summary:))
                 topFindings = sortedTopFindings
@@ -226,10 +327,9 @@ final class ScanDashboardViewModel: ObservableObject {
                 lastScanDuration = finishedAt.timeIntervalSince(startedAt)
                 revealFeedback = nil
                 cleanupState = .idle
+                scanStep = 3
+                scanStepTitle = "Scan complete"
                 state = .success
-                // Set directly — the view's .animation(value:) modifier handles the
-                // spring + per-row delay. Wrapping in withAnimation here would override
-                // the view's implicit animation and lose the staggered delay.
                 resultsVisible = true
             }
         }
@@ -328,6 +428,46 @@ final class ScanDashboardViewModel: ObservableObject {
 
     func cancelDeepClean() {
         showDeepCleanConfirmation = false
+        cleanupState = .idle
+    }
+
+    // MARK: - Selected clean
+
+    func requestCleanSelected() {
+        guard selectedCandidatesCount > 0, state == .success else { return }
+        showSelectedCleanConfirmation = true
+        cleanupState = .confirming
+    }
+
+    func confirmCleanSelected() {
+        showSelectedCleanConfirmation = false
+        guard state == .success else { return }
+        cleanupState = .cleaning
+        let findings = latestFindings.filter {
+            selectedPaths.contains($0.path) && $0.riskLevel != .advanced
+        }
+
+        Task(priority: .userInitiated) {
+            do {
+                let result = try await engine.clean(findings: findings, profileName: "all")
+                await MainActor.run {
+                    lastTransaction = result.transaction
+                    cleanupState = .done(
+                        bytesFreed: result.totalBytesFreed,
+                        skippedCount: result.skipped.count
+                    )
+                    runScan()
+                }
+            } catch {
+                await MainActor.run {
+                    cleanupState = .error(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func cancelSelectedClean() {
+        showSelectedCleanConfirmation = false
         cleanupState = .idle
     }
 

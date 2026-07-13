@@ -37,9 +37,9 @@ public struct BrowserCachesRule: ScanRule {
             return false
         }
 
-        return ScanPolicy.passesMinimumAge(
-            for: resourceValues,
-            minimumAgeSeconds: ScanPolicy.defaultMinimumAgeSeconds(for: category)
-        )
+        // Browser HTTP caches are actively rewritten while the browser runs.
+        // A multi-day age gate hides nearly all reclaimable Chrome/Safari cache
+        // (CleanMyMac/Mole still list it). Safe to clean regardless of age.
+        return true
     }
 }

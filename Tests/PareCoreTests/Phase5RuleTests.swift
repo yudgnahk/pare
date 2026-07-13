@@ -62,14 +62,19 @@ final class Phase5RuleTests: XCTestCase {
         XCTAssertEqual(reviewFindings.count, 1, "Session restore directory should be flagged as review")
     }
 
-    func testBrowserExtendedRuleSkipsTooNewArtifacts() async throws {
+    func testBrowserExtendedRuleFlagsFreshSafeCaches() async throws {
+        // SAFE regenerable caches (shader, Service Worker) skip the age gate so
+        // active browsers still show reclaimable space (Mole/CleanMyMac parity).
         let tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tmp) }
 
         let shaderDir = tmp.appending(path: "Library/Application Support/Google/Chrome/GrShaderCache")
         try FileManager.default.createDirectory(at: shaderDir, withIntermediateDirectories: true)
         try Data(repeating: 0x00, count: 512).write(to: shaderDir.appending(path: "x.bin"))
-        // Do NOT back-date — files are just created (too new).
+
+        let swDir = tmp.appending(path: "Library/Application Support/Google/Chrome/Default/Service Worker")
+        try FileManager.default.createDirectory(at: swDir, withIntermediateDirectories: true)
+        try Data(repeating: 0x01, count: 256).write(to: swDir.appending(path: "sw.bin"))
 
         let rule = BrowserExtendedArtifactsRule()
         let env = ScanEnvironment(homeDirectory: tmp)
@@ -77,7 +82,28 @@ final class Phase5RuleTests: XCTestCase {
 
         XCTAssertNotNil(findings)
         let shaderFindings = findings!.filter { $0.path.contains("GrShaderCache") }
-        XCTAssertTrue(shaderFindings.isEmpty, "Freshly created shader cache should not be flagged")
+        XCTAssertEqual(shaderFindings.count, 1)
+        XCTAssertEqual(shaderFindings.first?.riskLevel, .safe)
+
+        let swFindings = findings!.filter { $0.path.contains("Service Worker") }
+        XCTAssertEqual(swFindings.count, 1)
+        XCTAssertEqual(swFindings.first?.riskLevel, .safe)
+    }
+
+    func testBrowserExtendedRuleAgeGatesLocalStorage() async throws {
+        let tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let lsDir = tmp.appending(path: "Library/Application Support/Google/Chrome/Default/Local Storage")
+        try FileManager.default.createDirectory(at: lsDir, withIntermediateDirectories: true)
+        try Data(repeating: 0x02, count: 256).write(to: lsDir.appending(path: "ls.bin"))
+        // Fresh Local Storage must remain hidden (credential-adjacent REVIEW data).
+
+        let rule = BrowserExtendedArtifactsRule()
+        let env = ScanEnvironment(homeDirectory: tmp)
+        let findings = await rule.customScan(environment: env)
+        let lsFindings = findings!.filter { $0.path.contains("Local Storage") }
+        XCTAssertTrue(lsFindings.isEmpty, "Fresh Local Storage must not be flagged")
     }
 
     // MARK: - ProjectArtifactRule

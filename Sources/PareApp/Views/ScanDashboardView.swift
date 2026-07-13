@@ -45,6 +45,9 @@ struct ScanDashboardView: View {
         .sheet(isPresented: $viewModel.showDeepCleanConfirmation) {
             DeepCleanConfirmationSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showSelectedCleanConfirmation) {
+            SelectedCleanConfirmationSheet(viewModel: viewModel)
+        }
         .sheet(isPresented: $showSettings) {
             ExclusionListView(viewModel: exclusionListViewModel)
         }
@@ -57,6 +60,7 @@ struct ScanDashboardView: View {
         ScrollView {
             VStack(spacing: AppTheme.Spacing.xl) {
                 resultsHeader
+                selectionBar
                 cleanupStatusBanner
                 metrics
                 deviceBackupsSection
@@ -68,6 +72,54 @@ struct ScanDashboardView: View {
             .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
             .padding(.vertical, AppTheme.Spacing.pageVertical)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var selectionBar: some View {
+        GlassCard(padding: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Review & Clean")
+                        .font(scale.sectionTitle)
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Spacer()
+                    Text("\(viewModel.selectedCandidatesCount) selected · \(viewModel.formattedBytes(viewModel.selectedCandidatesBytes))")
+                        .font(scale.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+
+                Text("SAFE items start selected. REVIEW (e.g. Local Storage) starts off — may sign you out of websites.")
+                    .font(scale.caption)
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+                    PrimaryActionButton(
+                        title: "Clean selected",
+                        systemImage: "checkmark.circle.fill",
+                        isLoading: viewModel.isCleaning,
+                        style: .compact,
+                        tint: .success,
+                        isEnabled: viewModel.selectedCandidatesCount > 0
+                    ) {
+                        viewModel.requestCleanSelected()
+                    }
+
+                    SecondaryActionButton(title: "All Safe", systemImage: "checkmark.shield") {
+                        viewModel.selectAllSafe()
+                    }
+
+                    SecondaryActionButton(title: "Clear", systemImage: "xmark") {
+                        viewModel.clearSelection()
+                    }
+
+                    if viewModel.quickCleanCandidatesCount > 0 {
+                        SecondaryActionButton(title: "Quick Clean (all safe)", role: .accent) {
+                            viewModel.requestQuickClean()
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -151,25 +203,23 @@ struct ScanDashboardView: View {
                         .help("Clear the scan cache and do a full traversal")
                     }
 
-                    if viewModel.state == .success && viewModel.quickCleanCandidatesCount > 0 {
+                    if viewModel.state == .success && viewModel.selectedCandidatesCount > 0 {
                         PrimaryActionButton(
-                            title: "Quick Clean",
-                            systemImage: "trash.fill",
+                            title: "Clean selected",
+                            systemImage: "checkmark.circle.fill",
                             isLoading: viewModel.isCleaning,
                             style: .compact,
                             tint: .success
                         ) {
-                            viewModel.requestQuickClean()
+                            viewModel.requestCleanSelected()
                         }
                     }
 
                     if viewModel.state == .success && viewModel.reviewRiskCandidatesCount > 0 {
-                        PrimaryActionButton(
-                            title: "Deep Clean",
+                        SecondaryActionButton(
+                            title: "Deep Clean all…",
                             systemImage: "bolt.fill",
-                            isLoading: viewModel.isCleaning,
-                            style: .compact,
-                            tint: .review
+                            role: .destructive
                         ) {
                             viewModel.requestDeepClean()
                         }
@@ -354,13 +404,25 @@ struct ScanDashboardView: View {
                 } else {
                     VStack(spacing: 10) {
                         ForEach(viewModel.summaries) { summary in
-                            CategorySummaryRow(
-                                title: summary.category.rawValue,
-                                bytesText: viewModel.formattedBytes(summary.reclaimableBytes),
-                                fileCount: summary.fileCount,
-                                share: viewModel.summaryShare(for: summary.reclaimableBytes),
-                                color: color(for: summary.category)
-                            )
+                            HStack(alignment: .top, spacing: 10) {
+                                Button {
+                                    viewModel.toggleCategory(summary.category)
+                                } label: {
+                                    Image(systemName: categoryCheckboxIcon(summary.category))
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(AppTheme.accent)
+                                }
+                                .buttonStyle(.plain)
+                                .help("Toggle SAFE items in this category")
+
+                                CategorySummaryRow(
+                                    title: summary.category.rawValue,
+                                    bytesText: viewModel.formattedBytes(summary.reclaimableBytes),
+                                    fileCount: summary.fileCount,
+                                    share: viewModel.summaryShare(for: summary.reclaimableBytes),
+                                    color: color(for: summary.category)
+                                )
+                            }
                         }
                     }
                 }
@@ -384,15 +446,36 @@ struct ScanDashboardView: View {
                 } else {
                     LazyVStack(spacing: 10) {
                         ForEach(viewModel.topFindings.prefix(12)) { finding in
-                            TopFileRow(
-                                path: finding.path,
-                                category: finding.category.rawValue,
-                                reason: finding.reason,
-                                riskLevel: finding.riskLevel,
-                                sizeText: viewModel.formattedBytes(finding.sizeBytes),
-                                lastUsedText: viewModel.formattedDate(finding.lastUsed),
-                                onExclude: { viewModel.exclude(path: finding.path) }
-                            )
+                            HStack(alignment: .top, spacing: 10) {
+                                Button {
+                                    viewModel.toggleSelection(path: finding.path)
+                                } label: {
+                                    Image(systemName: viewModel.isSelected(path: finding.path)
+                                          ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundStyle(
+                                            finding.riskLevel == .advanced
+                                                ? AppTheme.textTertiary
+                                                : (viewModel.isSelected(path: finding.path)
+                                                   ? AppTheme.accent : AppTheme.textSecondary)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(finding.riskLevel == .advanced)
+                                .help(finding.riskLevel == .advanced
+                                      ? "Advanced items cannot be cleaned here"
+                                      : "Include in Clean selected")
+
+                                TopFileRow(
+                                    path: finding.path,
+                                    category: finding.category.rawValue,
+                                    reason: finding.reason,
+                                    riskLevel: finding.riskLevel,
+                                    sizeText: viewModel.formattedBytes(finding.sizeBytes),
+                                    lastUsedText: viewModel.formattedDate(finding.lastUsed),
+                                    onExclude: { viewModel.exclude(path: finding.path) }
+                                )
+                            }
                         }
                     }
                 }
@@ -467,6 +550,14 @@ struct ScanDashboardView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func categoryCheckboxIcon(_ category: ScanCategory) -> String {
+        switch viewModel.categorySelectionState(category) {
+        case .all: return "checkmark.circle.fill"
+        case .partial: return "minus.circle.fill"
+        case .none: return "circle"
         }
     }
 
@@ -564,6 +655,96 @@ struct ScanDashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+// MARK: - SelectedCleanConfirmationSheet
+
+private struct SelectedCleanConfirmationSheet: View {
+    @ObservedObject var viewModel: ScanDashboardViewModel
+
+    var body: some View {
+        ZStack {
+            AppBackgroundView()
+
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.accent.opacity(0.18))
+                            .frame(width: 48, height: 48)
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(AppTheme.accent)
+                            .font(.system(size: 20, weight: .semibold))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Clean selected")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text("Only items you checked")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    infoRow(
+                        icon: "checkmark.circle",
+                        color: AppTheme.success,
+                        text: "\(viewModel.selectedCandidatesCount) item(s) · \(viewModel.formattedBytes(viewModel.selectedCandidatesBytes))"
+                    )
+                    if viewModel.selectedReviewCount > 0 {
+                        infoRow(
+                            icon: "exclamationmark.triangle",
+                            color: AppTheme.warning,
+                            text: "\(viewModel.selectedReviewCount) REVIEW item(s) — may include browser Local Storage or similar site data."
+                        )
+                    }
+                    infoRow(
+                        icon: "arrow.uturn.backward",
+                        color: AppTheme.accent,
+                        text: "Moved to Trash; Undo available after cleanup."
+                    )
+                }
+                .padding(16)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                HStack(spacing: 12) {
+                    Button("Cancel") { viewModel.cancelSelectedClean() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Button("Move to Trash") { viewModel.confirmCleanSelected() }
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.success, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .buttonStyle(.borderless)
+                }
+            }
+            .padding(28)
+        }
+        .frame(minWidth: 400, idealWidth: 440, maxWidth: 520,
+               minHeight: 300, idealHeight: 340, maxHeight: 480)
+    }
+
+    private func infoRow(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 20)
+            Text(text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

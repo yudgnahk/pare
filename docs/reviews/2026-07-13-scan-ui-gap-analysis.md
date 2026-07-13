@@ -1,10 +1,11 @@
 # Pare gap analysis — UI, scan coverage, cleanup UX
 
 **Date:** 2026-07-13  
-**Branch:** `fix/ui-adaptive-layout-macos-polish`  
+**Branch:** `feat/mole-parity-selective-clean-scan-ux` (implementation)  
 **Sources:** live `mo clean --dry-run`, `pare-cli --profile developer`, codebase review, local disk inspection  
 
-This document answers six questions raised after the CleanMyMac-style UI work. Each section: **finding → root cause → recommendation**.
+This document answers six questions raised after the CleanMyMac-style UI work. Each section: **finding → root cause → recommendation**.  
+**Implementation status** is tracked in [`docs/features/mole-comparison.md`](../features/mole-comparison.md).
 
 ---
 
@@ -12,13 +13,13 @@ This document answers six questions raised after the CleanMyMac-style UI work. E
 
 | # | Topic | Status | Priority |
 |---|--------|--------|----------|
-| 1 | Text zoom breaks layouts | Confirmed — fixed widths don’t flex enough | P1 |
-| 2 | Chrome reclaimable ≪ CleanMyMac / Mole | Confirmed — age gate + missing Service Worker / bulk cache | P0 |
-| 3 | Local Storage — too risky to auto-delete? | **Yes — keep out of Quick Clean** | Policy |
-| 4 | vs `mo clean --dry-run` | Mole ~5.4 GB “clean” buckets; Pare ~9.2 GB (more project junk) — different product shape | P0/P1 |
-| 5 | Stale DataGrip versions in list | Only **one** DataGrip app + one versioned AS folder — nothing stale to flag | OK / improve |
-| 6 | Select files to clean | Missing — all-or-nothing Quick/Deep Clean | P0 product |
-| 7 | Scan animation (3 steps) | Missing — ring spinner only | P1 polish |
+| 1 | Text zoom breaks layouts | **Addressed** — sidebar scales; flexible CTA min width | P1 |
+| 2 | Chrome reclaimable ≪ CleanMyMac / Mole | **Addressed** — cache age gate removed; Service Worker SAFE; multi-profile | P0 |
+| 3 | Local Storage — too risky to auto-delete? | **Policy locked** — REVIEW, never Quick Clean, selection default off | Policy |
+| 4 | vs `mo clean --dry-run` | Full matrix in `mole-comparison.md`; Pare better on projects/JetBrains | P0/P1 |
+| 5 | Stale DataGrip versions in list | Correct when single version; unversioned AS sibling handling added | OK |
+| 6 | Select files to clean | **Implemented** — Review & Clean selection bar | P0 product |
+| 7 | Scan animation (3 steps) | **Implemented** — rule-based progress + hero steps | P1 polish |
 
 ---
 

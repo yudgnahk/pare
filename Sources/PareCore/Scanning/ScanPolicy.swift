@@ -191,9 +191,17 @@ public enum ScanPolicy {
     public static let browserExtendedSafePathMarkers: [String] = [
         "/library/application support/google/chrome/grshadercache",
         "/library/application support/microsoft edge/grshadercache",
-        "/library/application support/BraveSoftware/brave-browser/grshadercache",
+        "/library/application support/bravesoftware/brave-browser/grshadercache",
         "/library/application support/arc/user data/grshadercache",
         "/library/application support/com.operasoftware.opera/grshadercache",
+        // Regenerable Chromium profile caches (Service Worker, GPU, Code Cache).
+        "/service worker",
+        "/gpucache",
+        "/code cache",
+        "/dawnwebgpucache",
+        "/dawngraphitecache",
+        "/graphitedawncache",
+        "/shadercache",
     ]
 
     /// Session restore, WebSQL, IndexedDB, and local storage for Chromium-based browsers.
@@ -304,6 +312,9 @@ public enum ScanPolicy {
     /// These paths are NOT under ~/Library/Caches/ so they don't pass `isLowImpactPath` without help.
     /// Registered in `CleanupEngine.isPersonaPath` so findings from the Phase 6 cache rules can be cleaned.
     public static let developerPackageCacheMarkers: [String] = [
+        "/.npm/_cacache",
+        "/.npm/_npx",
+        "/.cache/opencode",
         "/.pyenv/cache",
         "/.cargo/registry/cache",
         "/.cargo/registry/src",
