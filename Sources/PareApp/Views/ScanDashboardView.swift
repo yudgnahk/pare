@@ -5,28 +5,40 @@ import PareCore
 struct ScanDashboardView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
     @StateObject private var exclusionListViewModel = ExclusionListViewModel()
+    @Environment(\.displayScale) private var scale
     @State private var showSettings = false
     @State private var showProjectPaths = false
 
+    /// Calm hero when idle or first-time scan; rich results after success.
+    private var showsHero: Bool {
+        switch viewModel.state {
+        case .idle:
+            return true
+        case .scanning:
+            return viewModel.summaries.isEmpty
+        case .success:
+            return false
+        }
+    }
+
     var body: some View {
         ZStack {
-            AppBackgroundView()
+            // Background comes from the shell; keep transparent fill for transitions.
+            Color.clear
 
-            ScrollView {
-                VStack(spacing: 22) {
-                    header
-                    cleanupStatusBanner
-                    metrics
-                    deviceBackupsSection
-                    summaries
-                    byToolBreakdown
-                    largeFilesByCategory
-                    topFiles
+            if showsHero {
+                HeroScanView(viewModel: viewModel) {
+                    exclusionListViewModel.load()
+                    showSettings = true
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 24)
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            } else {
+                resultsScroll
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // No global animations on the results tree — they re-run during scroll and lag hard.
         .sheet(isPresented: $viewModel.showCleanConfirmation) {
             QuickCleanConfirmationSheet(viewModel: viewModel)
         }
@@ -41,111 +53,137 @@ struct ScanDashboardView: View {
         }
     }
 
+    private var resultsScroll: some View {
+        ScrollView {
+            VStack(spacing: AppTheme.Spacing.xl) {
+                resultsHeader
+                cleanupStatusBanner
+                metrics
+                deviceBackupsSection
+                summaries
+                byToolBreakdown
+                largeFilesByCategory
+                topFiles
+            }
+            .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+            .padding(.vertical, AppTheme.Spacing.pageVertical)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Compact post-scan header with reclaimable hero metric + clean actions.
+    private var resultsHeader: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Smart Scan")
+                            .font(scale.caption)
+                            .foregroundStyle(AppTheme.accent)
+
+                        Text(viewModel.formattedBytes(viewModel.totalReclaimableBytes))
+                            .font(scale.font(28, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.textPrimary)
+
+                        Text("Reclaimable across \(viewModel.summaries.count) categories")
+                            .font(scale.body)
+                            .foregroundStyle(AppTheme.textSecondary)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "clock")
+                            Text(lastScanText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                        }
+                        .font(scale.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.white.opacity(0.08), in: Capsule(style: .continuous))
+                    }
+
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 6) {
+                        IconActionButton(
+                            systemImage: "folder.badge.plus",
+                            help: "Manage project scan paths"
+                        ) {
+                            showProjectPaths = true
+                        }
+
+                        IconActionButton(
+                            systemImage: "gearshape",
+                            help: "Manage excluded paths"
+                        ) {
+                            exclusionListViewModel.load()
+                            showSettings = true
+                        }
+                    }
+                }
+
+                FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+                    if viewModel.isScanning {
+                        ScanPulseView()
+                            .frame(width: 18, height: 18)
+
+                        SecondaryActionButton(title: "Cancel") {
+                            viewModel.cancelScan()
+                        }
+                    }
+
+                    PrimaryActionButton(
+                        title: viewModel.isScanning ? "Scanning…" : "Rescan",
+                        systemImage: "sparkles",
+                        isLoading: viewModel.isScanning,
+                        style: .compact
+                    ) {
+                        viewModel.runScan()
+                    }
+
+                    if viewModel.state == .success {
+                        SecondaryActionButton(
+                            title: "Force Rescan",
+                            systemImage: "arrow.clockwise"
+                        ) {
+                            viewModel.runScan(forceRescan: true)
+                        }
+                        .help("Clear the scan cache and do a full traversal")
+                    }
+
+                    if viewModel.state == .success && viewModel.quickCleanCandidatesCount > 0 {
+                        PrimaryActionButton(
+                            title: "Quick Clean",
+                            systemImage: "trash.fill",
+                            isLoading: viewModel.isCleaning,
+                            style: .compact,
+                            tint: .success
+                        ) {
+                            viewModel.requestQuickClean()
+                        }
+                    }
+
+                    if viewModel.state == .success && viewModel.reviewRiskCandidatesCount > 0 {
+                        PrimaryActionButton(
+                            title: "Deep Clean",
+                            systemImage: "bolt.fill",
+                            isLoading: viewModel.isCleaning,
+                            style: .compact,
+                            tint: .review
+                        ) {
+                            viewModel.requestDeepClean()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
     @ViewBuilder
     private var deviceBackupsSection: some View {
         if !viewModel.deviceBackupFindings.isEmpty {
             DeviceBackupsCard(viewModel: viewModel)
-        }
-    }
-
-    private var header: some View {
-        GlassCard {
-            HStack(alignment: .center, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Pare")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.textPrimary)
-
-                    Text("Smart cleanup insights for your system and dev workloads")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(AppTheme.textSecondary)
-
-                    HStack(spacing: 10) {
-                        Image(systemName: "clock")
-                        Text(lastScanText)
-                    }
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.08), in: Capsule(style: .continuous))
-                }
-
-                Spacer(minLength: 8)
-
-                HStack(spacing: 10) {
-                        if viewModel.isScanning {
-                            ScanPulseView()
-                                .frame(width: 20, height: 20)
-
-                            Button("Cancel") { viewModel.cancelScan() }
-                                .buttonStyle(.borderless)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-
-                        PrimaryActionButton(
-                            title: "Scan Now",
-                            systemImage: "sparkles",
-                            isLoading: viewModel.isScanning
-                        ) {
-                            viewModel.runScan()
-                        }
-
-                        if viewModel.state == .success {
-                            Button {
-                                viewModel.runScan(forceRescan: true)
-                            } label: {
-                                Label("Force Rescan", systemImage: "arrow.clockwise")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(AppTheme.textSecondary)
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Clear the scan cache and do a full traversal")
-                        }
-
-                        Button {
-                            showProjectPaths = true
-                        } label: {
-                            Image(systemName: "folder.badge.plus")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Manage project scan paths")
-
-                        Button {
-                            exclusionListViewModel.load()
-                            showSettings = true
-                        } label: {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Manage excluded paths")
-
-                        if viewModel.state == .success && viewModel.quickCleanCandidatesCount > 0 {
-                            PrimaryActionButton(
-                                title: "Quick Clean",
-                                systemImage: "trash.fill",
-                                isLoading: viewModel.isCleaning
-                            ) {
-                                viewModel.requestQuickClean()
-                            }
-                        }
-
-                        if viewModel.state == .success && viewModel.reviewRiskCandidatesCount > 0 {
-                            PrimaryActionButton(
-                                title: "Deep Clean",
-                                systemImage: "bolt.fill",
-                                isLoading: viewModel.isCleaning
-                            ) {
-                                viewModel.requestDeepClean()
-                            }
-                        }
-                    }
-            }
         }
     }
 
@@ -269,7 +307,12 @@ struct ScanDashboardView: View {
     }
 
     private var metrics: some View {
-        HStack(spacing: 16) {
+        LazyVGrid(
+            columns: [
+                GridItem(.adaptive(minimum: AppTheme.Breakpoint.metricMin), spacing: AppTheme.Spacing.md)
+            ],
+            spacing: AppTheme.Spacing.md
+        ) {
             MetricTile(
                 label: "Reclaimable",
                 value: viewModel.formattedBytes(viewModel.totalReclaimableBytes),
@@ -299,7 +342,7 @@ struct ScanDashboardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Category Overview")
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .font(scale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 if viewModel.summaries.isEmpty {
@@ -310,20 +353,13 @@ struct ScanDashboardView: View {
                     )
                 } else {
                     VStack(spacing: 10) {
-                        ForEach(Array(viewModel.summaries.enumerated()), id: \.element.id) { index, summary in
+                        ForEach(viewModel.summaries) { summary in
                             CategorySummaryRow(
                                 title: summary.category.rawValue,
                                 bytesText: viewModel.formattedBytes(summary.reclaimableBytes),
                                 fileCount: summary.fileCount,
                                 share: viewModel.summaryShare(for: summary.reclaimableBytes),
                                 color: color(for: summary.category)
-                            )
-                            .opacity(viewModel.resultsVisible ? 1 : 0)
-                            .offset(y: viewModel.resultsVisible ? 0 : 6)
-                            .animation(
-                                .spring(response: 0.36, dampingFraction: 0.85)
-                                .delay(Double(index) * 0.05),
-                                value: viewModel.resultsVisible
                             )
                         }
                     }
@@ -336,7 +372,7 @@ struct ScanDashboardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Top Files and Caches")
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .font(scale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 if viewModel.topFindings.isEmpty {
@@ -347,7 +383,7 @@ struct ScanDashboardView: View {
                     )
                 } else {
                     LazyVStack(spacing: 10) {
-                        ForEach(Array(viewModel.topFindings.prefix(12).enumerated()), id: \.element.id) { index, finding in
+                        ForEach(viewModel.topFindings.prefix(12)) { finding in
                             TopFileRow(
                                 path: finding.path,
                                 category: finding.category.rawValue,
@@ -356,13 +392,6 @@ struct ScanDashboardView: View {
                                 sizeText: viewModel.formattedBytes(finding.sizeBytes),
                                 lastUsedText: viewModel.formattedDate(finding.lastUsed),
                                 onExclude: { viewModel.exclude(path: finding.path) }
-                            )
-                            .opacity(viewModel.resultsVisible ? 1 : 0)
-                            .scaleEffect(viewModel.resultsVisible ? 1 : 0.98)
-                            .animation(
-                                .spring(response: 0.38, dampingFraction: 0.86)
-                                .delay(Double(index) * 0.04),
-                                value: viewModel.resultsVisible
                             )
                         }
                     }
@@ -376,7 +405,6 @@ struct ScanDashboardView: View {
         if !viewModel.perToolRollups.isEmpty {
             ByToolBreakdownCard(
                 rollups: viewModel.perToolRollups,
-                resultsVisible: viewModel.resultsVisible,
                 formatBytes: viewModel.formattedBytes
             )
         }
@@ -386,11 +414,11 @@ struct ScanDashboardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Large Files by Category")
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .font(scale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 Text("Only files larger than \(viewModel.formattedBytes(ScanPolicy.largeFileThresholdBytes)) are shown.")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(scale.body)
                     .foregroundStyle(AppTheme.textSecondary)
 
                 if let feedback = viewModel.revealFeedback {
@@ -410,15 +438,15 @@ struct ScanDashboardView: View {
                     )
                 } else {
                     VStack(spacing: 14) {
-                        ForEach(Array(viewModel.largeFilesByCategory.enumerated()), id: \.element.id) { index, group in
+                        ForEach(viewModel.largeFilesByCategory) { group in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text(group.category.rawValue)
-                                        .font(.system(size: 14, weight: .bold))
+                                        .font(scale.rowTitle)
                                         .foregroundStyle(AppTheme.textPrimary)
                                     Spacer()
                                     Text(viewModel.formattedBytes(group.totalBytes))
-                                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                                        .font(scale.font(14, weight: .bold, design: .rounded))
                                         .foregroundStyle(AppTheme.textSecondary)
                                 }
 
@@ -435,13 +463,6 @@ struct ScanDashboardView: View {
                                     )
                                 }
                             }
-                            .opacity(viewModel.resultsVisible ? 1 : 0)
-                            .offset(y: viewModel.resultsVisible ? 0 : 8)
-                            .animation(
-                                .spring(response: 0.37, dampingFraction: 0.86)
-                                .delay(Double(index) * 0.06),
-                                value: viewModel.resultsVisible
-                            )
                         }
                     }
                 }
@@ -609,7 +630,8 @@ private struct QuickCleanConfirmationSheet: View {
             }
             .padding(28)
         }
-        .frame(width: 440, height: 340)
+        .frame(minWidth: 400, idealWidth: 440, maxWidth: 520,
+               minHeight: 320, idealHeight: 360, maxHeight: 480)
     }
 
     private func infoRow(icon: String, color: Color, text: String) -> some View {
@@ -621,6 +643,7 @@ private struct QuickCleanConfirmationSheet: View {
             Text(text)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -701,7 +724,8 @@ private struct DeepCleanConfirmationSheet: View {
             }
             .padding(28)
         }
-        .frame(width: 480, height: 400)
+        .frame(minWidth: 420, idealWidth: 480, maxWidth: 560,
+               minHeight: 380, idealHeight: 420, maxHeight: 560)
     }
 
     private func infoRow(icon: String, color: Color, text: String) -> some View {
@@ -713,6 +737,7 @@ private struct DeepCleanConfirmationSheet: View {
             Text(text)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -721,8 +746,8 @@ private struct DeepCleanConfirmationSheet: View {
 
 private struct ByToolBreakdownCard: View {
     let rollups: [ScanDashboardViewModel.ToolRollupItem]
-    let resultsVisible: Bool
     let formatBytes: (Int64) -> String
+    @Environment(\.displayScale) private var scale
 
     @State private var expandedApps: Set<String> = []
 
@@ -730,11 +755,11 @@ private struct ByToolBreakdownCard: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("By Tool")
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .font(scale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 VStack(spacing: 8) {
-                    ForEach(Array(rollups.enumerated()), id: \.element.id) { index, rollup in
+                    ForEach(rollups) { rollup in
                         ToolRollupRow(
                             rollup: rollup,
                             isExpanded: expandedApps.contains(rollup.app),
@@ -746,13 +771,6 @@ private struct ByToolBreakdownCard: View {
                                 expandedApps.insert(rollup.app)
                             }
                         }
-                        .opacity(resultsVisible ? 1 : 0)
-                        .offset(y: resultsVisible ? 0 : 6)
-                        .animation(
-                            .spring(response: 0.36, dampingFraction: 0.85)
-                            .delay(Double(index) * 0.05),
-                            value: resultsVisible
-                        )
                     }
                 }
             }
@@ -765,6 +783,7 @@ private struct ToolRollupRow: View {
     let isExpanded: Bool
     let formatBytes: (Int64) -> String
     let onTap: () -> Void
+    @Environment(\.displayScale) private var scale
 
     private var toolIcon: String {
         switch rollup.app {
@@ -794,28 +813,28 @@ private struct ToolRollupRow: View {
             Button(action: onTap) {
                 HStack(spacing: 12) {
                     Image(systemName: toolIcon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(scale.font(14, weight: .semibold))
                         .foregroundStyle(AppTheme.accent)
                         .frame(width: 20)
 
                     Text(rollup.app)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(scale.rowTitle)
                         .foregroundStyle(AppTheme.textPrimary)
 
                     Spacer()
 
                     Text("\(Int(rollup.share * 100))%")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(scale.font(12, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.textSecondary)
-                        .frame(width: 34, alignment: .trailing)
+                        .frame(width: 40, alignment: .trailing)
 
                     Text(formatBytes(rollup.totalBytes))
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(scale.font(14, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .frame(width: 72, alignment: .trailing)
+                        .frame(width: 80, alignment: .trailing)
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(scale.micro)
                         .foregroundStyle(AppTheme.textSecondary)
                 }
                 .padding(.horizontal, 12)
@@ -826,7 +845,6 @@ private struct ToolRollupRow: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Share bar + file count header
                     HStack(spacing: 10) {
                         Spacer().frame(width: 32)
                         GeometryReader { geo in
@@ -841,9 +859,9 @@ private struct ToolRollupRow: View {
                         }
                         .frame(height: 4)
                         Text("\(rollup.fileCount) file\(rollup.fileCount == 1 ? "" : "s")")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(scale.micro)
                             .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 68, alignment: .trailing)
+                            .frame(width: 72, alignment: .trailing)
                     }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
@@ -851,7 +869,7 @@ private struct ToolRollupRow: View {
 
                     if rollup.topFiles.isEmpty {
                         Text("No files above 1 MB")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(scale.caption)
                             .foregroundStyle(AppTheme.textSecondary)
                             .padding(.leading, 44)
                             .padding(.bottom, 8)
@@ -860,24 +878,24 @@ private struct ToolRollupRow: View {
                             HStack(spacing: 10) {
                                 Spacer().frame(width: 32)
                                 Image(systemName: "doc.fill")
-                                    .font(.system(size: 10, weight: .regular))
+                                    .font(scale.font(11, weight: .regular))
                                     .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
                                     .frame(width: 12)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(file.fileName)
-                                        .font(.system(size: 12, weight: .semibold))
+                                        .font(scale.caption)
                                         .foregroundStyle(AppTheme.textPrimary)
                                         .lineLimit(1)
                                     Text(file.abbreviatedParent)
-                                        .font(.system(size: 10, weight: .regular))
+                                        .font(scale.rowMeta)
                                         .foregroundStyle(AppTheme.textSecondary)
                                         .lineLimit(1)
                                 }
                                 Spacer()
                                 Text(formatBytes(file.sizeBytes))
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .font(scale.font(13, weight: .bold, design: .rounded))
                                     .foregroundStyle(AppTheme.textPrimary)
-                                    .frame(width: 68, alignment: .trailing)
+                                    .frame(width: 72, alignment: .trailing)
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 5)
@@ -886,7 +904,7 @@ private struct ToolRollupRow: View {
                         let remaining = rollup.fileCount - rollup.topFiles.count
                         if remaining > 0 {
                             Text("and \(remaining) more file\(remaining == 1 ? "" : "s")")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(scale.caption)
                                 .foregroundStyle(AppTheme.textSecondary)
                                 .padding(.leading, 56)
                                 .padding(.top, 2)
@@ -894,11 +912,9 @@ private struct ToolRollupRow: View {
                         }
                     }
                 }
-                .transition(.opacity)
             }
         }
         .clipped()
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: isExpanded)
     }
 }
 

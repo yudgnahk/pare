@@ -81,6 +81,26 @@ final class AppManagerTests: XCTestCase {
         XCTAssertFalse(info.hasUpdate)
     }
 
+    func testUpdateInfoNoUpdateWhenAvailableIsOlder() {
+        let info = UpdateInfo(
+            bundleID: "com.example.app",
+            installedVersion: "2.1",
+            availableVersion: "2.0",
+            channel: .sparkle
+        )
+        XCTAssertFalse(info.hasUpdate)
+    }
+
+    func testUpdateInfoComparesMultiComponentVersions() {
+        let info = UpdateInfo(
+            bundleID: "com.example.app",
+            installedVersion: "1.2.3",
+            availableVersion: "1.2.10",
+            channel: .mas
+        )
+        XCTAssertTrue(info.hasUpdate)
+    }
+
     // MARK: - ScanPolicy additions
 
     func testIsSystemApp() {

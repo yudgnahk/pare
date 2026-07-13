@@ -35,7 +35,8 @@ final class HomebrewTests: XCTestCase {
             installedOnRequest: true,
             pinned: false,
             installDate: nil,
-            dependencies: ["gettext"]
+            dependencies: ["gettext"],
+            sizeBytes: 12_345_678
         )
         XCTAssertEqual(formula.id, "git")
         XCTAssertEqual(formula.name, "git")
@@ -43,6 +44,20 @@ final class HomebrewTests: XCTestCase {
         XCTAssertTrue(formula.installedOnRequest)
         XCTAssertFalse(formula.pinned)
         XCTAssertEqual(formula.dependencies, ["gettext"])
+        XCTAssertEqual(formula.sizeBytes, 12_345_678)
+    }
+
+    func testBrewFormulaDefaultSizeIsZero() {
+        let formula = BrewFormula(
+            name: "wget",
+            desc: "Internet file retriever",
+            version: "1.21",
+            installedOnRequest: true,
+            pinned: false,
+            installDate: nil,
+            dependencies: []
+        )
+        XCTAssertEqual(formula.sizeBytes, 0)
     }
 
     // MARK: - BrewCask
@@ -462,6 +477,55 @@ final class HomebrewTests: XCTestCase {
         XCTAssertEqual(candidates[0].caskToken, "vlc")
     }
 
+    func testCandidatesExcludesAlreadyInstalledCaskTokens() async {
+        // Regression: after `brew install --cask --adopt antigravity`, the app may
+        // still report isHomebrewManaged=false until inventory is fixed — but the
+        // Caskroom token must still keep it out of the migrate list.
+        let apps: [InstalledApp] = [
+            makeApp(name: "Antigravity", bundleID: "com.example.antigravity", isHomebrewManaged: false),
+            makeApp(name: "VLC", bundleID: "org.videolan.vlc", isHomebrewManaged: false)
+        ]
+        let catalog: [[String: Any]] = [
+            [
+                "token": "antigravity",
+                "artifacts": [
+                    ["app": ["Antigravity.app"]],
+                    ["uninstall": [["quit": "com.example.antigravity"]]]
+                ]
+            ],
+            [
+                "token": "vlc",
+                "artifacts": [["uninstall": [["quit": "org.videolan.vlc"]]]]
+            ]
+        ]
+
+        let candidates = filterCandidates(
+            apps: apps,
+            catalog: catalog,
+            installedCaskTokens: ["antigravity"]
+        )
+        XCTAssertEqual(candidates.map(\.caskToken), ["vlc"])
+    }
+
+    func testHomebrewCaskroomNormalizeAppName() {
+        XCTAssertEqual(HomebrewCaskroom.normalizeAppName("Google Chrome.app"), "google-chrome")
+        XCTAssertEqual(HomebrewCaskroom.normalizeAppName("Antigravity"), "antigravity")
+    }
+
+    func testHomebrewCaskroomManagesByTokenMatch() {
+        let tokens: Set<String> = ["antigravity", "vlc"]
+        XCTAssertTrue(HomebrewCaskroom.manages(
+            appName: "Antigravity",
+            path: "/Applications/Antigravity.app",
+            installedTokens: tokens
+        ))
+        XCTAssertFalse(HomebrewCaskroom.manages(
+            appName: "Safari",
+            path: "/Applications/Safari.app",
+            installedTokens: tokens
+        ))
+    }
+
     func testCandidatesExcludesSystemApps() async {
         let apps: [InstalledApp] = [
             makeApp(name: "TextEdit", bundleID: "com.apple.TextEdit", isHomebrewManaged: false, isSystem: true)
@@ -628,7 +692,11 @@ private extension HomebrewTests {
         return packages.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    func filterCandidates(apps: [InstalledApp], catalog: [[String: Any]]) -> [MigrationCandidate] {
+    func filterCandidates(
+        apps: [InstalledApp],
+        catalog: [[String: Any]],
+        installedCaskTokens: Set<String> = []
+    ) -> [MigrationCandidate] {
         var appNameToCask: [String: String] = [:]
         var bundleIDToCask: [String: String] = [:]
 
@@ -659,13 +727,20 @@ private extension HomebrewTests {
 
         for app in apps {
             guard !app.isHomebrewManaged, !app.isSystemApp else { continue }
+            if HomebrewCaskroom.manages(
+                appName: app.name,
+                path: app.path,
+                installedTokens: installedCaskTokens
+            ) {
+                continue
+            }
             var token: String?
             if let bid = app.bundleID, let t = bundleIDToCask[bid] { token = t }
             if token == nil {
                 let key = app.name.lowercased()
                 if let t = appNameToCask[key] { token = t }
             }
-            guard let t = token, !seen.contains(t) else { continue }
+            guard let t = token, !seen.contains(t), !installedCaskTokens.contains(t) else { continue }
             seen.insert(t)
             results.append(MigrationCandidate(
                 caskToken: t, appName: app.name, bundleID: app.bundleID, currentPath: app.path

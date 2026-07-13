@@ -27,7 +27,9 @@ public actor BrewInventory {
     }
 
     private func parseFormulae(_ items: [[String: Any]], showAll: Bool) -> [BrewFormula] {
-        items.compactMap { item -> BrewFormula? in
+        let cellarRoots = Self.cellarRoots()
+
+        return items.compactMap { item -> BrewFormula? in
             guard let name = item["name"] as? String,
                   let installedList = item["installed"] as? [[String: Any]],
                   let first = installedList.first,
@@ -45,6 +47,8 @@ public actor BrewInventory {
                 installDate = Date(timeIntervalSince1970: timestamp)
             }
 
+            let sizeBytes = Self.kegSizeBytes(name: name, version: version, cellarRoots: cellarRoots)
+
             return BrewFormula(
                 name: name,
                 desc: desc,
@@ -52,10 +56,32 @@ public actor BrewInventory {
                 installedOnRequest: installedOnRequest,
                 pinned: pinned,
                 installDate: installDate,
-                dependencies: deps
+                dependencies: deps,
+                sizeBytes: sizeBytes
             )
         }
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// Homebrew Cellar roots for Apple Silicon and Intel prefixes.
+    private static func cellarRoots() -> [String] {
+        ["/opt/homebrew/Cellar", "/usr/local/Cellar"]
+            .filter { FileManager.default.fileExists(atPath: $0) }
+    }
+
+    /// Measures the installed keg directory size (versioned path preferred).
+    private static func kegSizeBytes(name: String, version: String, cellarRoots: [String]) -> Int64 {
+        for root in cellarRoots {
+            let versioned = "\(root)/\(name)/\(version)"
+            if FileManager.default.fileExists(atPath: versioned) {
+                return FileSystemUtils.directorySize(url: URL(fileURLWithPath: versioned))
+            }
+            let unversioned = "\(root)/\(name)"
+            if FileManager.default.fileExists(atPath: unversioned) {
+                return FileSystemUtils.directorySize(url: URL(fileURLWithPath: unversioned))
+            }
+        }
+        return 0
     }
 
     private func parseCasks(_ items: [[String: Any]]) -> [BrewCask] {
