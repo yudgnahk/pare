@@ -39,15 +39,19 @@ final class ScanRunnerTests: XCTestCase {
 
     func testBaselineRuleIncludesKnownRules() {
         let rules = [any ScanRule].baseline
-        XCTAssertEqual(rules.count, 8, "Baseline should include 8 rules after Phase 5 additions")
+        XCTAssertEqual(rules.count, 12, "Baseline includes core + Phase 5–8 additions")
         XCTAssertTrue(rules.contains(where: { $0.id == "user-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "temporary-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "logs-crash-reports" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "browser-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "browser-extended-artifacts" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "browser-review-data" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "installer-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "stale-app-version" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "project-artifacts" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "mobile-sync-backups" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "productivity-caches" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "orphaned-launch-agents" }))
     }
 
     func testBrowserRuleSkipsSensitiveFiles() {
@@ -130,10 +134,13 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-safe-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-stale-version" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "jetbrains-review-required" }))
-        XCTAssertTrue(rules.contains(where: { $0.id == "docker-logs-review-required" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "docker-storage" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "ai-tool-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "homebrew-cache" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "project-artifacts-v2" }))
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-vm-data-advanced" }))
+        // Orphaned logs-only rule is not registered; DockerStorageRule covers logs + VM visibility.
+        XCTAssertFalse(rules.contains(where: { $0.id == "docker-logs-review-required" }))
         XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
     }
 
@@ -388,6 +395,44 @@ final class ScanRunnerTests: XCTestCase {
         let summary = report.summaries.first(where: { $0.category == .designerCaches })
         XCTAssertEqual(summary?.reclaimableBytes, 500)
         XCTAssertEqual(summary?.fileCount, 2)
+    }
+
+    func testAdvancedFindingsAreExcludedFromReclaimableTotals() async {
+        let safeDir = URL(fileURLWithPath: "/tmp/safe-cache")
+        let advancedDir = URL(fileURLWithPath: "/tmp/advanced-vm")
+
+        let filesByDirectory = [
+            safeDir.path: [
+                ScannedFile(url: safeDir.appendingPathComponent("a.cache"), sizeBytes: 100, lastModified: nil)
+            ],
+            advancedDir.path: [
+                ScannedFile(url: advancedDir.appendingPathComponent("Docker.raw"), sizeBytes: 1_099_511_627_776, lastModified: nil)
+            ]
+        ]
+
+        let traversal = MockTraversal(filesByDirectory: filesByDirectory)
+        let runner = ScanRunner(
+            environment: ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test"), tempDirectory: URL(fileURLWithPath: "/tmp")),
+            traversal: traversal
+        )
+
+        let rules: [any ScanRule] = [
+            TestRule(id: "safe", title: "Safe", category: .userCaches, riskLevel: .safe, targets: [safeDir]),
+            TestRule(id: "advanced", title: "Advanced", category: .developerPackageCaches, riskLevel: .advanced, targets: [advancedDir])
+        ]
+
+        let report = await runner.run(rules: rules)
+        XCTAssertEqual(report.findings.count, 2, "Advanced findings must still appear in findings")
+        XCTAssertEqual(report.findings.filter { $0.riskLevel == .advanced }.count, 1)
+        XCTAssertEqual(report.totalReclaimableBytes, 100, "Advanced sizes must not inflate reclaimable total")
+        XCTAssertNil(
+            report.summaries.first(where: { $0.category == .developerPackageCaches }),
+            "Category with only advanced findings should not appear in reclaimable summaries"
+        )
+        XCTAssertEqual(
+            report.summaries.first(where: { $0.category == .userCaches })?.reclaimableBytes,
+            100
+        )
     }
 
     func testDockerLogsReviewRuleIncludesDockerLogPathsOnly() {

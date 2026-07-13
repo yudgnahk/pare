@@ -9,6 +9,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case tooNew(String)
     /// The file is an ADVANCED-risk finding and must not be deleted directly.
     case advancedRiskBlocked(String)
+    /// Docker VM disk / volume data — never delete as a filesystem path.
+    case dockerNeverDelete(String)
     /// The file does not exist on disk when cleanup is attempted.
     case fileNotFound(String)
     /// The Trash move failed with an underlying system error.
@@ -24,6 +26,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "File is too new to clean: \(path)"
         case .advancedRiskBlocked(let path):
             return "ADVANCED-risk file blocked from direct deletion: \(path). Use the app's native cleanup flow instead."
+        case .dockerNeverDelete(let path):
+            return "Docker VM disk/volume data blocked: \(path). Use docker system prune (never --volumes)."
         case .fileNotFound(let path):
             return "File not found: \(path)"
         case .trashFailed(let path, let error):
@@ -56,11 +60,13 @@ public struct CleanupResult: Sendable {
 /// and supports dry-run mode and undo/restore.
 ///
 /// Safety rules applied to every finding before deletion:
-/// 1. `ADVANCED`-risk findings are always blocked — they require app-native prune flows.
-/// 2. The path must pass `ScanPolicy.isLowImpactPath` OR `ScanPolicy.matchesPersonaPath` —
+/// 1. Docker VM disk paths (`Docker.raw` / `…/data/vms/…`) are always blocked — never Trash them;
+///    they hold images, containers, **and volumes**. Reclaim only via Docker CLI without `--volumes`.
+/// 2. `ADVANCED`-risk findings are always blocked — they require app-native prune flows.
+/// 3. The path must pass `ScanPolicy.isLowImpactPath` OR persona markers —
 ///    whichever gate the matching rule used originally.  We re-verify here as a belt-and-suspenders check.
-/// 3. The file must exist on disk.
-/// 4. The minimum age threshold from `ScanPolicy.defaultMinimumAgeSeconds` must still be satisfied.
+/// 4. The file must exist on disk.
+/// 5. The minimum age threshold from `ScanPolicy.defaultMinimumAgeSeconds` must still be satisfied.
 public actor CleanupEngine {
     private let store: CleanupTransactionStore
 
@@ -117,13 +123,23 @@ public actor CleanupEngine {
         var skipped: [(path: String, reason: String)] = []
 
         for finding in findings {
+            let url = URL(fileURLWithPath: finding.path)
+
+            // Path-level ban: Docker VM disk / volume data — independent of risk label.
+            // Mis-tagged findings must still never trash Docker.raw or the vms tree.
+            if ScanPolicy.isDockerNeverDeletePath(url) {
+                skipped.append((
+                    finding.path,
+                    "Docker VM disk/volume data — never delete; use docker system prune without --volumes"
+                ))
+                continue
+            }
+
             // ADVANCED findings must never be deleted directly.
             if finding.riskLevel == .advanced {
                 skipped.append((finding.path, "ADVANCED-risk finding — use app-native cleanup"))
                 continue
             }
-
-            let url = URL(fileURLWithPath: finding.path)
 
             // Re-verify the path is still considered safe by policy.
             guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
@@ -259,7 +275,11 @@ public actor CleanupEngine {
     // MARK: - Private helpers
 
     /// A path passes persona policy if it matches any of the known persona marker sets.
+    /// Docker advanced / VM disk markers are intentionally **not** included — those paths
+    /// are hard-blocked via `isDockerNeverDeletePath` and must never become cleanable.
     private func isPersonaPath(_ url: URL) -> Bool {
+        if ScanPolicy.isDockerNeverDeletePath(url) { return false }
+
         let allPersonaMarkers = ScanPolicy.designerSafePathMarkers
             + ScanPolicy.designerReviewPathMarkers
             + ScanPolicy.videoBuilderSafePathMarkers
@@ -268,7 +288,6 @@ public actor CleanupEngine {
             + ScanPolicy.developerReviewPathMarkers
             + ScanPolicy.developerDockerReviewPathMarkers
             + ScanPolicy.developerDockerSafePathMarkers
-            + ScanPolicy.developerDockerAdvancedPathMarkers
             + ScanPolicy.developerPackageCacheMarkers
             + ScanPolicy.aiToolSafePathMarkers
             + ScanPolicy.browserExtendedSafePathMarkers

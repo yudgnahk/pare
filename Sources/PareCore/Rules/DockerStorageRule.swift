@@ -1,22 +1,21 @@
 import Foundation
 
-/// Extends Docker Desktop coverage beyond the existing `DockerLogsReviewRequiredRule`.
+/// Docker Desktop **log** coverage only.
 ///
-/// Safe-to-delete paths (daemon logs, lifecycle logs, UI logs):
+/// Safe-to-delete paths (daemon / UI logs — not the VM disk):
 ///   - `~/Library/Containers/com.docker.docker/Data/log/`
-///   - `~/Library/Containers/com.docker.docker/Data/lifecycle-server.log*`
 ///   - `~/Library/Group Containers/group.com.docker/log/`
 ///
-/// Detect-only (`.advanced`):
-///   - `~/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw`
-///     — Docker VM disk image. Cannot be safely deleted; report only.
-///     "Run Docker system prune in Maintenance tab to reclaim space safely."
+/// The VM disk under `…/data/vms/` (including `Docker.raw`) is **never scanned as a finding**.
+/// It is not a normal cache; it holds images, containers, build cache, and volumes.
+/// CleanupEngine still path-blocks that tree via `ScanPolicy.isDockerNeverDeletePath`.
+/// Users reclaim space with Maintenance → Docker System Prune (`docker system prune -f`, no `--volumes`).
 public struct DockerStorageRule: ScanRule {
     public let id = "docker-storage"
-    public let title = "Docker Desktop Storage"
-    public let reason = "Docker Desktop log files and VM disk image"
+    public let title = "Docker Desktop Logs"
+    public let reason = "Docker Desktop log files"
     public let category: ScanCategory = .developerPackageCaches
-    public let riskLevel: RiskLevel = .safe  // most findings are safe; Docker.raw is advanced
+    public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.90
 
     public init() {}
@@ -28,7 +27,7 @@ public struct DockerStorageRule: ScanRule {
         let home = environment.homeDirectory
         var findings: [ScanFinding] = []
 
-        // -- Safe log paths --
+        // Logs only — never the vms/ tree.
         let safeLogPaths: [(String, String)] = [
             ("Library/Containers/com.docker.docker/Data/log", "Docker Desktop daemon logs"),
             ("Library/Group Containers/group.com.docker/log", "Docker Desktop UI logs"),
@@ -36,6 +35,9 @@ public struct DockerStorageRule: ScanRule {
         for (relPath, reason) in safeLogPaths {
             let url = home.appending(path: relPath)
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            // Belt-and-suspenders if path layout ever changes.
+            guard !ScanPolicy.isDockerNeverDeletePath(url) else { continue }
+
             let size = FileSystemUtils.directorySize(url: url)
             guard size > 0 else { continue }
             let resourceValues = try? url.resourceValues(forKeys: [.contentModificationDateKey])
@@ -55,26 +57,6 @@ public struct DockerStorageRule: ScanRule {
                 lastUsed: lastUsed,
                 confidence: confidence
             ))
-        }
-
-        // -- Detect-only Docker.raw (.advanced) --
-        let dockerRaw = home.appending(path: "Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw")
-        if FileManager.default.fileExists(atPath: dockerRaw.path) {
-            let size = (try? FileManager.default.attributesOfItem(atPath: dockerRaw.path))?[.size] as? Int64 ?? 0
-            if size > 0 {
-                let resourceValues = try? dockerRaw.resourceValues(forKeys: [.contentModificationDateKey])
-                let lastUsed = resourceValues?.contentModificationDate
-
-                findings.append(ScanFinding(
-                    category: category,
-                    riskLevel: .advanced,
-                    reason: "Docker VM disk image — use 'docker system prune' to reclaim space safely",
-                    path: dockerRaw.path,
-                    sizeBytes: size,
-                    lastUsed: lastUsed,
-                    confidence: 0.95
-                ))
-            }
         }
 
         return findings

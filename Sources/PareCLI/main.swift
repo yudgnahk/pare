@@ -72,9 +72,8 @@ struct PareCLI {
         printDockerBuildCacheHint(profile: profile)
     }
 
-    /// Emits a Docker build-cache advisory when running the developer profile and Docker
-    /// Desktop is installed. Docker stores build cache inside its VM disk (Docker.raw) —
-    /// it cannot be scanned as regular files. This hint points to the correct CLI commands.
+    /// Emits a Docker reclaim advisory when running the developer profile and Docker
+    /// Desktop is installed. Points users at docker-native prune (never --volumes).
     private static func printDockerBuildCacheHint(profile: ScanProfile) {
         guard profile == .developer else { return }
 
@@ -83,14 +82,16 @@ struct PareCLI {
         guard FileManager.default.fileExists(atPath: dockerDataDir.path) else { return }
 
         print("")
-        print("── Docker build cache ──────────────────────────────────────────────────")
-        print("Docker stores build cache inside its VM disk — not scannable as regular files.")
-        print("To reclaim build cache older than 7 days, run:")
+        print("── Docker storage ──────────────────────────────────────────────────────")
+        print("Docker Desktop keeps images, containers, build cache, and volumes inside")
+        print("its VM. Pare never deletes that disk image or Docker volumes.")
+        print("Safe reclaim options:")
         print("  docker builder prune --filter \"until=168h\"")
-        print("    → removes build cache only; never touches volumes or databases")
-        print("  docker system prune  --filter \"until=168h\"")
-        print("    → also removes unused images and stopped containers")
-        print("⚠️  Never add --volumes unless you want to delete Docker volume data (e.g. databases).")
+        print("    → build cache only; never touches volumes or databases")
+        print("  docker system prune -f")
+        print("    → unused images, stopped containers, networks, build cache")
+        print("  Maintenance tab → Docker System Prune (same as system prune -f)")
+        print("⚠️  Never add --volumes (destroys volume data e.g. Postgres).")
         print("────────────────────────────────────────────────────────────────────────")
     }
 

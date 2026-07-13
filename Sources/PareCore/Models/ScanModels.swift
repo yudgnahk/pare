@@ -87,6 +87,8 @@ public struct ScanReport: Sendable {
         self.summaries = summaries
     }
 
+    /// Sum of category reclaimable totals. Excludes `.advanced` findings (detect-only);
+    /// those remain in `findings` but are not counted as reclaimable by `ScanRunner`.
     public var totalReclaimableBytes: Int64 {
         summaries.reduce(0) { $0 + $1.reclaimableBytes }
     }
