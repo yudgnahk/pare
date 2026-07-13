@@ -7,7 +7,7 @@ struct MaintenanceView: View {
 
     var body: some View {
         ZStack {
-            AppBackgroundView()
+            // Shell provides AppBackgroundView.
 
             ScrollView {
                 VStack(spacing: AppTheme.Spacing.xl) {
@@ -26,22 +26,25 @@ struct MaintenanceView: View {
     // MARK: - Header
 
     private var headerCard: some View {
-        GlassCard {
-            HStack(alignment: .center, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Maintenance")
-                        .font(scale.heroTitle)
-                        .foregroundStyle(AppTheme.textPrimary)
-                    Text("One-shot system actions — no file deletions")
-                        .font(scale.body)
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 8)
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AppTheme.accent.opacity(0.14))
+                    .frame(width: 40, height: 40)
                 Image(systemName: "wrench.and.screwdriver")
-                    .font(.system(size: 26, weight: .light))
-                    .foregroundStyle(AppTheme.accent.opacity(0.7))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(AppTheme.accent)
             }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Maintenance")
+                    .font(scale.heroTitle)
+                    .foregroundStyle(AppTheme.textPrimary)
+                Text("One-shot system actions — no file deletions")
+                    .font(scale.body)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
     }
 

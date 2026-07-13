@@ -21,12 +21,23 @@ struct GlassCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(AppTheme.panel.opacity(0.72))
+                    .fill(AppTheme.panel.opacity(0.62))
                     .overlay(
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.16),
+                                        AppTheme.accent.opacity(0.08),
+                                        Color.white.opacity(0.04)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
                     )
             )
-            .shadow(color: .black.opacity(0.18), radius: 14, x: 0, y: 8)
+            .shadow(color: .black.opacity(0.2), radius: 16, x: 0, y: 8)
     }
 }

@@ -21,7 +21,7 @@ struct AppManagerView: View {
 
     var body: some View {
         ZStack {
-            AppBackgroundView()
+            // Shell provides AppBackgroundView.
 
             // Fixed chrome (header / filters / metrics) + list region below.
             // Only the list scrolls — chrome never rides the scroll view.
@@ -55,9 +55,17 @@ struct AppManagerView: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppTheme.accent.opacity(0.14))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(AppTheme.accent)
+                }
+                VStack(alignment: .leading, spacing: 3) {
                     Text("App Manager")
                         .font(scale.heroTitle)
                         .foregroundStyle(AppTheme.textPrimary)
@@ -66,38 +74,39 @@ struct AppManagerView: View {
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                Spacer(minLength: 0)
+            }
 
-                HStack(spacing: 8) {
-                    if viewModel.loadState == .loading {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .scaleEffect(0.7)
-                            .tint(AppTheme.accent)
-                            .frame(height: AppTheme.Control.secondaryHeight)
+            HStack(spacing: 8) {
+                if viewModel.loadState == .loading {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(0.7)
+                        .tint(AppTheme.accent)
+                        .frame(height: AppTheme.Control.secondaryHeight)
 
-                        SecondaryActionButton(title: "Cancel") {
-                            viewModel.cancelLoad()
-                        }
-                    } else {
-                        PrimaryActionButton(
-                            title: "Refresh",
-                            systemImage: "arrow.clockwise",
-                            isLoading: viewModel.loadState == .loading,
-                            style: .compact
-                        ) { viewModel.loadApps() }
-
-                        if viewModel.loadState == .loaded {
-                            SecondaryActionButton(
-                                title: viewModel.checkingUpdates ? "Checking…" : "Check Updates",
-                                systemImage: "arrow.down.circle",
-                                isLoading: viewModel.checkingUpdates,
-                                role: .accent,
-                                isEnabled: !viewModel.checkingUpdates
-                            ) { viewModel.checkForUpdates() }
-                        }
+                    SecondaryActionButton(title: "Cancel") {
+                        viewModel.cancelLoad()
                     }
-                    Spacer(minLength: 0)
+                } else {
+                    PrimaryActionButton(
+                        title: "Refresh",
+                        systemImage: "arrow.clockwise",
+                        isLoading: viewModel.loadState == .loading,
+                        style: .compact
+                    ) { viewModel.loadApps() }
+
+                    if viewModel.loadState == .loaded {
+                        SecondaryActionButton(
+                            title: viewModel.checkingUpdates ? "Checking…" : "Check Updates",
+                            systemImage: "arrow.down.circle",
+                            isLoading: viewModel.checkingUpdates,
+                            role: .accent,
+                            isEnabled: !viewModel.checkingUpdates
+                        ) { viewModel.checkForUpdates() }
+                    }
                 }
+                Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
