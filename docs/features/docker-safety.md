@@ -31,13 +31,20 @@ This document defines how Pare treats Docker Desktop storage. Implementation mus
 4. **Safe reclaim is Docker-native only** (inside the VM, not by trashing the sparse file):
    | Command | Effect |
    |---------|--------|
-   | `docker system prune -f` | Stopped containers, unused networks, dangling images, build cache |
-   | `docker builder prune …` | Build cache only |
+   | `docker system prune -f` | Stopped containers, unused networks, dangling images, dangling build cache |
+   | `docker builder prune -f --filter until=168h` | **Default:** image build cache **older than 7 days** |
+   | `docker builder prune -f --filter until=24h` | **Low disk:** build cache **older than 1 day** |
    | Docker Desktop UI disk tools | Official product controls |
 
-5. **Size reporting** for files uses **allocated** disk usage (`totalFileAllocatedSize`), not logical EOF (often 1 TB virtual) — still used for cleanup safety paths and other rules.
+5. **Build-cache age policy (Maintenance tab):**
+   - **Routine:** “Docker Build Cache (>7 days)” — safe default; keeps recent layer cache for daily work.
+   - **Low space:** “Docker Build Cache (>1 day, low space)” — more aggressive; still keeps the last day’s cache so an active rebuild is not fully cold.
+   - Neither action touches named volumes or `Docker.raw`.
+   - Prefer age-filtered `builder prune` over blanket `system prune` when the goal is only build cache.
 
-6. **Reclaimable totals** exclude `.advanced` findings.
+6. **Size reporting** for files uses **allocated** disk usage (`totalFileAllocatedSize`), not logical EOF (often 1 TB virtual) — still used for cleanup safety paths and other rules.
+
+7. **Reclaimable totals** exclude `.advanced` findings.
 
 ---
 
@@ -60,8 +67,10 @@ This document defines how Pare treats Docker Desktop storage. Implementation mus
 | Log-only markers | `developerDockerSafePathMarkers` / `developerDockerReviewPathMarkers` (no `/vms`) |
 | Scan findings (logs only) | `DockerStorageRule` (does not emit VM disk) |
 | Cleanup hard block | `CleanupEngine.clean` (before risk / persona checks) |
-| Prune args (no volumes) | `MaintenanceRunner.dockerSystemPruneArguments` |
-| CLI advisory | `PareCLI.printDockerBuildCacheHint` |
+| System prune args (no volumes) | `MaintenanceRunner.dockerSystemPruneArguments` |
+| Builder prune args (7d / 1d) | `MaintenanceRunner.dockerBuilderPruneArguments(untilHours:)` |
+| Maintenance actions | `MaintenanceCatalog.dockerBuilderPrune7d` / `dockerBuilderPrune1d` |
+| CLI advisory | `PareCLI.printDockerBuildCacheHint` (suggests `until=168h`) |
 
 ---
 
@@ -86,6 +95,8 @@ This document defines how Pare treats Docker Desktop storage. Implementation mus
 
 - `Phase7RuleTests.testIsDockerNeverDeletePathCoversVMDiskOnly`  
 - `Phase7RuleTests.testDockerSystemPruneArgumentsNeverIncludeVolumes`  
+- `Phase7RuleTests.testDockerBuilderPruneArgumentsAgeFilters`  
+- `Phase7RuleTests.testDockerBuilderPruneActionsAreCatalogued`  
 - `Phase7RuleTests.testDockerReviewMarkersDoNotIncludeVMsTree`  
 - `Phase7RuleTests.testDockerStorageRuleDoesNotReportVMDisk`  
 - `Phase7RuleTests.testFileSystemUtilsUsesAllocatedSizeForSparseFiles`  

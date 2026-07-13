@@ -66,9 +66,27 @@ public enum MaintenanceCatalog {
     public static let dockerPrune = MaintenanceAction(
         id: "docker-prune",
         title: "Docker System Prune",
-        description: "Runs `docker system prune -f` only: stopped containers, unused networks, dangling images, and build cache. Never uses --volumes — named volumes and database data are left intact.",
+        description: "Runs `docker system prune -f` only: stopped containers, unused networks, dangling images, and dangling build cache. Never uses --volumes — named volumes and database data are left intact. Does not delete Docker.raw.",
         systemImage: "shippingbox.and.arrow.backward",
         estimatedSeconds: 30
+    )
+
+    /// Prefer this for routine reclaim: build cache older than 7 days only.
+    public static let dockerBuilderPrune7d = MaintenanceAction(
+        id: "docker-builder-prune-7d",
+        title: "Docker Build Cache (>7 days)",
+        description: "Runs `docker builder prune -f --filter until=168h`. Removes only image build cache older than 7 days. Safe default. Never touches volumes or Docker.raw.",
+        systemImage: "cube.transparent",
+        estimatedSeconds: 45
+    )
+
+    /// Aggressive option when the disk is critically low.
+    public static let dockerBuilderPrune1d = MaintenanceAction(
+        id: "docker-builder-prune-1d",
+        title: "Docker Build Cache (>1 day, low space)",
+        description: "Runs `docker builder prune -f --filter until=24h`. Use when free space is low. Keeps only the last day of build cache. Never uses --volumes.",
+        systemImage: "exclamationmark.triangle",
+        estimatedSeconds: 60
     )
 
     /// All actions. Docker prune is included; callers filter based on availability.
@@ -78,5 +96,7 @@ public enum MaintenanceCatalog {
         restartFinder,
         vacuumDatabases,
         dockerPrune,
+        dockerBuilderPrune7d,
+        dockerBuilderPrune1d,
     ]
 }
