@@ -18,7 +18,15 @@ Docker Desktop on Apple Silicon stores all container data inside a single VM dis
 ```
 ~/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw
 ```
-This file can grow to 10–60 GB. It **cannot** be safely deleted by path — doing so destroys all Docker images, containers, and volumes. The only safe way to reclaim Docker storage is to run `docker system prune` while Docker is running.
+This file can grow to 10–60 GB of **allocated** space (logical sparse size is often 1 TB — do not report logical size as reclaimable). It is **not a normal cache**. It **cannot** be safely deleted by path — doing so destroys all Docker images, containers, **and volumes** (e.g. Postgres).  
+
+**Binding policy:** see [`docker-safety.md`](./docker-safety.md).
+
+Safe reclaim while Docker is running:
+
+- `docker system prune -f` — **never** add `--volumes`
+- `docker builder prune` for build cache only
+- Maintenance tab → Docker System Prune (same as `system prune -f`)
 
 ### DockerStorageRule
 
@@ -38,9 +46,9 @@ Replaces or extends the existing `DockerLogsRule`.
 |------|----------|------|
 | `~/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw` | VM disk image | `.advanced` |
 
-Report `Docker.raw` as a single `.advanced` finding. The size can be large (10–60 GB), making it worth surfacing in the "Large Files" card. Reason: "Docker VM disk image — use 'docker system prune' to reclaim space safely."
-
-`CleanupEngine` hard-blocks `.advanced` findings from deletion, so this is purely informational.
+Do **not** report `Docker.raw` as a scan finding (keeps Top Files / large-file UI clean).  
+`CleanupEngine` still hard-blocks `ScanPolicy.isDockerNeverDeletePath` (path ban, even if risk is mis-tagged).  
+Reclaim via Maintenance → Docker System Prune (`docker system prune -f`, never `--volumes`).
 
 ### Maintenance Tab Integration (Phase 8)
 

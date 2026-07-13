@@ -66,7 +66,7 @@ public enum MaintenanceCatalog {
     public static let dockerPrune = MaintenanceAction(
         id: "docker-prune",
         title: "Docker System Prune",
-        description: "Removes stopped containers, dangling images, unused networks, and build cache.",
+        description: "Runs `docker system prune -f` only: stopped containers, unused networks, dangling images, and build cache. Never uses --volumes — named volumes and database data are left intact.",
         systemImage: "shippingbox.and.arrow.backward",
         estimatedSeconds: 30
     )

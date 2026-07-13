@@ -162,19 +162,30 @@ public struct MaintenanceRunner: Sendable {
         }
     }
 
+    /// Docker prune arguments. **Must never include `--volumes`** — volumes hold user
+    /// databases and app data. Do not add volume flags here.
+    static let dockerSystemPruneArguments: [String] = ["system", "prune", "-f"]
+
     private func runDockerPrune() -> AsyncThrowingStream<String, Error> {
         guard let docker = dockerExecutable else {
             return AsyncThrowingStream { $0.finish(throwing: MaintenanceError.executableNotFound("docker")) }
         }
+        // Belt-and-suspenders: refuse if args ever gain a volumes flag.
+        let args = Self.dockerSystemPruneArguments
+        precondition(
+            !args.contains(where: { $0 == "--volumes" || $0 == "-v" }),
+            "Docker prune must never pass --volumes"
+        )
         return AsyncThrowingStream { continuation in
             Task {
-                continuation.yield("→ Running docker system prune…")
-                let stream = shellStream(docker, ["system", "prune", "-f"])
+                continuation.yield("→ Running docker system prune -f (volumes NOT removed)…")
+                continuation.yield("  Note: only unused Docker objects; named volumes are preserved.")
+                let stream = shellStream(docker, args)
                 do {
                     for try await line in stream {
                         continuation.yield(line)
                     }
-                    continuation.yield("Docker prune complete.")
+                    continuation.yield("Docker prune complete (volumes preserved).")
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)

@@ -277,14 +277,15 @@ final class ProjectRootDiscoveryTests: XCTestCase {
 
     func testKeepsDeeplyNestedIndependentProject() {
         // Root + a deeply nested project (4+ levels deep) — should keep both.
+        // Avoid excluded path components (/vendor/, /node_modules/, etc.).
         let outer = URL(fileURLWithPath: "/Users/user/code/.git")
-        let deep  = URL(fileURLWithPath: "/Users/user/code/vendor/external/lib/deep_project/.git")
+        let deep  = URL(fileURLWithPath: "/Users/user/code/services/external/lib/deep_project/.git")
 
         let result = ProjectRootDiscovery.deduplicate([outer, deep])
         let paths = result.map(\.path)
 
         XCTAssertTrue(paths.contains("/Users/user/code"), "Outer root should be present")
-        XCTAssertTrue(paths.contains("/Users/user/code/vendor/external/lib/deep_project"),
+        XCTAssertTrue(paths.contains("/Users/user/code/services/external/lib/deep_project"),
                       "Deeply nested root (>3 levels) should be kept as independent project")
     }
 
@@ -322,6 +323,35 @@ final class ProjectRootDiscoveryTests: XCTestCase {
         let paths = result.map(\.path)
         XCTAssertTrue(paths.contains("/Users/user/Projects/mylib"))
     }
+
+    /// Regression: SpotlightQueryRunner previously used `[weak self]` with no strong
+    /// retention, so the runner was deallocated immediately, the async continuation
+    /// never resumed, and developer/app scans hung forever after `project-artifacts-v2`.
+    func testDiscoverCompletesWithoutHanging() async {
+        let storeURL = FileManager.default.temporaryDirectory
+            .appending(path: "pare_test_\(UUID().uuidString)/project-roots.json")
+        defer { try? FileManager.default.removeItem(at: storeURL.deletingLastPathComponent()) }
+
+        let discovery = ProjectRootDiscovery(storeURL: storeURL)
+        // Spotlight timeout is 10s; allow a small margin for scheduling.
+        let completed = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                _ = await discovery.discover()
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+
+        XCTAssertTrue(completed, "discover() hung past 15s — Spotlight continuation likely leaked")
+        let date = await discovery.discoveryDate
+        XCTAssertNotNil(date, "discover() should record lastDiscoveredAt on completion")
+    }
 }
 
 // MARK: - ProjectArtifactsRule
@@ -329,9 +359,8 @@ final class ProjectRootDiscoveryTests: XCTestCase {
 final class ProjectArtifactsRuleTests: XCTestCase {
 
     func testReturnsEmptyWhenNoRootsConfigured() async throws {
-        let storeURL = FileManager.default.temporaryDirectory
-            .appending(path: "pare_test_\(UUID().uuidString)/project-roots.json")
-        let discovery = ProjectRootDiscovery(storeURL: storeURL)
+        // Seed lastDiscoveredAt so discoverIfNeeded() skips live Spotlight (unit test isolation).
+        let discovery = makeIsolatedDiscovery(manual: [], confirmed: [])
         let rule = ProjectArtifactsRule(discovery: discovery)
         let findings = await rule.customScan(environment: ScanEnvironment.current())
         XCTAssertNotNil(findings)
@@ -425,11 +454,23 @@ final class ProjectArtifactsRuleTests: XCTestCase {
     // MARK: Private helpers
 
     private func makeDiscovery(root: URL) async -> ProjectRootDiscovery {
+        makeIsolatedDiscovery(manual: [root.path], confirmed: [])
+    }
+
+    /// Builds a discovery instance that will not invoke Spotlight in `discoverIfNeeded()`.
+    private func makeIsolatedDiscovery(manual: [String], confirmed: [String]) -> ProjectRootDiscovery {
         let storeURL = FileManager.default.temporaryDirectory
             .appending(path: "pare_test_\(UUID().uuidString)/project-roots.json")
-        let d = ProjectRootDiscovery(storeURL: storeURL)
-        await d.addManual(root)
-        return d
+        let dir = storeURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = ProjectRootsStore(
+            confirmed: confirmed,
+            excluded: [],
+            manual: manual,
+            lastDiscoveredAt: Date()
+        )
+        try? JSONEncoder().encode(store).write(to: storeURL)
+        return ProjectRootDiscovery(storeURL: storeURL)
     }
 }
 

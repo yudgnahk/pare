@@ -182,16 +182,25 @@ public actor ProjectRootDiscovery {
 
 /// Bridges NSMetadataQuery (requires a RunLoop) to async/await.
 /// Always runs on the main queue.
+///
+/// Lifetime: the runner must stay alive until `finish()` runs. Observer and timeout
+/// callbacks capture `self` strongly so the instance is not deallocated mid-query
+/// (a previous `[weak self]` pattern leaked the async continuation and hung scans forever).
 private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
     private let query = NSMetadataQuery()
     private var completion: (([URL]) -> Void)?
     private var observer: NSObjectProtocol?
     private var finished = false
+    /// Keeps `self` alive from `start` until `finish` even if local refs drop.
+    private var retainUntilFinished: SpotlightQueryRunner?
 
     private static let signalNames = [
         ".git", "Package.swift", "Cargo.toml", "go.mod",
         "pyproject.toml", "setup.py", "Gemfile", "pom.xml", "build.gradle",
     ]
+
+    /// Maximum time to wait for Spotlight before completing with whatever results we have.
+    private static let timeoutSeconds: TimeInterval = 10
 
     static func run() async -> [URL] {
         await withCheckedContinuation { continuation in
@@ -206,6 +215,9 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
 
     private func start(completion: @escaping ([URL]) -> Void) {
         self.completion = completion
+        // Self-retain until finish() so strong/weak callback mix cannot drop us early.
+        retainUntilFinished = self
+
         let predicates = Self.signalNames.map { name in
             NSPredicate(format: "%K == %@", NSMetadataItemFSNameKey, name)
         }
@@ -216,12 +228,14 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
             forName: .NSMetadataQueryDidFinishGathering,
             object: query,
             queue: .main
-        ) { [weak self] _ in self?.finish() }
+        ) { [self] _ in
+            self.finish()
+        }
 
         query.start()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-            self?.finish()
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.timeoutSeconds) { [self] in
+            self.finish()
         }
     }
 
@@ -229,7 +243,10 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
         guard !finished else { return }
         finished = true
         query.stop()
-        if let observer { NotificationCenter.default.removeObserver(observer) }
+        if let observer {
+            NotificationCenter.default.removeObserver(observer)
+            self.observer = nil
+        }
 
         let items = (0..<query.resultCount).compactMap { query.result(at: $0) as? NSMetadataItem }
         let urls: [URL] = items.compactMap { item in
@@ -238,5 +255,6 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
         }
         completion?(urls)
         completion = nil
+        retainUntilFinished = nil
     }
 }
