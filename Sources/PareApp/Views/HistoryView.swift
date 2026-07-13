@@ -13,44 +13,58 @@ struct HistoryView: View {
 
             VStack(spacing: 0) {
                 // Header
-                HStack {
+                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Cleanup History")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .font(AppTheme.TypeScale.heroTitle)
                             .foregroundStyle(AppTheme.textPrimary)
                         Text("Review and restore previously cleaned items.")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(AppTheme.TypeScale.body)
                             .foregroundStyle(AppTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-
-                    Spacer()
 
                     if !viewModel.transactions.isEmpty {
-                        Menu {
-                            Button("Export as JSON…") { exportJSON() }
-                            Button("Export as CSV…") { exportCSV() }
-                        } label: {
-                            Label("Export", systemImage: "square.and.arrow.up")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-                        .menuStyle(.borderlessButton)
-                        .help("Export cleanup history")
+                        FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+                            Menu {
+                                Button("Export as JSON…") { exportJSON() }
+                                Button("Export as CSV…") { exportCSV() }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "square.and.arrow.up")
+                                    Text("Export")
+                                }
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(AppTheme.textPrimary)
+                                .padding(.horizontal, 12)
+                                .frame(height: AppTheme.Control.secondaryHeight)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(Color.white.opacity(0.10))
+                                )
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                                )
+                            }
+                            .menuStyle(.borderlessButton)
+                            .help("Export cleanup history")
 
-                        Button(role: .destructive) {
-                            viewModel.clearAll()
-                        } label: {
-                            Label("Clear History", systemImage: "trash")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(AppTheme.review)
+                            SecondaryActionButton(
+                                title: "Clear History",
+                                systemImage: "trash",
+                                role: .destructive
+                            ) {
+                                viewModel.clearAll()
+                            }
+                            .help("Delete all cleanup history records")
                         }
-                        .buttonStyle(.borderless)
-                        .help("Delete all cleanup history records")
                     }
                 }
-                .padding(.horizontal, 28)
-                .padding(.top, 24)
-                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                .padding(.top, AppTheme.Spacing.pageVertical)
+                .padding(.bottom, AppTheme.Spacing.lg)
 
                 if let error = viewModel.errorMessage {
                     HStack(spacing: 10) {
@@ -69,7 +83,7 @@ struct HistoryView: View {
                         }
                         .buttonStyle(.borderless)
                     }
-                    .padding(.horizontal, 28)
+                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
                     .padding(.bottom, 12)
                 }
 
@@ -110,12 +124,13 @@ struct HistoryView: View {
                                 )
                             }
                         }
-                        .padding(.horizontal, 28)
-                        .padding(.bottom, 24)
+                        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                        .padding(.bottom, AppTheme.Spacing.pageVertical)
                     }
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { viewModel.load() }
     }
 
