@@ -13,26 +13,45 @@ final class Phase7RuleTests: XCTestCase {
         XCTAssertTrue(findings!.isEmpty, "No findings when Docker paths do not exist")
     }
 
-    func testDockerStorageRuleDetectsDockerRawAsAdvanced() async throws {
+    /// VM disk under …/data/vms must never appear as a scan finding (not Top Files / not reclaimable).
+    func testDockerStorageRuleDoesNotReportVMDisk() async throws {
         let tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tmp) }
 
         let dockerRawDir = tmp.appending(path: "Library/Containers/com.docker.docker/Data/vms/0/data")
         try FileManager.default.createDirectory(at: dockerRawDir, withIntermediateDirectories: true)
-
         let dockerRaw = dockerRawDir.appending(path: "Docker.raw")
-        let content = Data(repeating: 0xAB, count: 1024 * 100) // 100 KB
-        try content.write(to: dockerRaw)
+        try Data(repeating: 0xAB, count: 1024 * 100).write(to: dockerRaw)
 
         let rule = DockerStorageRule()
         let env = ScanEnvironment(homeDirectory: tmp)
-        let findings = await rule.customScan(environment: env)
+        let findings = await rule.customScan(environment: env)!
 
-        XCTAssertNotNil(findings)
-        let advancedFindings = findings!.filter { $0.riskLevel == .advanced }
-        XCTAssertEqual(advancedFindings.count, 1, "Docker.raw should be flagged as advanced")
-        XCTAssertEqual(advancedFindings[0].path, dockerRaw.path)
-        XCTAssertTrue(advancedFindings[0].reason.contains("docker system prune"))
+        XCTAssertTrue(findings.filter { $0.riskLevel == .advanced }.isEmpty)
+        XCTAssertFalse(findings.contains { $0.path.contains("Docker.raw") || $0.path.contains("/vms/") })
+    }
+
+    /// Sparse files still size by allocated bytes (utility), independent of scan findings.
+    func testFileSystemUtilsUsesAllocatedSizeForSparseFiles() throws {
+        let tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+
+        let sparse = tmp.appending(path: "sparse.bin")
+        FileManager.default.createFile(atPath: sparse.path, contents: nil)
+        let logicalBytes: Int64 = 1_099_511_627_776 // 1 TiB logical
+        let fd = open(sparse.path, O_RDWR)
+        XCTAssertGreaterThanOrEqual(fd, 0)
+        defer { close(fd) }
+        XCTAssertEqual(ftruncate(fd, off_t(logicalBytes)), 0)
+        var marker = [UInt8](repeating: 0xAB, count: 4096)
+        XCTAssertEqual(pwrite(fd, &marker, marker.count, 0), marker.count)
+
+        let logical = FileSystemUtils.logicalFileSize(url: sparse)
+        let allocated = FileSystemUtils.fileSize(url: sparse)
+        XCTAssertEqual(logical, logicalBytes)
+        XCTAssertGreaterThan(allocated, 0)
+        XCTAssertLessThan(allocated, 100 * 1024 * 1024)
     }
 
     func testDockerStorageRuleDetectsLogPathsAsSafe() async throws {
@@ -268,5 +287,36 @@ final class Phase7RuleTests: XCTestCase {
         let reviewRule = BrowserReviewDataRule()
         XCTAssertNotEqual(cachesRule.id, reviewRule.id, "Rules should have different IDs")
         XCTAssertEqual(reviewRule.riskLevel, .review, "BrowserReviewDataRule should be .review")
+    }
+
+    // MARK: - Docker never-delete policy
+
+    func testIsDockerNeverDeletePathCoversVMDiskOnly() {
+        let raw = URL(fileURLWithPath:
+            "/Users/u/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw")
+        let vmsData = URL(fileURLWithPath:
+            "/Users/u/Library/Containers/com.docker.docker/Data/vms/0/data")
+        let logs = URL(fileURLWithPath:
+            "/Users/u/Library/Containers/com.docker.docker/Data/log/host/docker.log")
+        let cache = URL(fileURLWithPath: "/Users/u/Library/Caches/something")
+
+        XCTAssertTrue(ScanPolicy.isDockerNeverDeletePath(raw))
+        XCTAssertTrue(ScanPolicy.isDockerNeverDeletePath(vmsData))
+        XCTAssertFalse(ScanPolicy.isDockerNeverDeletePath(logs), "Daemon logs remain cleanable")
+        XCTAssertFalse(ScanPolicy.isDockerNeverDeletePath(cache))
+    }
+
+    func testDockerSystemPruneArgumentsNeverIncludeVolumes() {
+        let args = MaintenanceRunner.dockerSystemPruneArguments
+        XCTAssertEqual(args, ["system", "prune", "-f"])
+        XCTAssertFalse(args.contains("--volumes"))
+        XCTAssertFalse(args.contains("-v"))
+    }
+
+    func testDockerReviewMarkersDoNotIncludeVMsTree() {
+        for marker in ScanPolicy.developerDockerReviewPathMarkers {
+            XCTAssertFalse(marker.contains("/vms"),
+                           "Review markers must not include VM disk tree: \(marker)")
+        }
     }
 }

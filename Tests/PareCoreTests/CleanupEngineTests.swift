@@ -86,9 +86,49 @@ final class CleanupEngineTests: XCTestCase {
 
         XCTAssertEqual(result.succeeded.count, 0)
         XCTAssertEqual(result.skipped.count, 1)
-        XCTAssertTrue(result.skipped[0].reason.contains("ADVANCED"))
+        // Temp path is not under Docker VM tree; advanced risk still blocks.
+        XCTAssertTrue(
+            result.skipped[0].reason.contains("ADVANCED")
+                || result.skipped[0].reason.contains("Docker VM"),
+            result.skipped[0].reason
+        )
         // File must still exist on disk.
         XCTAssertTrue(FileManager.default.fileExists(atPath: finding.path))
+    }
+
+    /// Even if a finding is mis-tagged `.safe`, Docker VM disk paths must never be trashed.
+    func testCleanBlocksDockerRawPathRegardlessOfRiskLevel() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appending(path: "pare_docker_never_delete_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let dockerRawDir = tmp.appending(
+            path: "Library/Containers/com.docker.docker/Data/vms/0/data"
+        )
+        try FileManager.default.createDirectory(at: dockerRawDir, withIntermediateDirectories: true)
+        let dockerRaw = dockerRawDir.appending(path: "Docker.raw")
+        try Data(repeating: 0xCD, count: 4096).write(to: dockerRaw)
+
+        // Deliberately wrong risk — path ban must still win.
+        let finding = ScanFinding(
+            category: .developerPackageCaches,
+            riskLevel: .safe,
+            reason: "mis-tagged as safe",
+            path: dockerRaw.path,
+            sizeBytes: 4096,
+            lastUsed: nil,
+            confidence: 1.0
+        )
+        let engine = CleanupEngine(store: makeStore())
+        let result = try await engine.clean(findings: [finding], profileName: "test")
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        XCTAssertEqual(result.skipped.count, 1)
+        XCTAssertTrue(result.skipped[0].reason.contains("Docker VM")
+                      || result.skipped[0].reason.contains("volume"),
+                      result.skipped[0].reason)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dockerRaw.path),
+                      "Docker.raw must remain on disk")
     }
 
     // MARK: - CleanupEngine: missing file is skipped gracefully
