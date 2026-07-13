@@ -163,14 +163,15 @@ final class ScanIntegrationTests: XCTestCase {
         let report = await runner.run(rules: RuleCatalog.baseline)
 
         for summary in report.summaries {
-            let directSum = report.findings
-                .filter { $0.category == summary.category }
-                .reduce(0) { $0 + $1.sizeBytes }
+            // Summaries exclude .advanced (detect-only) from reclaimable totals.
+            let reclaimable = report.findings.filter {
+                $0.category == summary.category && $0.riskLevel != .advanced
+            }
+            let directSum = reclaimable.reduce(0) { $0 + $1.sizeBytes }
             XCTAssertEqual(summary.reclaimableBytes, directSum,
-                           "Summary bytes for \(summary.category.rawValue) must match findings sum")
-            let directCount = report.findings.filter { $0.category == summary.category }.count
-            XCTAssertEqual(summary.fileCount, directCount,
-                           "Summary file count for \(summary.category.rawValue) must match findings count")
+                           "Summary bytes for \(summary.category.rawValue) must match reclaimable findings sum")
+            XCTAssertEqual(summary.fileCount, reclaimable.count,
+                           "Summary file count for \(summary.category.rawValue) must match reclaimable findings count")
         }
     }
 
@@ -222,14 +223,16 @@ final class ScanIntegrationTests: XCTestCase {
         }
     }
 
-    // MARK: - Total reclaimable is sum of all finding sizes
+    // MARK: - Total reclaimable is sum of non-advanced finding sizes
 
     func testTotalReclaimableBytesIsConsistent() async throws {
         try builder.buildBaseline()
         let runner = makeRunner()
         let report = await runner.run(rules: RuleCatalog.baseline)
 
-        let sumFromFindings = report.findings.reduce(0) { $0 + $1.sizeBytes }
+        let sumFromFindings = report.findings
+            .filter { $0.riskLevel != .advanced }
+            .reduce(0) { $0 + $1.sizeBytes }
         XCTAssertEqual(report.totalReclaimableBytes, sumFromFindings)
     }
 }
@@ -601,8 +604,10 @@ final class ScanCancellationTests: XCTestCase {
 
         // A cancelled scan should not produce findings (it may return partial/empty).
         // We can't assert exact count since timing is non-deterministic, but we can
-        // assert the total is consistent with whatever was found.
-        let directSum = report.findings.reduce(0) { $0 + $1.sizeBytes }
+        // assert the total is consistent with whatever reclaimable findings were kept.
+        let directSum = report.findings
+            .filter { $0.riskLevel != .advanced }
+            .reduce(0) { $0 + $1.sizeBytes }
         XCTAssertEqual(report.totalReclaimableBytes, directSum,
                        "Even after cancellation, report totals must be internally consistent")
     }

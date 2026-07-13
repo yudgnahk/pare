@@ -67,8 +67,7 @@ public struct ScanRunner: Sendable {
         if let customFindings = await rule.customScan(environment: environment) {
             for finding in customFindings where !exclusionList.isExcluded(finding.path) {
                 localFindings.append(finding)
-                let current = localGrouped[finding.category] ?? (0, 0)
-                localGrouped[finding.category] = (current.0 + finding.sizeBytes, current.1 + 1)
+                accumulateReclaimable(finding, into: &localGrouped)
             }
             return (localFindings, localGrouped)
         }
@@ -81,7 +80,7 @@ public struct ScanRunner: Sendable {
             guard include(file: file, rule: rule) else { continue }
             guard !exclusionList.isExcluded(file.url.path) else { continue }
 
-            localFindings.append(ScanFinding(
+            let finding = ScanFinding(
                 category: rule.category,
                 riskLevel: rule.riskLevel,
                 reason: rule.reason,
@@ -89,12 +88,23 @@ public struct ScanRunner: Sendable {
                 sizeBytes: file.sizeBytes,
                 lastUsed: file.lastModified,
                 confidence: rule.confidence
-            ))
-            let current = localGrouped[rule.category] ?? (0, 0)
-            localGrouped[rule.category] = (current.0 + file.sizeBytes, current.1 + 1)
+            )
+            localFindings.append(finding)
+            accumulateReclaimable(finding, into: &localGrouped)
         }
 
         return (localFindings, localGrouped)
+    }
+
+    /// Category summaries and `totalReclaimableBytes` only include cleanable findings.
+    /// `.advanced` items stay in `findings` for visibility but must not inflate reclaimable totals.
+    private func accumulateReclaimable(
+        _ finding: ScanFinding,
+        into grouped: inout [ScanCategory: (Int64, Int)]
+    ) {
+        guard finding.riskLevel != .advanced else { return }
+        let current = grouped[finding.category] ?? (0, 0)
+        grouped[finding.category] = (current.0 + finding.sizeBytes, current.1 + 1)
     }
 
     private func include(file: ScannedFile, rule: any ScanRule) -> Bool {
