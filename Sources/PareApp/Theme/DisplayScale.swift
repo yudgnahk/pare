@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// Window-driven scale for type and control density.
-/// Resolves from the live window size so 13" laptops stay compact while
-/// 23–27" full-screen sessions get larger, more readable text.
+/// Window-driven base scale for type and control density, multiplied by the
+/// user zoom factor (`TextZoomController`).
+///
+/// Automatic size classes keep 13" laptops compact and 27" desktops readable;
+/// users can further adjust with ⌘+/⌘− (persisted).
 struct DisplayScale: Equatable {
     enum Class: String, Equatable {
         case compact      // ~13–14"
@@ -12,27 +14,54 @@ struct DisplayScale: Equatable {
     }
 
     let sizeClass: Class
-    /// Multiplier applied to base point sizes (13pt body → 13 × factor).
+    /// Combined multiplier: automatic size-class base × user zoom.
     let factor: CGFloat
+    /// Automatic base only (before user zoom) — useful for debugging.
+    let baseFactor: CGFloat
+    /// User zoom multiplier (1.0 = 100%).
+    let userZoom: CGFloat
 
-    static let compact = DisplayScale(sizeClass: .compact, factor: 1.0)
-    static let regular = DisplayScale(sizeClass: .regular, factor: 1.08)
-    static let large = DisplayScale(sizeClass: .large, factor: 1.18)
-    static let extraLarge = DisplayScale(sizeClass: .extraLarge, factor: 1.32)
+    /// Base factors chosen so 27" full screen is comfortable out of the box.
+    static let compactBase: CGFloat = 1.0
+    static let regularBase: CGFloat = 1.12
+    static let largeBase: CGFloat = 1.30
+    static let extraLargeBase: CGFloat = 1.55
 
-    static func resolve(width: CGFloat, height: CGFloat) -> DisplayScale {
+    static let compact = DisplayScale(sizeClass: .compact, baseFactor: compactBase, userZoom: 1)
+    static let regular = DisplayScale(sizeClass: .regular, baseFactor: regularBase, userZoom: 1)
+    static let large = DisplayScale(sizeClass: .large, baseFactor: largeBase, userZoom: 1)
+    static let extraLarge = DisplayScale(sizeClass: .extraLarge, baseFactor: extraLargeBase, userZoom: 1)
+
+    init(sizeClass: Class, baseFactor: CGFloat, userZoom: CGFloat) {
+        self.sizeClass = sizeClass
+        self.baseFactor = baseFactor
+        self.userZoom = userZoom
+        self.factor = baseFactor * userZoom
+    }
+
+    static func resolve(
+        width: CGFloat,
+        height: CGFloat,
+        userZoom: CGFloat = 1.0
+    ) -> DisplayScale {
         // Prefer width (primary layout axis). Also promote when both axes
         // indicate a large desktop canvas (e.g. 27" fullscreen).
+        let sizeClass: Class
+        let base: CGFloat
         if width >= 1800 || (width >= 1560 && height >= 980) {
-            return .extraLarge
+            sizeClass = .extraLarge
+            base = extraLargeBase
+        } else if width >= 1400 || (width >= 1280 && height >= 900) {
+            sizeClass = .large
+            base = largeBase
+        } else if width >= 1100 {
+            sizeClass = .regular
+            base = regularBase
+        } else {
+            sizeClass = .compact
+            base = compactBase
         }
-        if width >= 1400 || (width >= 1280 && height >= 900) {
-            return .large
-        }
-        if width >= 1100 {
-            return .regular
-        }
-        return .compact
+        return DisplayScale(sizeClass: sizeClass, baseFactor: base, userZoom: userZoom)
     }
 
     // MARK: - Scaled fonts
@@ -97,9 +126,12 @@ extension EnvironmentValues {
 
 // MARK: - Root injection
 
-/// Measures the window and injects `displayScale` for all descendants.
+/// Measures the window, multiplies by user zoom, and injects `displayScale`.
 struct DisplayScaleReader<Content: View>: View {
+    @EnvironmentObject private var textZoom: TextZoomController
     @ViewBuilder let content: () -> Content
+
+    @State private var windowSize: CGSize = .zero
     @State private var scale = DisplayScale.regular
 
     var body: some View {
@@ -115,11 +147,28 @@ struct DisplayScaleReader<Content: View>: View {
                 }
             )
             .onPreferenceChange(WindowSizePreferenceKey.self) { size in
-                let next = DisplayScale.resolve(width: size.width, height: size.height)
-                if next != scale {
-                    scale = next
-                }
+                windowSize = size
+                recompute()
             }
+            .onChange(of: textZoom.factor) { _ in
+                recompute()
+            }
+            .overlay(alignment: .top) {
+                TextZoomHUD(message: textZoom.hudMessage)
+                    .padding(.top, 28)
+                    .animation(.easeOut(duration: 0.18), value: textZoom.hudMessage)
+            }
+    }
+
+    private func recompute() {
+        let next = DisplayScale.resolve(
+            width: windowSize.width,
+            height: windowSize.height,
+            userZoom: textZoom.factor
+        )
+        if next != scale {
+            scale = next
+        }
     }
 }
 

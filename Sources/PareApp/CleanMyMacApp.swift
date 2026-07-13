@@ -4,10 +4,13 @@ import SwiftUI
 struct PareApp: App {
     @StateObject private var scanViewModel = ScanDashboardViewModel()
     @StateObject private var historyViewModel = HistoryViewModel()
+    @StateObject private var textZoom = TextZoomController()
 
     var body: some Scene {
         WindowGroup("Pare") {
             ContentView(scanViewModel: scanViewModel, historyViewModel: historyViewModel)
+                .environmentObject(textZoom)
+                .modifier(TextZoomKeyMonitor(zoom: textZoom))
                 // Declare a floor that fits 13" MacBooks; content expands to full screen.
                 .frame(
                     minWidth: AppTheme.Window.minWidth,
@@ -18,6 +21,9 @@ struct PareApp: App {
         }
         .windowResizability(.contentMinSize)
         .defaultSize(width: AppTheme.Window.defaultWidth, height: AppTheme.Window.defaultHeight)
+        .commands {
+            TextZoomCommands(zoom: textZoom)
+        }
     }
 }
 

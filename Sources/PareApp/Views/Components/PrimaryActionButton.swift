@@ -46,6 +46,7 @@ struct PrimaryActionButton: View {
     var isEnabled: Bool = true
     let action: () -> Void
 
+    @Environment(\.displayScale) private var scale
     @State private var hovering = false
 
     var body: some View {
@@ -57,20 +58,22 @@ struct PrimaryActionButton: View {
                         .tint(AppTheme.textPrimary)
                 } else {
                     Image(systemName: systemImage)
-                        .font(.system(size: style == .prominent ? 13 : 12, weight: .semibold))
+                        .font(scale.font(style == .prominent ? 13 : 12, weight: .semibold))
                 }
 
                 Text(isLoading ? loadingTitle : title)
-                    .font(.system(size: style == .prominent ? 13 : 12, weight: .semibold))
+                    .font(scale.font(style == .prominent ? 13 : 12, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
             .foregroundStyle(AppTheme.textPrimary)
-            .padding(.horizontal, style == .prominent ? 16 : 12)
-            .frame(minWidth: AppTheme.Control.primaryMinWidth)
-            .frame(height: style == .prominent
-                   ? AppTheme.Control.primaryHeight
-                   : AppTheme.Control.secondaryHeight)
+            .padding(.horizontal, scale.space(style == .prominent ? 16 : 12))
+            .frame(minWidth: scale.space(AppTheme.Control.primaryMinWidth))
+            .frame(height: scale.space(
+                style == .prominent
+                ? AppTheme.Control.primaryHeight
+                : AppTheme.Control.secondaryHeight
+            ))
             .background(
                 Capsule(style: .continuous)
                     .fill(
@@ -151,6 +154,7 @@ struct SecondaryActionButton: View {
         }
     }
 
+    @Environment(\.displayScale) private var scale
     @State private var hovering = false
 
     var body: some View {
@@ -162,16 +166,16 @@ struct SecondaryActionButton: View {
                         .tint(role.foreground)
                 } else if let systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(scale.font(12, weight: .semibold))
                 }
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
             .foregroundStyle(role.foreground)
-            .padding(.horizontal, 12)
-            .frame(height: AppTheme.Control.secondaryHeight)
+            .padding(.horizontal, scale.space(12))
+            .frame(height: scale.space(AppTheme.Control.secondaryHeight))
             .background(
                 Capsule(style: .continuous)
                     .fill(role.fill)
