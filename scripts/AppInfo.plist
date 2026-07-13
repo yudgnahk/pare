@@ -24,5 +24,14 @@
     <string>public.app-category.utilities</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2025 yudgnahk. All rights reserved.</string>
+
+    <!-- Privacy usage descriptions required by macOS 10.15+ for non-sandboxed apps
+         accessing protected user folders. Shown in the system permission dialog. -->
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>Pare scans your Desktop for installer files (.dmg, .pkg, .iso).</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>Pare scans your Documents folder for Zoom cloud recordings.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Pare scans your Downloads folder for installer files and non-macOS binaries.</string>
 </dict>
 </plist>
