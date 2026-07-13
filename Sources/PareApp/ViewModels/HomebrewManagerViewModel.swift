@@ -12,6 +12,12 @@ final class HomebrewManagerViewModel: ObservableObject {
         case migrate = "Migrate"
     }
 
+    enum FormulaSortField: String, CaseIterable {
+        case name = "Name"
+        case size = "Size"
+        case installed = "Installed"
+    }
+
     enum LoadState: Equatable {
         case idle
         case loading
@@ -44,6 +50,8 @@ final class HomebrewManagerViewModel: ObservableObject {
     @Published var migrationCandidates: [MigrationCandidate] = []
     @Published var searchText = ""
     @Published var showAllFormulae = false
+    @Published var formulaSortField: FormulaSortField = .size
+    @Published var formulaSortAscending = false
 
     @Published var operationState: OperationState = .idle
     @Published var operationLog: [String] = []
@@ -54,9 +62,35 @@ final class HomebrewManagerViewModel: ObservableObject {
     var isInstalled: Bool { BrewRunner.shared.isInstalled }
 
     var filteredFormulae: [BrewFormula] {
-        guard !searchText.isEmpty else { return formulae }
-        return formulae.filter { $0.name.localizedCaseInsensitiveContains(searchText)
-            || $0.desc.localizedCaseInsensitiveContains(searchText) }
+        var result = formulae
+        if !searchText.isEmpty {
+            result = result.filter {
+                $0.name.localizedCaseInsensitiveContains(searchText)
+                    || $0.desc.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+        result.sort { a, b in
+            let ascending: Bool
+            switch formulaSortField {
+            case .name:
+                ascending = a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            case .size:
+                ascending = a.sizeBytes < b.sizeBytes
+            case .installed:
+                ascending = (a.installDate ?? .distantPast) < (b.installDate ?? .distantPast)
+            }
+            return formulaSortAscending ? ascending : !ascending
+        }
+        return result
+    }
+
+    func toggleFormulaSort(_ field: FormulaSortField) {
+        if formulaSortField == field {
+            formulaSortAscending.toggle()
+        } else {
+            formulaSortField = field
+            formulaSortAscending = field == .name
+        }
     }
 
     var filteredCasks: [BrewCask] {

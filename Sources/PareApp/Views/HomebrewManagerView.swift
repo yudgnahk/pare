@@ -177,7 +177,43 @@ struct HomebrewManagerView: View {
                         viewModel.reloadFormulae()
                     }
                 }
+
+            if viewModel.selectedTab == .formulae {
+                formulaSortMenu
+            }
         }
+    }
+
+    private var formulaSortMenu: some View {
+        Menu {
+            ForEach(HomebrewManagerViewModel.FormulaSortField.allCases, id: \.self) { field in
+                Button {
+                    viewModel.toggleFormulaSort(field)
+                } label: {
+                    if viewModel.formulaSortField == field {
+                        Label(
+                            "\(field.rawValue) \(viewModel.formulaSortAscending ? "↑" : "↓")",
+                            systemImage: viewModel.formulaSortAscending ? "arrow.up" : "arrow.down"
+                        )
+                    } else {
+                        Text(field.rawValue)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.arrow.down")
+                Text("Sort: \(viewModel.formulaSortField.rawValue)")
+            }
+            .font(scale.caption)
+            .foregroundStyle(AppTheme.textSecondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Sort formulae by name, size, or install date")
     }
 
     private func tabLabel(_ tab: HomebrewManagerViewModel.Tab) -> String {
@@ -242,7 +278,8 @@ struct HomebrewManagerView: View {
     private var formulaeHeader: some View {
         HStack {
             Text("Name").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Version").frame(width: scale.scaled(120), alignment: .leading)
+            Text("Version").frame(width: scale.scaled(100), alignment: .leading)
+            Text("Size").frame(width: scale.colSize, alignment: .trailing)
             if scale.sizeClass != .compact {
                 Text("Installed").frame(width: scale.colDate, alignment: .trailing)
                 Text("Requested").frame(width: scale.scaled(90), alignment: .center)
@@ -459,8 +496,15 @@ private struct FormulaRow: View {
             Text(formula.version)
                 .font(scale.rowMono)
                 .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: scale.scaled(120), alignment: .leading)
+                .frame(width: scale.scaled(100), alignment: .leading)
                 .lineLimit(1)
+
+            Text(formula.sizeBytes > 0
+                ? ByteCountFormatter.string(fromByteCount: formula.sizeBytes, countStyle: .file)
+                : "—")
+                .font(scale.font(12, weight: .semibold, design: .rounded))
+                .foregroundStyle(formula.sizeBytes > 100_000_000 ? AppTheme.review : AppTheme.textPrimary)
+                .frame(width: scale.colSize, alignment: .trailing)
 
             if scale.sizeClass != .compact {
                 Text(formula.installDate.map { Self.dateFormatter.string(from: $0) } ?? "—")

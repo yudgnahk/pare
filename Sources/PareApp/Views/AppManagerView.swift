@@ -240,23 +240,69 @@ struct AppManagerView: View {
     // MARK: - App Table
 
     private var appTable: some View {
-        Group {
-            switch viewModel.loadState {
-            case .idle:
-                emptyPrompt(icon: "apps.iphone", text: "Click Refresh to load installed apps")
-            case .loading:
-                loadingPlaceholder
-            case .error(let msg):
-                emptyPrompt(icon: "exclamationmark.triangle", text: msg)
-            case .loaded:
-                if viewModel.filteredApps.isEmpty {
-                    emptyPrompt(icon: "magnifyingglass", text: "No apps match the current filters")
-                } else {
-                    appList
+        VStack(spacing: 0) {
+            if let feedback = viewModel.updateFeedback {
+                HStack(spacing: 10) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(AppTheme.accent)
+                    Text(feedback)
+                        .font(scale.body)
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(2)
+                    Spacer(minLength: 8)
+                    Button {
+                        viewModel.dismissUpdateFeedback()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .buttonStyle(.borderless)
+                }
+                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                .padding(.vertical, 8)
+            }
+
+            Group {
+                switch viewModel.loadState {
+                case .idle:
+                    emptyPrompt(icon: "apps.iphone", text: "Click Refresh to load installed apps")
+                case .loading:
+                    loadingPlaceholder
+                case .error(let msg):
+                    emptyPrompt(icon: "exclamationmark.triangle", text: msg)
+                case .loaded:
+                    if viewModel.filteredApps.isEmpty {
+                        emptyPrompt(icon: emptyIcon, text: emptyMessage)
+                    } else {
+                        appList
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var emptyIcon: String {
+        if viewModel.showOnlyOutdated { return "checkmark.seal" }
+        if !viewModel.searchText.isEmpty { return "magnifyingglass" }
+        return "magnifyingglass"
+    }
+
+    private var emptyMessage: String {
+        if viewModel.showOnlyOutdated {
+            if viewModel.checkingUpdates {
+                return "Checking for updates…"
+            }
+            if !viewModel.hasCheckedUpdates {
+                return "Click “Check Updates” to find outdated apps"
+            }
+            return "All apps are up to date"
+        }
+        if !viewModel.searchText.isEmpty {
+            return "No apps match the current search"
+        }
+        return "No apps match the current filters"
     }
 
     private var appList: some View {
@@ -264,7 +310,12 @@ struct AppManagerView: View {
             tableHeader
         } content: {
             ForEach(viewModel.filteredApps) { app in
-                AppRow(app: app, onUninstall: { viewModel.requestUninstall(for: app) })
+                AppRow(
+                    app: app,
+                    isUpdating: viewModel.updatingAppIDs.contains(app.id),
+                    onUpdate: { viewModel.updateApp(app) },
+                    onUninstall: { viewModel.requestUninstall(for: app) }
+                )
             }
         }
     }
@@ -283,7 +334,7 @@ struct AppManagerView: View {
                 Text("Last Used")
                     .frame(width: scale.colDate, alignment: .trailing)
             }
-            Spacer().frame(width: scale.colActions)
+            Spacer().frame(width: scale.scaled(120))
         }
         .font(scale.tableHeader)
         .foregroundStyle(AppTheme.textSecondary)
@@ -323,6 +374,8 @@ struct AppManagerView: View {
 
 private struct AppRow: View {
     let app: InstalledApp
+    var isUpdating: Bool = false
+    var onUpdate: (() -> Void)? = nil
     let onUninstall: () -> Void
     @Environment(\.displayScale) private var scale
     @State private var isHovered = false
@@ -333,6 +386,8 @@ private struct AppRow: View {
         f.timeStyle = .none
         return f
     }()
+
+    private var hasUpdate: Bool { app.updateInfo?.hasUpdate == true }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -354,8 +409,8 @@ private struct AppRow: View {
                         if app.isHomebrewManaged {
                             badge("brew", color: AppTheme.success)
                         }
-                        if app.updateInfo?.hasUpdate == true {
-                            badge("Update", color: AppTheme.warning)
+                        if hasUpdate, let available = app.updateInfo?.availableVersion {
+                            badge("→ \(available)", color: AppTheme.warning)
                         }
                     }
                     if let bundleID = app.bundleID {
@@ -397,15 +452,8 @@ private struct AppRow: View {
 
             // Actions
             HStack(spacing: 8) {
-                if let info = app.updateInfo, info.hasUpdate, let url = info.updateURL {
-                    Button {
-                        NSWorkspace.shared.open(url)
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundStyle(AppTheme.warning)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Update \(app.name) (\(info.availableVersion) available)")
+                if hasUpdate {
+                    updateButton
                 }
 
                 Button {
@@ -425,8 +473,8 @@ private struct AppRow: View {
                 .disabled(app.isSystemApp)
                 .help(app.isSystemApp ? "System apps cannot be removed (SIP-protected)" : "Uninstall \(app.name)")
             }
-            .frame(width: scale.colActions, alignment: .trailing)
-            .opacity(isHovered ? 1 : 0.6)
+            .frame(width: scale.scaled(120), alignment: .trailing)
+            .opacity(isHovered || hasUpdate ? 1 : 0.6)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, scale.space(10))
@@ -436,6 +484,9 @@ private struct AppRow: View {
         )
         .onHover { isHovered = $0 }
         .contextMenu {
+            if hasUpdate {
+                Button("Update…") { onUpdate?() }
+            }
             Button("Open") {
                 NSWorkspace.shared.openApplication(
                     at: URL(fileURLWithPath: app.path),
@@ -448,6 +499,48 @@ private struct AppRow: View {
             Divider()
             Button("Uninstall…", role: .destructive) { onUninstall() }
                 .disabled(app.isSystemApp)
+        }
+    }
+
+    @ViewBuilder
+    private var updateButton: some View {
+        Button {
+            onUpdate?()
+        } label: {
+            HStack(spacing: 4) {
+                if isUpdating {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                } else {
+                    Image(systemName: app.isHomebrewManaged ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                }
+                Text(isUpdating ? "Updating" : "Update")
+                    .font(scale.micro)
+            }
+            .foregroundStyle(AppTheme.warning)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(AppTheme.warning.opacity(0.16))
+            )
+        }
+        .buttonStyle(.borderless)
+        .disabled(isUpdating || onUpdate == nil)
+        .help(updateHelpText)
+    }
+
+    private var updateHelpText: String {
+        guard let info = app.updateInfo else { return "Update" }
+        if app.isHomebrewManaged {
+            return "Upgrade \(app.name) to \(info.availableVersion) via Homebrew"
+        }
+        switch info.channel {
+        case .mas:
+            return "Open Mac App Store to update \(app.name) (\(info.availableVersion))"
+        case .sparkle:
+            return "Download update for \(app.name) (\(info.availableVersion))"
         }
     }
 

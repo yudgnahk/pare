@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import SwiftUI
 import PareCore
 
@@ -54,7 +55,12 @@ final class AppManagerViewModel: ObservableObject {
     @Published var sortField: SortField = .size
     @Published var sortAscending = false
     @Published var checkingUpdates = false
+    /// True after the user has run at least one successful update check this session.
+    @Published var hasCheckedUpdates = false
     @Published var uninstallState: UninstallState = .idle
+    /// App IDs currently running an in-app update (Homebrew cask upgrade).
+    @Published var updatingAppIDs: Set<String> = []
+    @Published var updateFeedback: String?
 
     // Uninstall flow
     @Published var selectedApp: InstalledApp?
@@ -68,6 +74,7 @@ final class AppManagerViewModel: ObservableObject {
     private let checker = OutdatedChecker()
     private let uninstaller = AppUninstaller()
     private var scanTask: Task<Void, Never>?
+    private var updateCheckTask: Task<Void, Never>?
 
     // MARK: - Computed
 
@@ -110,31 +117,110 @@ final class AppManagerViewModel: ObservableObject {
     func loadApps() {
         guard loadState != .loading else { return }
         loadState = .loading
+
+        // Snapshot update results so a Refresh does not wipe the "Updates only" list.
+        let previousByBundleID: [String: UpdateInfo] = Dictionary(
+            uniqueKeysWithValues: apps.compactMap { app -> (String, UpdateInfo)? in
+                guard let id = app.bundleID, let info = app.updateInfo else { return nil }
+                return (id, info)
+            }
+        )
+        let previousByPath: [String: UpdateInfo] = Dictionary(
+            uniqueKeysWithValues: apps.compactMap { app -> (String, UpdateInfo)? in
+                guard let info = app.updateInfo else { return nil }
+                return (app.path, info)
+            }
+        )
+        let shouldRecheckUpdates = hasCheckedUpdates || showOnlyOutdated || !previousByBundleID.isEmpty
+
         scanTask = Task {
             let found = await inventory.scan()
             guard !Task.isCancelled else { return }
-            self.apps = found
+
+            self.apps = found.map { app in
+                var merged = app
+                if let id = app.bundleID, let info = previousByBundleID[id] {
+                    merged.updateInfo = info
+                } else if let info = previousByPath[app.path] {
+                    merged.updateInfo = info
+                }
+                return merged
+            }
             self.loadState = .loaded
+
+            // Re-verify after inventory refresh so the filter stays accurate.
+            if shouldRecheckUpdates {
+                await self.performUpdateCheck()
+            }
         }
     }
 
     func checkForUpdates() {
         guard !checkingUpdates, !apps.isEmpty else { return }
-        checkingUpdates = true
-        Task {
-            let updates = await checker.checkAll(apps)
-            guard !Task.isCancelled else {
-                self.checkingUpdates = false
-                return
-            }
-            self.apps = self.apps.map { app in
-                guard let id = app.bundleID, let info = updates[id] else { return app }
-                var updated = app
-                updated.updateInfo = info
-                return updated
-            }
-            self.checkingUpdates = false
+        updateCheckTask?.cancel()
+        updateCheckTask = Task {
+            await performUpdateCheck()
         }
+    }
+
+    /// Opens the update channel for the app (MAS / Sparkle URL), or runs
+    /// `brew upgrade --cask` when the app is Homebrew-managed.
+    func updateApp(_ app: InstalledApp) {
+        updateFeedback = nil
+
+        // Homebrew casks can be upgraded in-place without leaving Pare.
+        if app.isHomebrewManaged,
+           let token = uninstaller.homebrewCaskToken(for: app) {
+            guard !updatingAppIDs.contains(app.id) else { return }
+            updatingAppIDs.insert(app.id)
+            Task {
+                defer { self.updatingAppIDs.remove(app.id) }
+                do {
+                    _ = try await BrewRunner.shared.run(["upgrade", "--cask", token, "--greedy"])
+                    // Mark as up-to-date locally, then refresh inventory.
+                    if let idx = self.apps.firstIndex(where: { $0.id == app.id }) {
+                        self.apps[idx].updateInfo = nil
+                    }
+                    self.updateFeedback = "Updated \(app.name) via Homebrew"
+                    // Soft refresh so size/version update without clearing the list filter.
+                    let found = await inventory.scan()
+                    let previous = Dictionary(
+                        uniqueKeysWithValues: self.apps.compactMap { a -> (String, UpdateInfo)? in
+                            guard let id = a.bundleID, let info = a.updateInfo else { return nil }
+                            return (id, info)
+                        }
+                    )
+                    self.apps = found.map { scanned in
+                        var a = scanned
+                        if let id = scanned.bundleID, let info = previous[id] {
+                            a.updateInfo = info
+                        }
+                        // Clear update for the app we just upgraded.
+                        if a.id == app.id || a.path == app.path {
+                            a.updateInfo = nil
+                        }
+                        return a
+                    }
+                } catch {
+                    self.updateFeedback = error.localizedDescription
+                }
+            }
+            return
+        }
+
+        // MAS / Sparkle: open the store page or download URL.
+        if let url = app.updateInfo?.updateURL {
+            NSWorkspace.shared.open(url)
+            updateFeedback = app.updateInfo?.channel == .mas
+                ? "Opened Mac App Store for \(app.name)"
+                : "Opened download page for \(app.name)"
+            return
+        }
+
+        // Last resort: reveal the app so the user can open it (many Sparkle apps
+        // check for updates on launch).
+        NSWorkspace.shared.selectFile(app.path, inFileViewerRootedAtPath: "")
+        updateFeedback = "No direct update link — revealed \(app.name) in Finder"
     }
 
     func cancelLoad() {
@@ -149,6 +235,10 @@ final class AppManagerViewModel: ObservableObject {
             sortField = field
             sortAscending = field == .name
         }
+    }
+
+    func dismissUpdateFeedback() {
+        updateFeedback = nil
     }
 
     // MARK: - Uninstall flow
@@ -183,5 +273,26 @@ final class AppManagerViewModel: ObservableObject {
         showUninstallSheet = false
         selectedApp = nil
         pendingLeftovers = []
+    }
+
+    // MARK: - Private
+
+    private func performUpdateCheck() async {
+        guard !apps.isEmpty else { return }
+        checkingUpdates = true
+        let snapshot = apps
+        let updates = await checker.checkAll(snapshot)
+        guard !Task.isCancelled else {
+            checkingUpdates = false
+            return
+        }
+        apps = apps.map { app in
+            guard let id = app.bundleID, let info = updates[id] else { return app }
+            var updated = app
+            updated.updateInfo = info
+            return updated
+        }
+        hasCheckedUpdates = true
+        checkingUpdates = false
     }
 }
