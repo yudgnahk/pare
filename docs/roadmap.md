@@ -255,16 +255,18 @@ Spec: `docs/features/phase-8-productivity-system.md`
 
 ## Phase 9 — Polish & Distribution
 
-- [ ] Code signing — Developer ID Application certificate
-- [ ] Hardened Runtime entitlements audit
-- [ ] Notarization (`xcrun notarytool`)
-- [ ] Staple notarization ticket (`xcrun stapler`)
+- [ ] Code signing — Developer ID Application certificate (requires your keychain cert)
+- [x] Hardened Runtime entitlements — `scripts/PareApp.entitlements` (no JIT, no DYLD injection, no sandbox)
+- [x] Privacy usage descriptions added to `scripts/AppInfo.plist` (Desktop, Documents, Downloads)
+- [ ] Notarization (`xcrun notarytool`) — automated in `scripts/release.sh`
+- [ ] Staple notarization ticket (`xcrun stapler`) — automated in `scripts/release.sh`
 - [ ] Test Gatekeeper pass on a clean machine
 - [ ] App icon (all required sizes: 16–1024 pt @1x/@2x)
-- [ ] `CHANGELOG.md` for v1.0
-- [ ] Distribution choice: direct download (GitHub Releases) vs Mac App Store
-  - MAS requires sandboxing — most rules won't work under sandbox; direct download is the realistic path
-- [ ] GitHub release with signed `.dmg`
+- [x] `CHANGELOG.md` for v1.0
+- [x] Distribution: direct download via GitHub Releases (MAS incompatible with full-disk scanning)
+- [x] `scripts/release.sh` — universal binary build → sign → DMG → notarize → staple → verify
+- [x] `make release` target added to Makefile
+- [ ] GitHub release tagged v1.0.0 with signed `.dmg`
 
 ---
 

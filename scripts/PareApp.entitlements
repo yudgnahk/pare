@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened Runtime entitlements for Pare.
+
+  Pare does NOT use sandboxing — most scan rules require reading protected
+  directories (~/Library/Mail, ~/Library/Messages, etc.) that are incompatible
+  with the App Sandbox. Full Disk Access is granted by the user in System
+  Settings → Privacy & Security → Full Disk Access.
+
+  JIT, DYLD injection, and unsigned executable memory are all disabled.
+  Library validation is left at its default (enforced) — Pare only loads
+  Apple-signed system frameworks.
+
+  Child processes spawned via Process (brew, sqlite3, lsregister, killall,
+  dscacheutil, docker) are all Apple-signed system binaries or third-party
+  tools on the user's PATH; they are evaluated independently and do not
+  require special parent entitlements.
+-->
+<plist version="1.0">
+<dict>
+    <!-- JIT compilation — not used -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <false/>
+
+    <!-- Writable + executable memory pages — not used -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <false/>
+
+    <!-- DYLD environment variable injection — not used -->
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <false/>
+</dict>
+</plist>
