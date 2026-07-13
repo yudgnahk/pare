@@ -33,14 +33,18 @@ struct ContentView: View {
 
     var body: some View {
         DisplayScaleReader {
-            NavigationSplitView {
+            // Fixed sidebar (not NavigationSplitView) so the left menu is always
+            // visible — SplitView collapses/hides the sidebar too easily on macOS.
+            HStack(spacing: 0) {
                 SidebarView(selection: $selection)
-                    .navigationSplitViewColumnWidth(
-                        min: 200,
-                        ideal: AppTheme.Spacing.sidebarWidth,
-                        max: 280
-                    )
-            } detail: {
+                    .frame(width: AppTheme.Spacing.sidebarWidth)
+                    .frame(maxHeight: .infinity)
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 1)
+                    .frame(maxHeight: .infinity)
+
                 ZStack {
                     AppBackgroundView()
                     detailContent
@@ -53,7 +57,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(AppTheme.Motion.standard, value: selection)
             }
-            .navigationSplitViewStyle(.balanced)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
