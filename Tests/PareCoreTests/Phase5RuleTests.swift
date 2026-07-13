@@ -62,14 +62,19 @@ final class Phase5RuleTests: XCTestCase {
         XCTAssertEqual(reviewFindings.count, 1, "Session restore directory should be flagged as review")
     }
 
-    func testBrowserExtendedRuleSkipsTooNewArtifacts() async throws {
+    func testBrowserExtendedRuleFlagsFreshSafeCaches() async throws {
+        // SAFE regenerable caches (shader, Service Worker) skip the age gate so
+        // active browsers still show reclaimable space (common Mac cleaners).
         let tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tmp) }
 
         let shaderDir = tmp.appending(path: "Library/Application Support/Google/Chrome/GrShaderCache")
         try FileManager.default.createDirectory(at: shaderDir, withIntermediateDirectories: true)
         try Data(repeating: 0x00, count: 512).write(to: shaderDir.appending(path: "x.bin"))
-        // Do NOT back-date — files are just created (too new).
+
+        let swDir = tmp.appending(path: "Library/Application Support/Google/Chrome/Default/Service Worker")
+        try FileManager.default.createDirectory(at: swDir, withIntermediateDirectories: true)
+        try Data(repeating: 0x01, count: 256).write(to: swDir.appending(path: "sw.bin"))
 
         let rule = BrowserExtendedArtifactsRule()
         let env = ScanEnvironment(homeDirectory: tmp)
@@ -77,7 +82,28 @@ final class Phase5RuleTests: XCTestCase {
 
         XCTAssertNotNil(findings)
         let shaderFindings = findings!.filter { $0.path.contains("GrShaderCache") }
-        XCTAssertTrue(shaderFindings.isEmpty, "Freshly created shader cache should not be flagged")
+        XCTAssertEqual(shaderFindings.count, 1)
+        XCTAssertEqual(shaderFindings.first?.riskLevel, .safe)
+
+        let swFindings = findings!.filter { $0.path.contains("Service Worker") }
+        XCTAssertEqual(swFindings.count, 1)
+        XCTAssertEqual(swFindings.first?.riskLevel, .safe)
+    }
+
+    func testBrowserExtendedRuleAgeGatesLocalStorage() async throws {
+        let tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let lsDir = tmp.appending(path: "Library/Application Support/Google/Chrome/Default/Local Storage")
+        try FileManager.default.createDirectory(at: lsDir, withIntermediateDirectories: true)
+        try Data(repeating: 0x02, count: 256).write(to: lsDir.appending(path: "ls.bin"))
+        // Fresh Local Storage must remain hidden (credential-adjacent REVIEW data).
+
+        let rule = BrowserExtendedArtifactsRule()
+        let env = ScanEnvironment(homeDirectory: tmp)
+        let findings = await rule.customScan(environment: env)
+        let lsFindings = findings!.filter { $0.path.contains("Local Storage") }
+        XCTAssertTrue(lsFindings.isEmpty, "Fresh Local Storage must not be flagged")
     }
 
     // MARK: - ProjectArtifactRule
@@ -92,27 +118,46 @@ final class Phase5RuleTests: XCTestCase {
         XCTAssertTrue(findings!.isEmpty, "No findings when no roots are configured")
     }
 
-    func testProjectArtifactRuleDetectsNodeModules() async throws {
+    func testProjectArtifactRuleDoesNotMarkDependencyTreesReclaimable() async throws {
         let tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tmp) }
 
-        let nodeModules = tmp.appending(path: "myapp/node_modules")
-        try FileManager.default.createDirectory(at: nodeModules, withIntermediateDirectories: true)
-        try Data(repeating: 0x00, count: 2048).write(to: nodeModules.appending(path: "package.json"))
-
-        // Back-date so it passes the 7-day age gate.
         let oldDate = Date().addingTimeInterval(-(8 * 24 * 60 * 60))
-        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: nodeModules.path)
+        for name in ["node_modules", "venv", ".venv", ".bundle"] {
+            let dir = tmp.appending(path: "myapp/\(name)")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try Data(repeating: 0x00, count: 2048).write(to: dir.appending(path: "x"))
+            try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: dir.path)
+        }
 
         let store = ProjectScanPathStore()
         store.setAll([tmp.path])
         let rule = ProjectArtifactRule(pathStore: store)
-        let env = ScanEnvironment.current()
-        let findings = await rule.customScan(environment: env)
+        let findings = await rule.customScan(environment: ScanEnvironment.current())
+
+        XCTAssertNotNil(findings)
+        XCTAssertTrue(findings!.isEmpty, "Dependency trees must never be reclaimable findings")
+    }
+
+    func testProjectArtifactRuleDetectsLocalCache() async throws {
+        let tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let cache = tmp.appending(path: "myapp/.cache")
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        try Data(repeating: 0x00, count: 2048).write(to: cache.appending(path: "data"))
+
+        let oldDate = Date().addingTimeInterval(-(8 * 24 * 60 * 60))
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: cache.path)
+
+        let store = ProjectScanPathStore()
+        store.setAll([tmp.path])
+        let rule = ProjectArtifactRule(pathStore: store)
+        let findings = await rule.customScan(environment: ScanEnvironment.current())
 
         XCTAssertNotNil(findings)
         XCTAssertEqual(findings!.count, 1)
-        XCTAssertTrue(findings![0].path.hasSuffix("node_modules"))
+        XCTAssertTrue(findings![0].path.hasSuffix(".cache"))
         XCTAssertEqual(findings![0].riskLevel, .safe)
         XCTAssertEqual(findings![0].category, .projectArtifacts)
     }
@@ -141,7 +186,8 @@ final class Phase5RuleTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tmp) }
 
         let oldDate = Date().addingTimeInterval(-(10 * 24 * 60 * 60))
-        let artifactNames = ["node_modules", "dist", "venv"]
+        // Local-only reclaimable dirs (deps like node_modules/venv must not appear).
+        let artifactNames = ["dist", ".cache", "target", "__pycache__"]
 
         for name in artifactNames {
             let dir = tmp.appending(path: "project/\(name)")
@@ -157,18 +203,21 @@ final class Phase5RuleTests: XCTestCase {
         let findings = await rule.customScan(environment: env)
 
         XCTAssertNotNil(findings)
-        XCTAssertEqual(findings!.count, artifactNames.count, "Should find one finding per artifact directory")
+        XCTAssertEqual(findings!.count, artifactNames.count, "Should find one finding per local artifact directory")
     }
 
-    func testProjectArtifactRuleDoesNotRecurseIntoArtifacts() async throws {
+    func testProjectArtifactRuleDoesNotRecurseIntoLocalArtifacts() async throws {
         let tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tmp) }
 
-        // Nested node_modules inside node_modules — should only flag the outer one.
-        let outer = tmp.appending(path: "app/node_modules")
-        let inner = outer.appending(path: "some_package/node_modules")
+        // Outer local artifact with a nested same-name dir inside — only outer should be counted.
+        let outer = tmp.appending(path: "app/.cache")
+        let nestedVisible = outer.appending(path: "subdir")
+        let inner = nestedVisible.appending(path: ".cache")
         try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
-        try Data(repeating: 0x00, count: 256).write(to: inner.appending(path: "pkg.json"))
+        // Visible file under outer so directorySize (which skips hidden) is non-zero.
+        try Data(repeating: 0x00, count: 256).write(to: outer.appending(path: "blob.bin"))
+        try Data(repeating: 0x00, count: 256).write(to: inner.appending(path: "inner.bin"))
 
         let oldDate = Date().addingTimeInterval(-(10 * 24 * 60 * 60))
         try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: outer.path)
@@ -176,21 +225,26 @@ final class Phase5RuleTests: XCTestCase {
         let store = ProjectScanPathStore()
         store.setAll([tmp.path])
         let rule = ProjectArtifactRule(pathStore: store)
-        let env = ScanEnvironment.current()
-        let findings = await rule.customScan(environment: env)
+        let findings = await rule.customScan(environment: ScanEnvironment.current())
 
         XCTAssertNotNil(findings)
-        let nodePaths = findings!.filter { $0.path.hasSuffix("node_modules") }
-        XCTAssertEqual(nodePaths.count, 1, "Only the outer node_modules should be flagged; inner is pruned")
+        let cachePaths = findings!.filter { $0.path.hasSuffix(".cache") }
+        XCTAssertEqual(cachePaths.count, 1, "Only the outer .cache should be flagged; inner is not walked")
     }
 
     // MARK: - ScanPolicy additions
 
-    func testIsProjectArtifactMatchesKnownNames() {
-        let names = ["node_modules", "dist", "venv", ".venv", "__pycache__", "build", ".gradle", ".bundle", ".next", ".nuxt", ".cache"]
-        for name in names {
+    func testIsProjectArtifactMatchesLocalNamesOnly() {
+        let reclaimable = ["dist", "__pycache__", "build", ".gradle", ".next", ".nuxt", ".cache", "target"]
+        for name in reclaimable {
             let url = URL(fileURLWithPath: "/Users/kelvin/Projects/myapp/\(name)")
-            XCTAssertTrue(ScanPolicy.isProjectArtifact(url), "\(name) should be recognised as a project artifact")
+            XCTAssertTrue(ScanPolicy.isProjectArtifact(url), "\(name) should be recognised as a local project artifact")
+        }
+        let deps = ["node_modules", "venv", ".venv", ".bundle"]
+        for name in deps {
+            let url = URL(fileURLWithPath: "/Users/kelvin/Projects/myapp/\(name)")
+            XCTAssertFalse(ScanPolicy.isProjectArtifact(url), "\(name) is a dependency tree — not reclaimable")
+            XCTAssertTrue(ScanPolicy.isProjectDependencyDirectory(name))
         }
     }
 

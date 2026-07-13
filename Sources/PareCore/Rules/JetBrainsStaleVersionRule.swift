@@ -45,10 +45,16 @@ public struct JetBrainsStaleVersionRule: ScanRule {
         }
 
         var parsed: [VersionedDir] = []
+        var unversionedByProduct: [String: URL] = [:]
+
         for url in contents {
             guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
-            guard let entry = parseVersionedDir(url: url) else { continue }
-            parsed.append(entry)
+            if let entry = parseVersionedDir(url: url) {
+                parsed.append(entry)
+            } else if let product = parseUnversionedProductDir(url: url) {
+                // e.g. "Datagrip" next to "DataGrip2026.1"
+                unversionedByProduct[product.lowercased()] = url
+            }
         }
 
         // Group by product name (case-insensitive).
@@ -67,24 +73,38 @@ public struct JetBrainsStaleVersionRule: ScanRule {
             }
             // sorted[0] is the newest — flag everything else.
             for older in sorted.dropFirst() {
-                let res = try? older.url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
-                let modDate = res?.contentModificationDate
-                if let d = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
-                    guard Date().timeIntervalSince(d) >= Self.minimumAgeSeconds else { continue }
+                if let finding = makeStaleFinding(older: older, newest: sorted[0]) {
+                    findings.append(finding)
                 }
-
-                let size = FileSystemUtils.directorySize(url: older.url)
-                let newest = sorted[0]
-                findings.append(ScanFinding(
-                    category: category,
-                    riskLevel: riskLevel,
-                    reason: "\(reason) (\(older.product) \(older.year).\(older.minor), superseded by \(newest.year).\(newest.minor))",
-                    path: older.url.path,
-                    sizeBytes: size,
-                    lastUsed: modDate,
-                    confidence: confidence
-                ))
             }
+        }
+
+        // Unversioned product folder + at least one versioned peer → treat unversioned as stale.
+        for (productKey, unversionedURL) in unversionedByProduct {
+            guard let versions = grouped[productKey], let newest = versions.max(by: { lhs, rhs in
+                FileSystemUtils.compareVersionStrings(
+                    "\(lhs.year).\(lhs.minor)",
+                    "\(rhs.year).\(rhs.minor)"
+                ) == .orderedAscending
+            }) else { continue }
+
+            let res = try? unversionedURL.resourceValues(forKeys: [
+                .contentModificationDateKey, .creationDateKey, .isDirectoryKey
+            ])
+            if let d = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
+                guard Date().timeIntervalSince(d) >= Self.minimumAgeSeconds else { continue }
+            }
+            let size = FileSystemUtils.directorySize(url: unversionedURL)
+            guard size > 0 else { continue }
+            findings.append(ScanFinding(
+                category: category,
+                riskLevel: riskLevel,
+                reason: "\(reason) (unversioned \(newest.product) folder, superseded by \(newest.year).\(newest.minor))",
+                path: unversionedURL.path,
+                sizeBytes: size,
+                lastUsed: res?.contentModificationDate,
+                confidence: confidence
+            ))
         }
 
         return findings
@@ -97,6 +117,26 @@ public struct JetBrainsStaleVersionRule: ScanRule {
         let product: String
         let year: Int
         let minor: Int
+    }
+
+    private func makeStaleFinding(older: VersionedDir, newest: VersionedDir) -> ScanFinding? {
+        let res = try? older.url.resourceValues(forKeys: [
+            .contentModificationDateKey, .creationDateKey, .isDirectoryKey
+        ])
+        let modDate = res?.contentModificationDate
+        if let d = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
+            guard Date().timeIntervalSince(d) >= Self.minimumAgeSeconds else { return nil }
+        }
+        let size = FileSystemUtils.directorySize(url: older.url)
+        return ScanFinding(
+            category: category,
+            riskLevel: riskLevel,
+            reason: "\(reason) (\(older.product) \(older.year).\(older.minor), superseded by \(newest.year).\(newest.minor))",
+            path: older.url.path,
+            sizeBytes: size,
+            lastUsed: modDate,
+            confidence: confidence
+        )
     }
 
     private func parseVersionedDir(url: URL) -> VersionedDir? {
@@ -114,6 +154,19 @@ public struct JetBrainsStaleVersionRule: ScanRule {
               let minor = Int(parts[1]) else { return nil }
 
         return VersionedDir(url: url, product: product, year: year, minor: minor)
+    }
+
+    /// Unversioned product folders: "Datagrip", "Goland", "IntelliJIdea" (no year).
+    private func parseUnversionedProductDir(url: URL) -> String? {
+        let name = url.lastPathComponent
+        guard name.firstIndex(where: { $0.isNumber }) == nil else { return nil }
+        // Skip non-product noise folders.
+        let skip: Set<String> = [
+            "bl", "crl", "consentoptions", "daemon", "privacypolicy", "acp-agents"
+        ]
+        if skip.contains(name.lowercased()) { return nil }
+        guard name.count >= 3 else { return nil }
+        return name
     }
 
 }

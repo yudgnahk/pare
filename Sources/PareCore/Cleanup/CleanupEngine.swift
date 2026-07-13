@@ -143,7 +143,7 @@ public actor CleanupEngine {
 
             // Re-verify the path is still considered safe by policy.
             guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
-                    || ScanPolicy.isWrongPlatformBinary(url) || ScanPolicy.isInstallerFile(url)
+                    || ScanPolicy.isWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
                     || ScanPolicy.isProjectArtifact(url) else {
                 skipped.append((finding.path, "Path no longer passes safety policy"))
                 continue
@@ -156,15 +156,24 @@ public actor CleanupEngine {
             }
 
             // Re-verify minimum age for categories that require it.
-            // Wrong-platform binaries are exempted: a Windows installer in ~/Downloads
-            // is inert on macOS from day zero — age is irrelevant.
-            if !ScanPolicy.isWrongPlatformBinary(url),
-               let minAge = ScanPolicy.defaultMinimumAgeSeconds(for: finding.category) {
-                let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
-                if let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
-                    if Date().timeIntervalSince(date) < minAge {
-                        skipped.append((finding.path, "File is too new (age < \(Int(minAge / 86400)) days)"))
+            // Wrong-platform binaries/dirs are exempted: a Windows installer in ~/Downloads
+            // or a win32/ native tree is inert on macOS from day zero — age is irrelevant.
+            // Reconstructible package caches use a short floor (active download safety).
+            if !ScanPolicy.isWrongPlatformPath(url),
+               let minAge = ScanPolicy.minimumAgeSeconds(forCleanupPath: url, category: finding.category) {
+                if ScanPolicy.isReconstructibleCachePath(url) {
+                    // Reconstructible caches have no multi-day age gate (minAge may be 0).
+                    if minAge > 0, !ScanPolicy.passesUnusedAge(for: url, minimumAgeSeconds: minAge) {
+                        skipped.append((finding.path, "Cache too new"))
                         continue
+                    }
+                } else {
+                    let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
+                    if let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
+                        if Date().timeIntervalSince(date) < minAge {
+                            skipped.append((finding.path, "File is too new (age < \(Int(minAge / 86400)) days)"))
+                            continue
+                        }
                     }
                 }
             }
