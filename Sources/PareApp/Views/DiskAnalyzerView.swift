@@ -24,15 +24,16 @@ struct DiskAnalyzerView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Disk Analyzer")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(AppTheme.TypeScale.heroTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                 if let url = viewModel.rootURL {
                     Text(url.path)
@@ -42,35 +43,36 @@ struct DiskAnalyzerView: View {
                         .truncationMode(.middle)
                 } else {
                     Text("Choose a directory to analyze disk usage.")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(AppTheme.TypeScale.body)
                         .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            Spacer()
-
-            if viewModel.rootURL != nil {
-                Button {
-                    viewModel.refresh()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(AppTheme.textSecondary)
+            FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+                if viewModel.rootURL != nil {
+                    IconActionButton(
+                        systemImage: "arrow.clockwise",
+                        help: "Refresh",
+                        isEnabled: !viewModel.isLoading
+                    ) {
+                        viewModel.refresh()
+                    }
                 }
-                .buttonStyle(.borderless)
-                .help("Refresh")
-                .disabled(viewModel.isLoading)
-            }
 
-            Button("Choose Directory") {
-                viewModel.chooseDirectory()
+                SecondaryActionButton(
+                    title: "Choose Directory",
+                    systemImage: "folder",
+                    role: .accent
+                ) {
+                    viewModel.chooseDirectory()
+                }
             }
-            .buttonStyle(.bordered)
-            .font(.system(size: 13, weight: .semibold))
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 24)
-        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+        .padding(.top, AppTheme.Spacing.pageVertical)
+        .padding(.bottom, AppTheme.Spacing.lg)
     }
 
     // MARK: Error

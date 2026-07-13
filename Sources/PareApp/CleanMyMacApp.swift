@@ -8,10 +8,16 @@ struct PareApp: App {
     var body: some Scene {
         WindowGroup("Pare") {
             ContentView(scanViewModel: scanViewModel, historyViewModel: historyViewModel)
-                .frame(minWidth: 1024, minHeight: 700)
+                // Declare a floor that fits 13" MacBooks; content expands to full screen.
+                .frame(
+                    minWidth: AppTheme.Window.minWidth,
+                    maxWidth: .infinity,
+                    minHeight: AppTheme.Window.minHeight,
+                    maxHeight: .infinity
+                )
         }
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 1200, height: 780)
+        .defaultSize(width: AppTheme.Window.defaultWidth, height: AppTheme.Window.defaultHeight)
     }
 }
 
@@ -51,5 +57,6 @@ struct ContentView: View {
                     Label("History", systemImage: "clock.arrow.circlepath")
                 }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

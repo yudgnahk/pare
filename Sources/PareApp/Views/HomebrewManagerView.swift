@@ -14,16 +14,17 @@ struct HomebrewManagerView: View {
                 VStack(spacing: 0) {
                     headerBar
                     tabPickerRow
-                        .padding(.horizontal, 20)
-                        .padding(.top, 14)
+                        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                        .padding(.top, AppTheme.Spacing.md)
                         .padding(.bottom, 6)
                     filterBar
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 10)
+                        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                        .padding(.bottom, AppTheme.Spacing.sm)
                     tabContent
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $viewModel.showOperationSheet) {
             BrewOperationSheet(viewModel: viewModel)
         }
@@ -36,21 +37,21 @@ struct HomebrewManagerView: View {
 
     private var headerBar: some View {
         GlassCard {
-            HStack(alignment: .center, spacing: 18) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Homebrew Manager")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(AppTheme.TypeScale.heroTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                     Text("Manage formulae, casks, updates, and migrate apps to Homebrew")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(AppTheme.TypeScale.body)
                         .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 8)
                 headerActions
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
+        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+        .padding(.top, AppTheme.Spacing.pageVertical)
         .padding(.bottom, 4)
     }
 
@@ -61,22 +62,27 @@ struct HomebrewManagerView: View {
                 .progressViewStyle(.circular)
                 .scaleEffect(0.7)
                 .tint(AppTheme.accent)
+                .frame(height: AppTheme.Control.secondaryHeight)
         } else {
-            HStack(spacing: 10) {
+            FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
                 PrimaryActionButton(
                     title: "Refresh",
                     systemImage: "arrow.clockwise",
-                    isLoading: viewModel.loadState == .loading
+                    isLoading: viewModel.loadState == .loading,
+                    style: .compact
                 ) { viewModel.load() }
 
                 if viewModel.loadState == .loaded && !viewModel.outdated.isEmpty {
                     PrimaryActionButton(
                         title: "Upgrade All (\(viewModel.outdated.count))",
                         systemImage: "arrow.up.circle",
-                        isLoading: false
+                        isLoading: false,
+                        style: .compact,
+                        tint: .warning
                     ) { viewModel.upgradeAll() }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -85,17 +91,20 @@ struct HomebrewManagerView: View {
     // auto-grabs key focus and swallows keystrokes before the TextField sees them.
 
     private var tabPickerRow: some View {
-        HStack(spacing: 2) {
+        // Tabs wrap on narrow windows instead of overflowing the segmented bar.
+        FlowLayout(spacing: 2, lineSpacing: 2, alignment: .leading) {
             ForEach(HomebrewManagerViewModel.Tab.allCases, id: \.self) { tab in
                 Button { viewModel.selectedTab = tab } label: {
                     Text(tabLabel(tab))
                         .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
                         .foregroundStyle(
                             viewModel.selectedTab == tab
                                 ? AppTheme.textPrimary
                                 : AppTheme.textSecondary
                         )
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, 12)
                         .padding(.vertical, 7)
                         .background(
                             viewModel.selectedTab == tab
@@ -106,9 +115,9 @@ struct HomebrewManagerView: View {
                 }
                 .buttonStyle(.borderless)
             }
-            Spacer()
         }
         .padding(3)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
@@ -194,7 +203,7 @@ struct HomebrewManagerView: View {
             if viewModel.filteredFormulae.isEmpty {
                 emptyPrompt(icon: "shippingbox", text: "No formulae match the current filters")
             } else {
-                ScrollView {
+                ScrollView([.vertical, .horizontal]) {
                     LazyVStack(spacing: 2) {
                         formulaeHeader
                         ForEach(viewModel.filteredFormulae) { formula in
@@ -203,8 +212,9 @@ struct HomebrewManagerView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
+                    .frame(minWidth: 720)
+                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                    .padding(.bottom, AppTheme.Spacing.pageVertical)
                 }
             }
         }
@@ -232,7 +242,7 @@ struct HomebrewManagerView: View {
             if viewModel.filteredCasks.isEmpty {
                 emptyPrompt(icon: "app.badge", text: "No casks match the current filters")
             } else {
-                ScrollView {
+                ScrollView([.vertical, .horizontal]) {
                     LazyVStack(spacing: 2) {
                         casksHeader
                         ForEach(viewModel.filteredCasks) { cask in
@@ -241,8 +251,9 @@ struct HomebrewManagerView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
+                    .frame(minWidth: 780)
+                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                    .padding(.bottom, AppTheme.Spacing.pageVertical)
                 }
             }
         }
@@ -270,7 +281,7 @@ struct HomebrewManagerView: View {
             if viewModel.filteredOutdated.isEmpty {
                 emptyPrompt(icon: "checkmark.seal", text: "All packages are up to date")
             } else {
-                ScrollView {
+                ScrollView([.vertical, .horizontal]) {
                     LazyVStack(spacing: 2) {
                         outdatedHeader
                         ForEach(viewModel.filteredOutdated) { pkg in
@@ -279,8 +290,9 @@ struct HomebrewManagerView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
+                    .frame(minWidth: 740)
+                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                    .padding(.bottom, AppTheme.Spacing.pageVertical)
                 }
             }
         }
@@ -315,7 +327,7 @@ struct HomebrewManagerView: View {
             } else {
                 VStack(spacing: 0) {
                     migrateExplainer
-                    ScrollView {
+                    ScrollView([.vertical, .horizontal]) {
                         LazyVStack(spacing: 2) {
                             ForEach(viewModel.filteredMigrationCandidates) { candidate in
                                 MigrateCandidateRow(candidate: candidate) {
@@ -323,8 +335,9 @@ struct HomebrewManagerView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
+                        .frame(minWidth: 680)
+                        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                        .padding(.bottom, AppTheme.Spacing.pageVertical)
                     }
                 }
             }
@@ -340,7 +353,7 @@ struct HomebrewManagerView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(AppTheme.textSecondary)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
         .padding(.vertical, 10)
     }
 

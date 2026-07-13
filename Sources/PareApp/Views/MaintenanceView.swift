@@ -9,14 +9,16 @@ struct MaintenanceView: View {
             AppBackgroundView()
 
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(spacing: AppTheme.Spacing.xl) {
                     headerCard
                     actionCards
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 24)
+                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                .padding(.vertical, AppTheme.Spacing.pageVertical)
+                .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { viewModel.onAppear() }
     }
 
@@ -25,17 +27,18 @@ struct MaintenanceView: View {
     private var headerCard: some View {
         GlassCard {
             HStack(alignment: .center, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("Maintenance")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .font(AppTheme.TypeScale.heroTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                     Text("One-shot system actions — no file deletions")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(AppTheme.TypeScale.body)
                         .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 8)
                 Image(systemName: "wrench.and.screwdriver")
-                    .font(.system(size: 28, weight: .light))
+                    .font(.system(size: 26, weight: .light))
                     .foregroundStyle(AppTheme.accent.opacity(0.7))
             }
         }
@@ -44,12 +47,12 @@ struct MaintenanceView: View {
     // MARK: - Action cards
 
     private var actionCards: some View {
+        // Adaptive columns: 1 on compact 13–14", 2 on 15"+, 3 on wide desktops.
         LazyVGrid(
             columns: [
-                GridItem(.flexible(), spacing: 16),
-                GridItem(.flexible(), spacing: 16)
+                GridItem(.adaptive(minimum: AppTheme.Breakpoint.cardMin), spacing: AppTheme.Spacing.lg)
             ],
-            spacing: 16
+            spacing: AppTheme.Spacing.lg
         ) {
             ForEach(viewModel.visibleActions) { action in
                 ActionCard(action: action, viewModel: viewModel)
@@ -89,7 +92,7 @@ private struct ActionCard: View {
     private var topRow: some View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
                     .fill(iconColor.opacity(0.18))
                     .frame(width: 40, height: 40)
                 Image(systemName: action.systemImage)
@@ -101,11 +104,14 @@ private struct ActionCard: View {
                 Text(action.title)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 statusBadge
             }
 
             Spacer(minLength: 8)
             runButton
+                .layoutPriority(1)
         }
     }
 

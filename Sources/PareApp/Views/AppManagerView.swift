@@ -12,15 +12,16 @@ struct AppManagerView: View {
             VStack(spacing: 0) {
                 headerBar
                 filterBar
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
-                    .padding(.bottom, 10)
+                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                    .padding(.top, AppTheme.Spacing.md)
+                    .padding(.bottom, AppTheme.Spacing.sm)
                 metricsRow
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 14)
+                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                    .padding(.bottom, AppTheme.Spacing.md)
                 appTable
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $viewModel.showUninstallSheet) {
             if let app = viewModel.selectedApp {
                 AppUninstallConfirmSheet(viewModel: viewModel, app: app)
@@ -35,56 +36,58 @@ struct AppManagerView: View {
 
     private var headerBar: some View {
         GlassCard {
-            HStack(alignment: .center, spacing: 18) {
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("App Manager")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(AppTheme.TypeScale.heroTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                     Text("Browse, update, and cleanly uninstall installed applications")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(AppTheme.TypeScale.body)
                         .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Spacer(minLength: 8)
-
-                HStack(spacing: 10) {
+                FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
                     if viewModel.loadState == .loading {
                         ProgressView()
                             .progressViewStyle(.circular)
                             .scaleEffect(0.7)
                             .tint(AppTheme.accent)
-                        Button("Cancel") { viewModel.cancelLoad() }
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(AppTheme.textSecondary)
+                            .frame(height: AppTheme.Control.secondaryHeight)
+
+                        SecondaryActionButton(title: "Cancel") {
+                            viewModel.cancelLoad()
+                        }
                     } else {
                         PrimaryActionButton(
                             title: "Refresh",
                             systemImage: "arrow.clockwise",
-                            isLoading: viewModel.loadState == .loading
+                            isLoading: viewModel.loadState == .loading,
+                            style: .compact
                         ) { viewModel.loadApps() }
 
                         if viewModel.loadState == .loaded {
-                            PrimaryActionButton(
+                            SecondaryActionButton(
                                 title: viewModel.checkingUpdates ? "Checking…" : "Check Updates",
                                 systemImage: "arrow.down.circle",
-                                isLoading: viewModel.checkingUpdates
+                                isLoading: viewModel.checkingUpdates,
+                                role: .accent,
+                                isEnabled: !viewModel.checkingUpdates
                             ) { viewModel.checkForUpdates() }
-                                .disabled(viewModel.checkingUpdates)
                         }
                     }
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 20)
+        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+        .padding(.top, AppTheme.Spacing.pageVertical)
         .padding(.bottom, 4)
     }
 
     // MARK: - Filter Bar
 
     private var filterBar: some View {
-        HStack(spacing: 12) {
+        FlowLayout(spacing: 12, lineSpacing: 8, alignment: .leading) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(AppTheme.textSecondary)
@@ -104,7 +107,7 @@ struct AppManagerView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .frame(maxWidth: 260)
+            .frame(minWidth: 180, idealWidth: 240, maxWidth: 280)
 
             Toggle("Hide system apps", isOn: $viewModel.hideSystemApps)
                 .toggleStyle(.checkbox)
@@ -118,10 +121,9 @@ struct AppManagerView: View {
                     .foregroundStyle(AppTheme.warning)
             }
 
-            Spacer()
-
             sortMenu
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sortMenu: some View {
@@ -225,15 +227,17 @@ struct AppManagerView: View {
     }
 
     private var appList: some View {
-        ScrollView {
+        // Horizontal scroll preserves fixed columns on 13" without crushing cells.
+        ScrollView([.vertical, .horizontal]) {
             LazyVStack(spacing: 2) {
                 tableHeader
                 ForEach(viewModel.filteredApps) { app in
                     AppRow(app: app, onUninstall: { viewModel.requestUninstall(for: app) })
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
+            .frame(minWidth: 820)
+            .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+            .padding(.bottom, AppTheme.Spacing.pageVertical)
         }
     }
 

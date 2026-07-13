@@ -13,7 +13,7 @@ struct ScanDashboardView: View {
             AppBackgroundView()
 
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(spacing: AppTheme.Spacing.xl) {
                     header
                     cleanupStatusBanner
                     metrics
@@ -23,10 +23,12 @@ struct ScanDashboardView: View {
                     largeFilesByCategory
                     topFiles
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 24)
+                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                .padding(.vertical, AppTheme.Spacing.pageVertical)
+                .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(isPresented: $viewModel.showCleanConfirmation) {
             QuickCleanConfirmationSheet(viewModel: viewModel)
         }
@@ -50,101 +52,107 @@ struct ScanDashboardView: View {
 
     private var header: some View {
         GlassCard {
-            HStack(alignment: .center, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Pare")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.textPrimary)
+            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+                HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Pare")
+                            .font(AppTheme.TypeScale.heroTitle)
+                            .foregroundStyle(AppTheme.textPrimary)
 
-                    Text("Smart cleanup insights for your system and dev workloads")
-                        .font(.system(size: 14, weight: .medium))
+                        Text("Smart cleanup insights for your system and dev workloads")
+                            .font(AppTheme.TypeScale.body)
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "clock")
+                            Text(lastScanText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                        }
+                        .font(AppTheme.TypeScale.micro)
                         .foregroundStyle(AppTheme.textSecondary)
-
-                    HStack(spacing: 10) {
-                        Image(systemName: "clock")
-                        Text(lastScanText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.white.opacity(0.08), in: Capsule(style: .continuous))
                     }
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.08), in: Capsule(style: .continuous))
-                }
 
-                Spacer(minLength: 8)
+                    Spacer(minLength: 8)
 
-                HStack(spacing: 10) {
-                        if viewModel.isScanning {
-                            ScanPulseView()
-                                .frame(width: 20, height: 20)
-
-                            Button("Cancel") { viewModel.cancelScan() }
-                                .buttonStyle(.borderless)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-
-                        PrimaryActionButton(
-                            title: "Scan Now",
-                            systemImage: "sparkles",
-                            isLoading: viewModel.isScanning
+                    HStack(spacing: 6) {
+                        IconActionButton(
+                            systemImage: "folder.badge.plus",
+                            help: "Manage project scan paths"
                         ) {
-                            viewModel.runScan()
-                        }
-
-                        if viewModel.state == .success {
-                            Button {
-                                viewModel.runScan(forceRescan: true)
-                            } label: {
-                                Label("Force Rescan", systemImage: "arrow.clockwise")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(AppTheme.textSecondary)
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Clear the scan cache and do a full traversal")
-                        }
-
-                        Button {
                             showProjectPaths = true
-                        } label: {
-                            Image(systemName: "folder.badge.plus")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(AppTheme.textSecondary)
                         }
-                        .buttonStyle(.borderless)
-                        .help("Manage project scan paths")
 
-                        Button {
+                        IconActionButton(
+                            systemImage: "gearshape",
+                            help: "Manage excluded paths"
+                        ) {
                             exclusionListViewModel.load()
                             showSettings = true
-                        } label: {
-                            Image(systemName: "gearshape")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Manage excluded paths")
-
-                        if viewModel.state == .success && viewModel.quickCleanCandidatesCount > 0 {
-                            PrimaryActionButton(
-                                title: "Quick Clean",
-                                systemImage: "trash.fill",
-                                isLoading: viewModel.isCleaning
-                            ) {
-                                viewModel.requestQuickClean()
-                            }
-                        }
-
-                        if viewModel.state == .success && viewModel.reviewRiskCandidatesCount > 0 {
-                            PrimaryActionButton(
-                                title: "Deep Clean",
-                                systemImage: "bolt.fill",
-                                isLoading: viewModel.isCleaning
-                            ) {
-                                viewModel.requestDeepClean()
-                            }
                         }
                     }
+                }
+
+                // Actions wrap so Scan + Quick/Deep Clean never overflow on 13–14".
+                FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+                    if viewModel.isScanning {
+                        ScanPulseView()
+                            .frame(width: 18, height: 18)
+                            .padding(.trailing, 2)
+
+                        SecondaryActionButton(title: "Cancel") {
+                            viewModel.cancelScan()
+                        }
+                    }
+
+                    PrimaryActionButton(
+                        title: "Scan Now",
+                        systemImage: "sparkles",
+                        isLoading: viewModel.isScanning,
+                        style: .compact
+                    ) {
+                        viewModel.runScan()
+                    }
+
+                    if viewModel.state == .success {
+                        SecondaryActionButton(
+                            title: "Force Rescan",
+                            systemImage: "arrow.clockwise"
+                        ) {
+                            viewModel.runScan(forceRescan: true)
+                        }
+                        .help("Clear the scan cache and do a full traversal")
+                    }
+
+                    if viewModel.state == .success && viewModel.quickCleanCandidatesCount > 0 {
+                        PrimaryActionButton(
+                            title: "Quick Clean",
+                            systemImage: "trash.fill",
+                            isLoading: viewModel.isCleaning,
+                            style: .compact,
+                            tint: .success
+                        ) {
+                            viewModel.requestQuickClean()
+                        }
+                    }
+
+                    if viewModel.state == .success && viewModel.reviewRiskCandidatesCount > 0 {
+                        PrimaryActionButton(
+                            title: "Deep Clean",
+                            systemImage: "bolt.fill",
+                            isLoading: viewModel.isCleaning,
+                            style: .compact,
+                            tint: .review
+                        ) {
+                            viewModel.requestDeepClean()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -269,7 +277,12 @@ struct ScanDashboardView: View {
     }
 
     private var metrics: some View {
-        HStack(spacing: 16) {
+        LazyVGrid(
+            columns: [
+                GridItem(.adaptive(minimum: AppTheme.Breakpoint.metricMin), spacing: AppTheme.Spacing.md)
+            ],
+            spacing: AppTheme.Spacing.md
+        ) {
             MetricTile(
                 label: "Reclaimable",
                 value: viewModel.formattedBytes(viewModel.totalReclaimableBytes),
@@ -299,7 +312,7 @@ struct ScanDashboardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Category Overview")
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .font(AppTheme.TypeScale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 if viewModel.summaries.isEmpty {
@@ -336,7 +349,7 @@ struct ScanDashboardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Top Files and Caches")
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .font(AppTheme.TypeScale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 if viewModel.topFindings.isEmpty {
@@ -386,7 +399,7 @@ struct ScanDashboardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Large Files by Category")
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .font(AppTheme.TypeScale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 Text("Only files larger than \(viewModel.formattedBytes(ScanPolicy.largeFileThresholdBytes)) are shown.")
@@ -609,7 +622,8 @@ private struct QuickCleanConfirmationSheet: View {
             }
             .padding(28)
         }
-        .frame(width: 440, height: 340)
+        .frame(minWidth: 400, idealWidth: 440, maxWidth: 520,
+               minHeight: 320, idealHeight: 360, maxHeight: 480)
     }
 
     private func infoRow(icon: String, color: Color, text: String) -> some View {
@@ -621,6 +635,7 @@ private struct QuickCleanConfirmationSheet: View {
             Text(text)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -701,7 +716,8 @@ private struct DeepCleanConfirmationSheet: View {
             }
             .padding(28)
         }
-        .frame(width: 480, height: 400)
+        .frame(minWidth: 420, idealWidth: 480, maxWidth: 560,
+               minHeight: 380, idealHeight: 420, maxHeight: 560)
     }
 
     private func infoRow(icon: String, color: Color, text: String) -> some View {
@@ -713,6 +729,7 @@ private struct DeepCleanConfirmationSheet: View {
             Text(text)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -730,7 +747,7 @@ private struct ByToolBreakdownCard: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("By Tool")
-                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .font(AppTheme.TypeScale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 VStack(spacing: 8) {

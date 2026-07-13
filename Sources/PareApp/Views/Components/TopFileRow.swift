@@ -60,10 +60,10 @@ struct TopFileRow: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
                 .fill(AppTheme.panelSecondary.opacity(0.76))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
                         .strokeBorder(riskBorderColor, lineWidth: 1)
                 )
         )
