@@ -8,6 +8,10 @@ struct ScanDashboardView: View {
     @Environment(\.displayScale) private var scale
     @State private var showSettings = false
     @State private var showProjectPaths = false
+    /// Expanded categories in Browse by category (folder list only — no per-file children).
+    @State private var expandedCategories: Set<String> = []
+    /// Expanded tool groups (e.g. Developer Package Caches → JetBrains).
+    @State private var expandedToolGroups: Set<String> = []
 
     /// Calm hero when idle or first-time scan; rich results after success.
     private var showsHero: Bool {
@@ -45,6 +49,9 @@ struct ScanDashboardView: View {
         .sheet(isPresented: $viewModel.showDeepCleanConfirmation) {
             DeepCleanConfirmationSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showSelectedCleanConfirmation) {
+            SelectedCleanConfirmationSheet(viewModel: viewModel)
+        }
         .sheet(isPresented: $showSettings) {
             ExclusionListView(viewModel: exclusionListViewModel)
         }
@@ -55,19 +62,74 @@ struct ScanDashboardView: View {
 
     private var resultsScroll: some View {
         ScrollView {
-            VStack(spacing: AppTheme.Spacing.xl) {
+            // Single lazy stack — nested LazyVStacks inside a VStack defeat laziness
+            // and measure every expanded folder row up front (main-thread scroll lag).
+            LazyVStack(spacing: AppTheme.Spacing.xl, pinnedViews: []) {
                 resultsHeader
+                selectionBar
                 cleanupStatusBanner
                 metrics
                 deviceBackupsSection
-                summaries
-                byToolBreakdown
-                largeFilesByCategory
-                topFiles
+                categoryBrowser
+                toolShareSection
+                largestItemsSection
             }
             .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
             .padding(.vertical, AppTheme.Spacing.pageVertical)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var selectionBar: some View {
+        GlassCard(padding: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Review & Clean")
+                        .font(scale.sectionTitle)
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Spacer()
+                    Text("\(viewModel.selectedCandidatesCount) selected · \(viewModel.formattedBytes(viewModel.selectedCandidatesBytes))")
+                        .font(scale.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+
+                Text("SAFE items start selected. REVIEW (e.g. Local Storage) starts off — may sign you out of websites.")
+                    .font(scale.caption)
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+                    PrimaryActionButton(
+                        title: "Clean selected",
+                        systemImage: "checkmark.circle.fill",
+                        isLoading: viewModel.isCleaning,
+                        style: .compact,
+                        tint: .success,
+                        isEnabled: viewModel.selectedCandidatesCount > 0
+                    ) {
+                        viewModel.requestCleanSelected()
+                    }
+
+                    SecondaryActionButton(title: "All Safe", systemImage: "checkmark.shield") {
+                        expandedCategories.removeAll()
+                        expandedToolGroups.removeAll()
+                        viewModel.selectAllSafe()
+                    }
+
+                    SecondaryActionButton(title: "Clear", systemImage: "xmark") {
+                        // Collapse expanded trees first so Clear doesn't re-diff huge views.
+                        expandedCategories.removeAll()
+                        expandedToolGroups.removeAll()
+                        viewModel.clearSelection()
+                    }
+
+                    if viewModel.quickCleanCandidatesCount > 0 {
+                        SecondaryActionButton(title: "Quick Clean (all safe)", role: .accent) {
+                            viewModel.requestQuickClean()
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -151,25 +213,23 @@ struct ScanDashboardView: View {
                         .help("Clear the scan cache and do a full traversal")
                     }
 
-                    if viewModel.state == .success && viewModel.quickCleanCandidatesCount > 0 {
+                    if viewModel.state == .success && viewModel.selectedCandidatesCount > 0 {
                         PrimaryActionButton(
-                            title: "Quick Clean",
-                            systemImage: "trash.fill",
+                            title: "Clean selected",
+                            systemImage: "checkmark.circle.fill",
                             isLoading: viewModel.isCleaning,
                             style: .compact,
                             tint: .success
                         ) {
-                            viewModel.requestQuickClean()
+                            viewModel.requestCleanSelected()
                         }
                     }
 
                     if viewModel.state == .success && viewModel.reviewRiskCandidatesCount > 0 {
-                        PrimaryActionButton(
-                            title: "Deep Clean",
+                        SecondaryActionButton(
+                            title: "Deep Clean all…",
                             systemImage: "bolt.fill",
-                            isLoading: viewModel.isCleaning,
-                            style: .compact,
-                            tint: .review
+                            role: .destructive
                         ) {
                             viewModel.requestDeepClean()
                         }
@@ -338,29 +398,32 @@ struct ScanDashboardView: View {
         }
     }
 
-    private var summaries: some View {
+    // MARK: - Browse by category (folder-only, no per-file children)
+
+    private var categoryBrowser: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Category Overview")
-                    .font(scale.sectionTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Browse by category")
+                        .font(scale.sectionTitle)
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text("Expand a category → tool (same names as the chart) → folders with full paths. Developer Package Caches groups by JetBrains, Package Managers, VS Code, etc.")
+                        .font(scale.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 if viewModel.summaries.isEmpty {
                     placeholder(
                         icon: "tray",
                         title: "No scan results yet",
-                        message: "Start a scan to see category-level reclaimable storage."
+                        message: "Start a scan to browse reclaimable storage by category."
                     )
                 } else {
-                    VStack(spacing: 10) {
+                    // Keep collapsed by default — only expanded categories show folder rows.
+                    VStack(spacing: 8) {
                         ForEach(viewModel.summaries) { summary in
-                            CategorySummaryRow(
-                                title: summary.category.rawValue,
-                                bytesText: viewModel.formattedBytes(summary.reclaimableBytes),
-                                fileCount: summary.fileCount,
-                                share: viewModel.summaryShare(for: summary.reclaimableBytes),
-                                color: color(for: summary.category)
-                            )
+                            categoryFolderSection(summary)
                         }
                     }
                 }
@@ -368,58 +431,283 @@ struct ScanDashboardView: View {
         }
     }
 
-    private var topFiles: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Top Files and Caches")
-                    .font(scale.sectionTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
+    private func categoryFolderSection(_ summary: ScanDashboardViewModel.SummaryItem) -> some View {
+        let key = summary.category.rawValue
+        let isExpanded = expandedCategories.contains(key)
+        let selectionState = viewModel.categorySelectionState(summary.category)
 
-                if viewModel.topFindings.isEmpty {
-                    placeholder(
-                        icon: "doc.text.magnifyingglass",
-                        title: "Nothing to review yet",
-                        message: "Top candidates will appear after a completed scan."
-                    )
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Button {
+                    viewModel.toggleCategory(summary.category)
+                } label: {
+                    Image(systemName: selectionIcon(selectionState))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(width: 20)
+                }
+                .buttonStyle(.plain)
+                .help("Toggle all SAFE folders in this category")
+
+                Button {
+                    if isExpanded {
+                        expandedCategories.remove(key)
+                    } else {
+                        expandedCategories.insert(key)
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(color(for: summary.category))
+                            .frame(width: 8, height: 8)
+
+                        Text(summary.category.rawValue)
+                            .font(scale.rowTitle)
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .lineLimit(1)
+
+                        Text(categoryBadge(summary))
+                            .font(scale.micro)
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.08), in: Capsule())
+
+                        Spacer(minLength: 8)
+
+                        Text(viewModel.formattedBytes(summary.reclaimableBytes))
+                            .font(scale.font(14, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(scale.micro)
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .frame(width: 12)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 4)
+
+            if isExpanded {
+                if viewModel.usesToolGrouping(for: summary.category) {
+                    let groups = viewModel.toolGroups(for: summary.category)
+                    if groups.isEmpty {
+                        Text("No reclaimable folders in this category")
+                            .font(scale.caption)
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .padding(.leading, 30)
+                            .padding(.bottom, 4)
+                    } else {
+                        VStack(spacing: 6) {
+                            ForEach(groups) { group in
+                                toolGroupSection(group)
+                            }
+                        }
+                        .padding(.leading, 8)
+                        .padding(.bottom, 4)
+                    }
                 } else {
-                    LazyVStack(spacing: 10) {
-                        ForEach(viewModel.topFindings.prefix(12)) { finding in
-                            TopFileRow(
-                                path: finding.path,
-                                category: finding.category.rawValue,
-                                reason: finding.reason,
-                                riskLevel: finding.riskLevel,
-                                sizeText: viewModel.formattedBytes(finding.sizeBytes),
-                                lastUsedText: viewModel.formattedDate(finding.lastUsed),
-                                onExclude: { viewModel.exclude(path: finding.path) }
-                            )
-                        }
-                    }
+                    flatFolderList(for: summary)
                 }
             }
         }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                .fill(Color.white.opacity(isExpanded ? 0.04 : 0.02))
+        )
     }
+
+    private func flatFolderList(for summary: ScanDashboardViewModel.SummaryItem) -> some View {
+        let rows = viewModel.folderRows(for: summary.category)
+        return Group {
+            if rows.isEmpty {
+                Text("No reclaimable folders in this category")
+                    .font(scale.caption)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .padding(.leading, 30)
+                    .padding(.bottom, 4)
+            } else {
+                VStack(spacing: 5) {
+                    ForEach(rows) { row in
+                        CategoryFolderRowView(
+                            row: row,
+                            sizeText: viewModel.formattedBytes(row.totalBytes),
+                            selectionState: viewModel.folderSelectionState(row),
+                            canReveal: viewModel.canReveal(path: row.folderPath),
+                            onToggle: { viewModel.toggleFolder(row) },
+                            onReveal: { viewModel.revealInFinder(path: row.folderPath) }
+                        )
+                    }
+                    let rolled = rows.reduce(0) { $0 + $1.itemCount }
+                    if summary.fileCount > rolled {
+                        Text("Showing largest \(rows.count) folders · \(summary.fileCount) files rolled up")
+                            .font(scale.micro)
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .padding(.leading, 30)
+                            .padding(.top, 2)
+                    }
+                }
+                .padding(.leading, 8)
+                .padding(.bottom, 4)
+            }
+        }
+    }
+
+    private func toolGroupSection(_ group: ScanDashboardViewModel.CategoryToolGroup) -> some View {
+        let isExpanded = expandedToolGroups.contains(group.id)
+        let selectionState = viewModel.toolGroupSelectionState(group)
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Button {
+                    viewModel.toggleToolGroup(group)
+                } label: {
+                    Image(systemName: selectionIcon(selectionState))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(group.isSelectable ? AppTheme.accent : AppTheme.textTertiary)
+                        .frame(width: 20)
+                }
+                .buttonStyle(.plain)
+                .disabled(!group.isSelectable)
+                .help("Select all folders under \(group.toolName)")
+
+                Button {
+                    if isExpanded {
+                        expandedToolGroups.remove(group.id)
+                    } else {
+                        expandedToolGroups.insert(group.id)
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: toolIcon(for: group.toolName))
+                            .font(scale.font(12, weight: .semibold))
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(width: 18)
+
+                        Text(group.toolName)
+                            .font(scale.rowTitle)
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .lineLimit(1)
+
+                        Text("\(group.folderCount) folders")
+                            .font(scale.micro)
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.08), in: Capsule())
+
+                        Spacer(minLength: 6)
+
+                        Text(viewModel.formattedBytes(group.totalBytes))
+                            .font(scale.font(13, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(scale.micro)
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                    .fill(AppTheme.panelSecondary.opacity(0.65))
+            )
+
+            if isExpanded {
+                let rows = viewModel.folderRows(for: group)
+                VStack(spacing: 4) {
+                    ForEach(rows) { row in
+                        CategoryFolderRowView(
+                            row: row,
+                            sizeText: viewModel.formattedBytes(row.totalBytes),
+                            selectionState: viewModel.folderSelectionState(row),
+                            canReveal: viewModel.canReveal(path: row.folderPath),
+                            onToggle: { viewModel.toggleFolder(row) },
+                            onReveal: { viewModel.revealInFinder(path: row.folderPath) }
+                        )
+                    }
+                    if rows.isEmpty {
+                        Text("No folder rows for this tool")
+                            .font(scale.micro)
+                            .foregroundStyle(AppTheme.textTertiary)
+                            .padding(.leading, 28)
+                    }
+                }
+                .padding(.leading, 18)
+            }
+        }
+    }
+
+    private func toolIcon(for name: String) -> String {
+        switch name {
+        case "Xcode": return "hammer.fill"
+        case "VS Code", "Cursor": return "chevron.left.forwardslash.chevron.right"
+        case "JetBrains": return "j.circle.fill"
+        case "Docker": return "shippingbox.fill"
+        case "Safari": return "safari.fill"
+        case "Chrome", "Brave", "Edge", "Opera", "Arc": return "globe"
+        case "Firefox": return "flame.fill"
+        case "Package Managers": return "shippingbox"
+        case "System Logs": return "doc.text.fill"
+        case "Temp Files": return "clock.arrow.circlepath"
+        case "Slack": return "message.fill"
+        case "Zoom": return "video.fill"
+        case "Spotify": return "music.note"
+        case "OpenCode": return "terminal"
+        default: return "app.fill"
+        }
+    }
+
+    private func categoryBadge(_ summary: ScanDashboardViewModel.SummaryItem) -> String {
+        if viewModel.usesToolGrouping(for: summary.category) {
+            let tools = viewModel.toolGroups(for: summary.category).count
+            if tools > 0 {
+                return "\(tools) tools"
+            }
+        }
+        if summary.folderCount > 0 {
+            return "\(summary.folderCount) folders"
+        }
+        return "\(summary.fileCount) items"
+    }
+
+
+    // MARK: - Tool share (donut)
 
     @ViewBuilder
-    private var byToolBreakdown: some View {
+    private var toolShareSection: some View {
         if !viewModel.perToolRollups.isEmpty {
-            ByToolBreakdownCard(
+            ToolShareChart(
                 rollups: viewModel.perToolRollups,
                 formatBytes: viewModel.formattedBytes
             )
         }
     }
 
-    private var largeFilesByCategory: some View {
+    // MARK: - Largest items (merged Top Files + Large Files)
+
+    private var largestItemsSection: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Large Files by Category")
-                    .font(scale.sectionTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
-
-                Text("Only files larger than \(viewModel.formattedBytes(ScanPolicy.largeFileThresholdBytes)) are shown.")
-                    .font(scale.body)
-                    .foregroundStyle(AppTheme.textSecondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Largest items")
+                        .font(scale.sectionTitle)
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text("Biggest reclaimable paths across all categories. Select items to clean, or open in Finder.")
+                        .font(scale.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 if let feedback = viewModel.revealFeedback {
                     Label(feedback, systemImage: "exclamationmark.triangle")
@@ -430,43 +718,99 @@ struct ScanDashboardView: View {
                         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
-                if viewModel.largeFilesByCategory.isEmpty {
+                let safeItems = viewModel.largestSafeItems
+                let reviewItems = viewModel.largestReviewItems
+                if safeItems.isEmpty && reviewItems.isEmpty {
                     placeholder(
-                        icon: "externaldrive.badge.exclamationmark",
-                        title: "No large files in current policy",
-                        message: "Run a scan or switch profile to review files above the threshold."
+                        icon: "doc.text.magnifyingglass",
+                        title: "Nothing to review yet",
+                        message: "Largest candidates appear after a completed scan."
                     )
                 } else {
-                    VStack(spacing: 14) {
-                        ForEach(viewModel.largeFilesByCategory) { group in
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text(group.category.rawValue)
-                                        .font(scale.rowTitle)
-                                        .foregroundStyle(AppTheme.textPrimary)
-                                    Spacer()
-                                    Text(viewModel.formattedBytes(group.totalBytes))
-                                        .font(scale.font(14, weight: .bold, design: .rounded))
-                                        .foregroundStyle(AppTheme.textSecondary)
-                                }
-
-                                ForEach(group.files.prefix(5)) { file in
-                                    LargeFileRow(
-                                        path: file.path,
-                                        sizeText: viewModel.formattedBytes(file.sizeBytes),
-                                        lastUsedText: viewModel.formattedDate(file.lastUsed),
-                                        riskLevel: file.riskLevel,
-                                        reason: file.reason,
-                                        canReveal: viewModel.canReveal(path: file.path),
-                                        onReveal: { viewModel.revealInFinder(path: file.path) },
-                                        onExclude: { viewModel.exclude(path: file.path) }
-                                    )
-                                }
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        if !safeItems.isEmpty {
+                            largestRiskGroupHeader(
+                                title: "SAFE",
+                                detail: "\(safeItems.count) items · \(viewModel.formattedBytes(safeItems.reduce(0) { $0 + $1.sizeBytes }))",
+                                color: AppTheme.success
+                            )
+                            ForEach(safeItems) { finding in
+                                largestItemRow(finding)
+                            }
+                        }
+                        if !reviewItems.isEmpty {
+                            largestRiskGroupHeader(
+                                title: "REVIEW",
+                                detail: "\(reviewItems.count) items · \(viewModel.formattedBytes(reviewItems.reduce(0) { $0 + $1.sizeBytes }))",
+                                color: AppTheme.warning
+                            )
+                            ForEach(reviewItems) { finding in
+                                largestItemRow(finding)
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    private func largestRiskGroupHeader(title: String, detail: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(scale.badge)
+                .tracking(0.4)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(color.opacity(0.2), in: Capsule(style: .continuous))
+                .foregroundStyle(color)
+            Text(detail)
+                .font(scale.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 4)
+    }
+
+    private func largestItemRow(_ finding: ScanDashboardViewModel.FindingItem) -> some View {
+        SelectableCandidateRow(
+            path: finding.path,
+            displayName: largestItemDisplayName(finding),
+            subtitle: largestItemSubtitle(finding),
+            sizeText: viewModel.formattedBytes(finding.sizeBytes),
+            riskLevel: finding.riskLevel,
+            isSelected: viewModel.isSelected(path: finding.path),
+            isSelectable: finding.riskLevel != .advanced,
+            canReveal: viewModel.canReveal(path: finding.path),
+            indent: 0,
+            onToggle: { viewModel.toggleSelection(path: finding.path) },
+            onReveal: { viewModel.revealInFinder(path: finding.path) },
+            onExclude: { viewModel.exclude(path: finding.path) },
+            isFolder: isLikelyFolderFinding(finding)
+        )
+    }
+
+    private func largestItemDisplayName(_ finding: ScanDashboardViewModel.FindingItem) -> String {
+        let name = URL(fileURLWithPath: finding.path).lastPathComponent
+        if finding.category == .userCaches {
+            return "\(name) · app cache"
+        }
+        return name
+    }
+
+    private func largestItemSubtitle(_ finding: ScanDashboardViewModel.FindingItem) -> String {
+        "\(finding.category.rawValue) · \(viewModel.abbreviatedPath(finding.path))"
+    }
+
+    private func isLikelyFolderFinding(_ finding: ScanDashboardViewModel.FindingItem) -> Bool {
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: finding.path, isDirectory: &isDir) && isDir.boolValue
+    }
+
+    private func selectionIcon(_ state: ScanDashboardViewModel.CategorySelectState) -> String {
+        switch state {
+        case .all: return "checkmark.circle.fill"
+        case .partial: return "minus.circle.fill"
+        case .none: return "circle"
         }
     }
 
@@ -564,6 +908,201 @@ struct ScanDashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+// MARK: - CategoryFolderRowView (lightweight, equatable inputs)
+
+private struct CategoryFolderRowView: View, Equatable {
+    let row: ScanDashboardViewModel.CategoryFolderRow
+    let sizeText: String
+    let selectionState: ScanDashboardViewModel.CategorySelectState
+    let canReveal: Bool
+    let onToggle: () -> Void
+    let onReveal: () -> Void
+    @Environment(\.displayScale) private var scale
+
+    static func == (lhs: CategoryFolderRowView, rhs: CategoryFolderRowView) -> Bool {
+        lhs.row == rhs.row
+            && lhs.sizeText == rhs.sizeText
+            && lhs.selectionState == rhs.selectionState
+            && lhs.canReveal == rhs.canReveal
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Button(action: onToggle) {
+                Image(systemName: checkboxIcon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(row.isSelectable ? AppTheme.accent : AppTheme.textTertiary)
+                    .frame(width: 20)
+            }
+            .buttonStyle(.plain)
+            .disabled(!row.isSelectable)
+            .help(row.isSafeFolder
+                  ? "Select this entire folder for Clean selected"
+                  : "Select cleanable items in this folder")
+
+            Image(systemName: "folder.fill")
+                .font(scale.font(12, weight: .medium))
+                .foregroundStyle(AppTheme.accent)
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.displayPath)
+                    .font(scale.rowMono)
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(row.itemCount == 1
+                     ? "1 item · \(riskLabel)"
+                     : "\(row.itemCount) items rolled up · \(riskLabel)")
+                    .font(scale.rowMeta)
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
+
+            Text(sizeText)
+                .font(scale.font(13, weight: .bold, design: .rounded))
+                .foregroundStyle(AppTheme.textPrimary)
+                .lineLimit(1)
+                .layoutPriority(1)
+
+            Button(action: onReveal) {
+                Image(systemName: "folder")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(canReveal ? AppTheme.accent : AppTheme.textTertiary)
+            }
+            .buttonStyle(.plain)
+            .disabled(!canReveal)
+            .help("Show folder in Finder")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
+                .fill(AppTheme.panelSecondary.opacity(0.55))
+        )
+        .contextMenu {
+            if row.isSelectable {
+                Button(action: onToggle) {
+                    Label(
+                        selectionState == .all ? "Deselect folder" : "Select folder",
+                        systemImage: "checkmark.circle"
+                    )
+                }
+            }
+            Button(action: onReveal) {
+                Label("Show in Finder", systemImage: "folder")
+            }
+        }
+    }
+
+    private var checkboxIcon: String {
+        switch selectionState {
+        case .all: return "checkmark.circle.fill"
+        case .partial: return "minus.circle.fill"
+        case .none: return "circle"
+        }
+    }
+
+    private var riskLabel: String {
+        switch row.riskLevel {
+        case .safe: return "SAFE"
+        case .review: return "REVIEW"
+        case .advanced: return "ADVANCED"
+        }
+    }
+}
+
+// MARK: - SelectedCleanConfirmationSheet
+
+private struct SelectedCleanConfirmationSheet: View {
+    @ObservedObject var viewModel: ScanDashboardViewModel
+
+    var body: some View {
+        ZStack {
+            AppBackgroundView()
+
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(AppTheme.accent.opacity(0.18))
+                            .frame(width: 48, height: 48)
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(AppTheme.accent)
+                            .font(.system(size: 20, weight: .semibold))
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Clean selected")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text("Only items you checked")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    infoRow(
+                        icon: "checkmark.circle",
+                        color: AppTheme.success,
+                        text: "\(viewModel.selectedCandidatesCount) item(s) · \(viewModel.formattedBytes(viewModel.selectedCandidatesBytes))"
+                    )
+                    if viewModel.selectedReviewCount > 0 {
+                        infoRow(
+                            icon: "exclamationmark.triangle",
+                            color: AppTheme.warning,
+                            text: "\(viewModel.selectedReviewCount) REVIEW item(s) — may include browser Local Storage or similar site data."
+                        )
+                    }
+                    infoRow(
+                        icon: "arrow.uturn.backward",
+                        color: AppTheme.accent,
+                        text: "Moved to Trash; Undo available after cleanup."
+                    )
+                }
+                .padding(16)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                HStack(spacing: 12) {
+                    Button("Cancel") { viewModel.cancelSelectedClean() }
+                        .buttonStyle(.borderless)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    Button("Move to Trash") { viewModel.confirmCleanSelected() }
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.success, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .buttonStyle(.borderless)
+                }
+            }
+            .padding(28)
+        }
+        .frame(minWidth: 400, idealWidth: 440, maxWidth: 520,
+               minHeight: 300, idealHeight: 340, maxHeight: 480)
+    }
+
+    private func infoRow(icon: String, color: Color, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .font(.system(size: 14, weight: .semibold))
+                .frame(width: 20)
+            Text(text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
@@ -739,182 +1278,6 @@ private struct DeepCleanConfirmationSheet: View {
                 .foregroundStyle(AppTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-    }
-}
-
-// MARK: - ByToolBreakdownCard
-
-private struct ByToolBreakdownCard: View {
-    let rollups: [ScanDashboardViewModel.ToolRollupItem]
-    let formatBytes: (Int64) -> String
-    @Environment(\.displayScale) private var scale
-
-    @State private var expandedApps: Set<String> = []
-
-    var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("By Tool")
-                    .font(scale.sectionTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
-
-                VStack(spacing: 8) {
-                    ForEach(rollups) { rollup in
-                        ToolRollupRow(
-                            rollup: rollup,
-                            isExpanded: expandedApps.contains(rollup.app),
-                            formatBytes: formatBytes
-                        ) {
-                            if expandedApps.contains(rollup.app) {
-                                expandedApps.remove(rollup.app)
-                            } else {
-                                expandedApps.insert(rollup.app)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct ToolRollupRow: View {
-    let rollup: ScanDashboardViewModel.ToolRollupItem
-    let isExpanded: Bool
-    let formatBytes: (Int64) -> String
-    let onTap: () -> Void
-    @Environment(\.displayScale) private var scale
-
-    private var toolIcon: String {
-        switch rollup.app {
-        case "Xcode": return "hammer.fill"
-        case "VS Code": return "chevron.left.forwardslash.chevron.right"
-        case "JetBrains": return "j.circle.fill"
-        case "Docker": return "shippingbox.fill"
-        case "Safari": return "safari.fill"
-        case "Chrome": return "globe"
-        case "Firefox": return "flame.fill"
-        case "Adobe": return "a.circle.fill"
-        case "Figma": return "pencil.and.outline"
-        case "DaVinci Resolve": return "film.fill"
-        case "Final Cut Pro": return "scissors"
-        case "Package Managers": return "shippingbox"
-        case "System Logs": return "doc.text.fill"
-        case "Temp Files": return "clock.arrow.circlepath"
-        case "Slack": return "message.fill"
-        case "Zoom": return "video.fill"
-        case "Spotify": return "music.note"
-        default: return "puzzlepiece.fill"
-        }
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Button(action: onTap) {
-                HStack(spacing: 12) {
-                    Image(systemName: toolIcon)
-                        .font(scale.font(14, weight: .semibold))
-                        .foregroundStyle(AppTheme.accent)
-                        .frame(width: 20)
-
-                    Text(rollup.app)
-                        .font(scale.rowTitle)
-                        .foregroundStyle(AppTheme.textPrimary)
-
-                    Spacer()
-
-                    Text("\(Int(rollup.share * 100))%")
-                        .font(scale.font(12, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .frame(width: 40, alignment: .trailing)
-
-                    Text(formatBytes(rollup.totalBytes))
-                        .font(scale.font(14, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .frame(width: 80, alignment: .trailing)
-
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(scale.micro)
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            }
-            .buttonStyle(.borderless)
-
-            if isExpanded {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 10) {
-                        Spacer().frame(width: 32)
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                    .fill(Color.white.opacity(0.10))
-                                    .frame(height: 4)
-                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                    .fill(AppTheme.accent)
-                                    .frame(width: geo.size.width * rollup.share, height: 4)
-                            }
-                        }
-                        .frame(height: 4)
-                        Text("\(rollup.fileCount) file\(rollup.fileCount == 1 ? "" : "s")")
-                            .font(scale.micro)
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 72, alignment: .trailing)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                    .padding(.bottom, 6)
-
-                    if rollup.topFiles.isEmpty {
-                        Text("No files above 1 MB")
-                            .font(scale.caption)
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .padding(.leading, 44)
-                            .padding(.bottom, 8)
-                    } else {
-                        ForEach(rollup.topFiles) { file in
-                            HStack(spacing: 10) {
-                                Spacer().frame(width: 32)
-                                Image(systemName: "doc.fill")
-                                    .font(scale.font(11, weight: .regular))
-                                    .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
-                                    .frame(width: 12)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(file.fileName)
-                                        .font(scale.caption)
-                                        .foregroundStyle(AppTheme.textPrimary)
-                                        .lineLimit(1)
-                                    Text(file.abbreviatedParent)
-                                        .font(scale.rowMeta)
-                                        .foregroundStyle(AppTheme.textSecondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                Text(formatBytes(file.sizeBytes))
-                                    .font(scale.font(13, weight: .bold, design: .rounded))
-                                    .foregroundStyle(AppTheme.textPrimary)
-                                    .frame(width: 72, alignment: .trailing)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 5)
-                        }
-
-                        let remaining = rollup.fileCount - rollup.topFiles.count
-                        if remaining > 0 {
-                            Text("and \(remaining) more file\(remaining == 1 ? "" : "s")")
-                                .font(scale.caption)
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .padding(.leading, 56)
-                                .padding(.top, 2)
-                                .padding(.bottom, 6)
-                        }
-                    }
-                }
-            }
-        }
-        .clipped()
     }
 }
 

@@ -1,3 +1,16 @@
-.build
-.gitnexus
-.claude
+.build/
+.claude/
+.gitnexus/
+dist/
+
+# Local peer-tool comparison only (never commit)
+scripts/compare-app-a.sh
+scripts/compare-peer.LOCAL.sh
+docs/features/comparison-app-a.LOCAL.md
+docs/features/comparison-app-a.md.local
+.build/compare/
+
+# Local screenshots / scratch
+image.png
+by_tool.png
+*.LOCAL.md

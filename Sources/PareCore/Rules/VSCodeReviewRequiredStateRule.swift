@@ -1,9 +1,12 @@
 import Foundation
 
+/// VS Code workspace/history state that may hold project-specific data.
+/// Does **not** flag installed extensions under `~/.vscode/extensions/` —
+/// those are live installs; only duplicate/old versions are handled separately.
 public struct VSCodeReviewRequiredStateRule: ScanRule {
     public let id = "vscode-review-required-state"
-    public let title = "VS Code State and Extensions (Review Required)"
-    public let reason = "VS Code workspace state or extension data (review before removing)"
+    public let title = "VS Code State (Review Required)"
+    public let reason = "VS Code workspace state or local history (review before removing)"
     public let category: ScanCategory = .developerPackageCaches
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.78
@@ -11,15 +14,14 @@ public struct VSCodeReviewRequiredStateRule: ScanRule {
     private let vscodeReviewMarkers = [
         "/library/application support/code/user/workspacestorage",
         "/library/application support/code/user/history",
-        "/.vscode/extensions/"
     ]
 
     public init() {}
 
     public func targetDirectories(environment: ScanEnvironment) -> [URL] {
         [
-            environment.homeDirectory.appending(path: "Library/Application Support/Code/User"),
-            environment.homeDirectory.appending(path: ".vscode/extensions")
+            environment.homeDirectory.appending(path: "Library/Application Support/Code/User/workspaceStorage"),
+            environment.homeDirectory.appending(path: "Library/Application Support/Code/User/History"),
         ]
     }
 
