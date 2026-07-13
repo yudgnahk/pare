@@ -3,10 +3,11 @@ import PareCore
 
 struct DiskAnalyzerView: View {
     @StateObject private var viewModel = DiskAnalyzerViewModel()
+    @Environment(\.displayScale) private var scale
 
     var body: some View {
         ZStack {
-            AppBackgroundView()
+            // Shell provides AppBackgroundView.
 
             VStack(spacing: 0) {
                 header
@@ -24,53 +25,55 @@ struct DiskAnalyzerView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Disk Analyzer")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(scale.pageTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                 if let url = viewModel.rootURL {
                     Text(url.path)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(scale.rowMono)
                         .foregroundStyle(AppTheme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 } else {
                     Text("Choose a directory to analyze disk usage.")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(scale.caption)
                         .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            Spacer()
-
-            if viewModel.rootURL != nil {
-                Button {
-                    viewModel.refresh()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(AppTheme.textSecondary)
+            FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+                if viewModel.rootURL != nil {
+                    IconActionButton(
+                        systemImage: "arrow.clockwise",
+                        help: "Refresh",
+                        isEnabled: !viewModel.isLoading
+                    ) {
+                        viewModel.refresh()
+                    }
                 }
-                .buttonStyle(.borderless)
-                .help("Refresh")
-                .disabled(viewModel.isLoading)
-            }
 
-            Button("Choose Directory") {
-                viewModel.chooseDirectory()
+                SecondaryActionButton(
+                    title: "Choose Directory",
+                    systemImage: "folder",
+                    role: .accent
+                ) {
+                    viewModel.chooseDirectory()
+                }
             }
-            .buttonStyle(.bordered)
-            .font(.system(size: 13, weight: .semibold))
         }
-        .padding(.horizontal, 28)
-        .padding(.top, 24)
-        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+        .padding(.top, AppTheme.Spacing.pageVertical)
+        .padding(.bottom, AppTheme.Spacing.lg)
     }
 
     // MARK: Error
@@ -155,19 +158,20 @@ private struct DiskNodeRow: View {
     let formatBytes: (Int64) -> String
     let onReveal: () -> Void
     let onTrash: () -> Void
+    @Environment(\.displayScale) private var scale
 
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: node.isDirectory ? "folder.fill" : "doc.fill")
-                .font(.system(size: 13, weight: .medium))
+                .font(scale.font(14, weight: .medium))
                 .foregroundStyle(node.isDirectory ? AppTheme.accent : AppTheme.textSecondary.opacity(0.7))
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(node.name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(scale.rowTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
 
@@ -187,9 +191,9 @@ private struct DiskNodeRow: View {
             Spacer(minLength: 8)
 
             Text(formatBytes(node.sizeBytes))
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(scale.font(14, weight: .bold, design: .rounded))
                 .foregroundStyle(AppTheme.textPrimary)
-                .frame(width: 78, alignment: .trailing)
+                .frame(width: scale.scaled(84), alignment: .trailing)
 
             if isHovered {
                 HStack(spacing: 4) {

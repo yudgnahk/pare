@@ -102,24 +102,7 @@ public struct AppUninstaller: Sendable {
 
     /// Checks if the app is managed by Homebrew by inspecting the caskroom receipt.
     public func homebrewCaskToken(for app: InstalledApp) -> String? {
-        let caskroomPaths = ["/opt/homebrew/Caskroom", "/usr/local/Caskroom"]
-        let appName = URL(fileURLWithPath: app.path)
-            .deletingPathExtension()
-            .lastPathComponent
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "-")
-
-        for caskroom in caskroomPaths {
-            guard let tokens = try? FileManager.default.contentsOfDirectory(atPath: caskroom) else { continue }
-            for token in tokens where token.lowercased() == appName || appName.contains(token.lowercased()) {
-                let versionDir = "\(caskroom)/\(token)"
-                if let versions = try? FileManager.default.contentsOfDirectory(atPath: versionDir),
-                   !versions.isEmpty {
-                    return token
-                }
-            }
-        }
-        return nil
+        HomebrewCaskroom.token(forAppName: app.name, path: app.path)
     }
 
     /// Moves the app bundle and the given leftovers to Trash.

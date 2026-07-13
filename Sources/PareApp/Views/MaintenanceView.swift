@@ -3,53 +3,60 @@ import PareCore
 
 struct MaintenanceView: View {
     @StateObject private var viewModel = MaintenanceViewModel()
+    @Environment(\.displayScale) private var scale
 
     var body: some View {
         ZStack {
-            AppBackgroundView()
+            // Shell provides AppBackgroundView.
 
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(spacing: AppTheme.Spacing.xl) {
                     headerCard
                     actionCards
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 24)
+                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                .padding(.vertical, AppTheme.Spacing.pageVertical)
+                .frame(maxWidth: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { viewModel.onAppear() }
     }
 
     // MARK: - Header
 
     private var headerCard: some View {
-        GlassCard {
-            HStack(alignment: .center, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Maintenance")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .foregroundStyle(AppTheme.textPrimary)
-                    Text("One-shot system actions — no file deletions")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-                Spacer()
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AppTheme.accent.opacity(0.14))
+                    .frame(width: 40, height: 40)
                 Image(systemName: "wrench.and.screwdriver")
-                    .font(.system(size: 28, weight: .light))
-                    .foregroundStyle(AppTheme.accent.opacity(0.7))
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(AppTheme.accent)
             }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Maintenance")
+                    .font(scale.pageTitle)
+                    .foregroundStyle(AppTheme.textPrimary)
+                Text("One-shot system actions — no file deletions")
+                    .font(scale.caption)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
     }
 
     // MARK: - Action cards
 
     private var actionCards: some View {
+        // Adaptive columns: 1 on compact 13–14", 2 on 15"+, 3 on wide desktops.
         LazyVGrid(
             columns: [
-                GridItem(.flexible(), spacing: 16),
-                GridItem(.flexible(), spacing: 16)
+                GridItem(.adaptive(minimum: AppTheme.Breakpoint.cardMin), spacing: AppTheme.Spacing.lg)
             ],
-            spacing: 16
+            spacing: AppTheme.Spacing.lg
         ) {
             ForEach(viewModel.visibleActions) { action in
                 ActionCard(action: action, viewModel: viewModel)
@@ -63,6 +70,7 @@ struct MaintenanceView: View {
 private struct ActionCard: View {
     let action: MaintenanceAction
     @ObservedObject var viewModel: MaintenanceViewModel
+    @Environment(\.displayScale) private var scale
 
     @State private var logExpanded = false
 
@@ -89,7 +97,7 @@ private struct ActionCard: View {
     private var topRow: some View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
                     .fill(iconColor.opacity(0.18))
                     .frame(width: 40, height: 40)
                 Image(systemName: action.systemImage)
@@ -99,13 +107,16 @@ private struct ActionCard: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(action.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(scale.font(14, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 statusBadge
             }
 
             Spacer(minLength: 8)
             runButton
+                .layoutPriority(1)
         }
     }
 
@@ -113,7 +124,7 @@ private struct ActionCard: View {
 
     private var descriptionRow: some View {
         Text(action.description)
-            .font(.system(size: 12, weight: .medium))
+            .font(scale.caption)
             .foregroundStyle(AppTheme.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.top, 10)
@@ -122,9 +133,9 @@ private struct ActionCard: View {
     private var metaRow: some View {
         HStack(spacing: 6) {
             Image(systemName: "clock")
-                .font(.system(size: 10))
+                .font(scale.font(11))
             Text("≈ \(action.estimatedSeconds)s")
-                .font(.system(size: 11, weight: .medium))
+                .font(scale.caption)
         }
         .foregroundStyle(AppTheme.textSecondary.opacity(0.7))
         .padding(.top, 6)

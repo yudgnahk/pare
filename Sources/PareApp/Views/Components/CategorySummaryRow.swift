@@ -7,6 +7,7 @@ struct CategorySummaryRow: View {
     let fileCount: Int
     let share: Double
     let color: Color
+    @Environment(\.displayScale) private var scale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -17,14 +18,14 @@ struct CategorySummaryRow: View {
                         .frame(width: 8, height: 8)
 
                     Text(title)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(scale.rowTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                 }
 
                 Spacer()
 
                 Text(bytesText)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(scale.font(14, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.textPrimary)
             }
 
@@ -47,7 +48,7 @@ struct CategorySummaryRow: View {
             .frame(height: 8)
 
             Text("\(fileCount) file\(fileCount == 1 ? "" : "s")")
-                .font(.system(size: 12, weight: .medium))
+                .font(scale.caption)
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .padding(.vertical, 4)
