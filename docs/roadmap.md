@@ -261,7 +261,7 @@ Spec: `docs/features/phase-8-productivity-system.md`
 - [ ] Notarization (`xcrun notarytool`) — automated in `scripts/release.sh`
 - [ ] Staple notarization ticket (`xcrun stapler`) — automated in `scripts/release.sh`
 - [ ] Test Gatekeeper pass on a clean machine
-- [ ] App icon (all required sizes: 16–1024 pt @1x/@2x)
+- [x] App icon — design complete (`docs/brand-guide.html`); source SVG at `scripts/icon.svg`; generate .icns with `make icon`
 - [x] `CHANGELOG.md` for v1.0
 - [x] Distribution: direct download via GitHub Releases (MAS incompatible with full-disk scanning)
 - [x] `scripts/release.sh` — universal binary build → sign → DMG → notarize → staple → verify
