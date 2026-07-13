@@ -4,52 +4,79 @@ import SwiftUI
 struct PareApp: App {
     @StateObject private var scanViewModel = ScanDashboardViewModel()
     @StateObject private var historyViewModel = HistoryViewModel()
+    @StateObject private var textZoom = TextZoomController()
 
     var body: some Scene {
         WindowGroup("Pare") {
             ContentView(scanViewModel: scanViewModel, historyViewModel: historyViewModel)
-                .frame(minWidth: 1024, minHeight: 700)
+                .environmentObject(textZoom)
+                .modifier(TextZoomKeyMonitor(zoom: textZoom))
+                .frame(
+                    minWidth: AppTheme.Window.minWidth,
+                    maxWidth: .infinity,
+                    minHeight: AppTheme.Window.minHeight,
+                    maxHeight: .infinity
+                )
         }
+        // Full-bleed window like CleanMyMac — no opaque black title bar strip.
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
-        .defaultSize(width: 1200, height: 780)
+        .defaultSize(width: AppTheme.Window.defaultWidth, height: AppTheme.Window.defaultHeight)
+        .commands {
+            TextZoomCommands(zoom: textZoom)
+        }
     }
 }
 
 struct ContentView: View {
     @ObservedObject var scanViewModel: ScanDashboardViewModel
     @ObservedObject var historyViewModel: HistoryViewModel
+    @State private var selection: AppDestination = .smartScan
 
     var body: some View {
-        TabView {
+        DisplayScaleReader {
+            // Fixed sidebar (not NavigationSplitView) so the left menu is always
+            // visible — SplitView collapses/hides the sidebar too easily on macOS.
+            HStack(spacing: 0) {
+                SidebarView(selection: $selection)
+                    .frame(width: AppTheme.Spacing.sidebarWidth)
+                    .frame(maxHeight: .infinity)
+
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 1)
+                    .frame(maxHeight: .infinity)
+
+                ZStack {
+                    AppBackgroundView()
+                    detailContent
+                        .id(selection)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Content paints under traffic lights (hidden title bar).
+            .ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        switch selection {
+        case .smartScan:
             ScanDashboardView(viewModel: scanViewModel)
-                .tabItem {
-                    Label("Scan", systemImage: "magnifyingglass")
-                }
-
+        case .apps:
             AppManagerView()
-                .tabItem {
-                    Label("Apps", systemImage: "apps.iphone")
-                }
-
+        case .homebrew:
             HomebrewManagerView()
-                .tabItem {
-                    Label("Homebrew", systemImage: "shippingbox")
-                }
-
+        case .disk:
             DiskAnalyzerView()
-                .tabItem {
-                    Label("Disk", systemImage: "externaldrive.badge.magnifyingglass")
-                }
-
+        case .maintenance:
             MaintenanceView()
-                .tabItem {
-                    Label("Maintenance", systemImage: "wrench.and.screwdriver")
-                }
-
+        case .history:
             HistoryView(viewModel: historyViewModel)
-                .tabItem {
-                    Label("History", systemImage: "clock.arrow.circlepath")
-                }
+        case .settings:
+            SettingsView()
         }
     }
 }

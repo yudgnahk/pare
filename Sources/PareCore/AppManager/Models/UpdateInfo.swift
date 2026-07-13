@@ -13,8 +13,9 @@ public struct UpdateInfo: Sendable {
     /// Direct link to the appcast item download (Sparkle) or MAS deep link.
     public let updateURL: URL?
 
+    /// True when the available version is strictly newer than the installed one.
     public var hasUpdate: Bool {
-        availableVersion != installedVersion
+        FileSystemUtils.compareVersionStrings(availableVersion, installedVersion) == .orderedDescending
     }
 
     public init(

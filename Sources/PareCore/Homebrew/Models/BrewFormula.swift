@@ -9,6 +9,8 @@ public struct BrewFormula: Identifiable, Sendable {
     public let pinned: Bool
     public let installDate: Date?
     public let dependencies: [String]
+    /// On-disk size of the installed keg under Homebrew's Cellar (bytes).
+    public let sizeBytes: Int64
 
     public init(
         name: String,
@@ -17,7 +19,8 @@ public struct BrewFormula: Identifiable, Sendable {
         installedOnRequest: Bool,
         pinned: Bool,
         installDate: Date?,
-        dependencies: [String]
+        dependencies: [String],
+        sizeBytes: Int64 = 0
     ) {
         self.id = name
         self.name = name
@@ -27,5 +30,6 @@ public struct BrewFormula: Identifiable, Sendable {
         self.pinned = pinned
         self.installDate = installDate
         self.dependencies = dependencies
+        self.sizeBytes = sizeBytes
     }
 }
