@@ -35,7 +35,8 @@ final class HomebrewTests: XCTestCase {
             installedOnRequest: true,
             pinned: false,
             installDate: nil,
-            dependencies: ["gettext"]
+            dependencies: ["gettext"],
+            sizeBytes: 12_345_678
         )
         XCTAssertEqual(formula.id, "git")
         XCTAssertEqual(formula.name, "git")
@@ -43,6 +44,20 @@ final class HomebrewTests: XCTestCase {
         XCTAssertTrue(formula.installedOnRequest)
         XCTAssertFalse(formula.pinned)
         XCTAssertEqual(formula.dependencies, ["gettext"])
+        XCTAssertEqual(formula.sizeBytes, 12_345_678)
+    }
+
+    func testBrewFormulaDefaultSizeIsZero() {
+        let formula = BrewFormula(
+            name: "wget",
+            desc: "Internet file retriever",
+            version: "1.21",
+            installedOnRequest: true,
+            pinned: false,
+            installDate: nil,
+            dependencies: []
+        )
+        XCTAssertEqual(formula.sizeBytes, 0)
     }
 
     // MARK: - BrewCask
