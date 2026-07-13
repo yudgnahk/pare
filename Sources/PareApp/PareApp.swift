@@ -35,29 +35,43 @@ struct ContentView: View {
 
     var body: some View {
         DisplayScaleReader {
-            // Fixed sidebar (not NavigationSplitView) so the left menu is always
-            // visible — SplitView collapses/hides the sidebar too easily on macOS.
-            HStack(spacing: 0) {
-                SidebarView(selection: $selection)
-                    .frame(width: AppTheme.Spacing.sidebarWidth)
-                    .frame(maxHeight: .infinity)
+            // Environment (displayScale) is applied inside the reader.
+            MainShellView(
+                selection: $selection,
+                scanViewModel: scanViewModel,
+                historyViewModel: historyViewModel
+            )
+        }
+    }
+}
 
-                Rectangle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: 1)
-                    .frame(maxHeight: .infinity)
+/// Shell that reads `displayScale` from the environment (inside DisplayScaleReader).
+private struct MainShellView: View {
+    @Binding var selection: AppDestination
+    @ObservedObject var scanViewModel: ScanDashboardViewModel
+    @ObservedObject var historyViewModel: HistoryViewModel
+    @Environment(\.displayScale) private var scale
 
-                ZStack {
-                    AppBackgroundView()
-                    detailContent
-                        .id(selection)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+    var body: some View {
+        HStack(spacing: 0) {
+            SidebarView(selection: $selection)
+                .frame(width: max(200, AppTheme.Spacing.sidebarWidth * scale.spacingFactor))
+                .frame(maxHeight: .infinity)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(width: 1)
+                .frame(maxHeight: .infinity)
+
+            ZStack {
+                AppBackgroundView()
+                detailContent
+                    .id(selection)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Content paints under traffic lights (hidden title bar).
-            .ignoresSafeArea()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
     }
 
     @ViewBuilder

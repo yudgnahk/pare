@@ -68,8 +68,9 @@ struct PrimaryActionButton: View {
             }
             .foregroundStyle(AppTheme.textPrimary)
             .padding(.horizontal, scale.space(style == .prominent ? 16 : 12))
-            .frame(minWidth: scale.space(AppTheme.Control.primaryMinWidth))
-            .frame(height: scale.space(
+            // Soft min width — avoid forcing overflow when text zoom is high.
+            .frame(minWidth: min(scale.space(AppTheme.Control.primaryMinWidth), 140))
+            .frame(minHeight: scale.space(
                 style == .prominent
                 ? AppTheme.Control.primaryHeight
                 : AppTheme.Control.secondaryHeight
