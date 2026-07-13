@@ -26,37 +26,39 @@ struct ContentView: View {
     @ObservedObject var historyViewModel: HistoryViewModel
 
     var body: some View {
-        TabView {
-            ScanDashboardView(viewModel: scanViewModel)
-                .tabItem {
-                    Label("Scan", systemImage: "magnifyingglass")
-                }
+        DisplayScaleReader {
+            TabView {
+                ScanDashboardView(viewModel: scanViewModel)
+                    .tabItem {
+                        Label("Scan", systemImage: "magnifyingglass")
+                    }
 
-            AppManagerView()
-                .tabItem {
-                    Label("Apps", systemImage: "apps.iphone")
-                }
+                AppManagerView()
+                    .tabItem {
+                        Label("Apps", systemImage: "apps.iphone")
+                    }
 
-            HomebrewManagerView()
-                .tabItem {
-                    Label("Homebrew", systemImage: "shippingbox")
-                }
+                HomebrewManagerView()
+                    .tabItem {
+                        Label("Homebrew", systemImage: "shippingbox")
+                    }
 
-            DiskAnalyzerView()
-                .tabItem {
-                    Label("Disk", systemImage: "externaldrive.badge.magnifyingglass")
-                }
+                DiskAnalyzerView()
+                    .tabItem {
+                        Label("Disk", systemImage: "externaldrive.badge.magnifyingglass")
+                    }
 
-            MaintenanceView()
-                .tabItem {
-                    Label("Maintenance", systemImage: "wrench.and.screwdriver")
-                }
+                MaintenanceView()
+                    .tabItem {
+                        Label("Maintenance", systemImage: "wrench.and.screwdriver")
+                    }
 
-            HistoryView(viewModel: historyViewModel)
-                .tabItem {
-                    Label("History", systemImage: "clock.arrow.circlepath")
-                }
+                HistoryView(viewModel: historyViewModel)
+                    .tabItem {
+                        Label("History", systemImage: "clock.arrow.circlepath")
+                    }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

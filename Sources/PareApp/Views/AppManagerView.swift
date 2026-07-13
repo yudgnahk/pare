@@ -4,20 +4,40 @@ import PareCore
 
 struct AppManagerView: View {
     @StateObject private var viewModel = AppManagerViewModel()
+    @Environment(\.displayScale) private var scale
+
+    /// Token that changes when list membership / order inputs change so the
+    /// scroll view can reset to a stable top origin instead of mid-list jumps.
+    private var listResetToken: String {
+        [
+            viewModel.searchText,
+            viewModel.hideSystemApps ? "1" : "0",
+            viewModel.showOnlyOutdated ? "1" : "0",
+            viewModel.sortField.rawValue,
+            viewModel.sortAscending ? "asc" : "desc",
+            "\(viewModel.filteredApps.count)"
+        ].joined(separator: "|")
+    }
 
     var body: some View {
         ZStack {
             AppBackgroundView()
 
+            // Fixed chrome (header / filters / metrics) + list region below.
+            // Only the list scrolls — chrome never rides the scroll view.
             VStack(spacing: 0) {
                 headerBar
                 filterBar
                     .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                    .padding(.top, AppTheme.Spacing.md)
-                    .padding(.bottom, AppTheme.Spacing.sm)
+                    .padding(.top, scale.space(AppTheme.Spacing.md))
+                    .padding(.bottom, scale.space(AppTheme.Spacing.sm))
                 metricsRow
                     .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                    .padding(.bottom, AppTheme.Spacing.md)
+                    .padding(.bottom, scale.space(AppTheme.Spacing.md))
+                    // Reserve a constant strip so chips appearing/disappearing
+                    // don't shove the list origin up/down.
+                    .frame(minHeight: scale.space(34), alignment: .leading)
+
                 appTable
             }
         }
@@ -39,15 +59,15 @@ struct AppManagerView: View {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("App Manager")
-                        .font(AppTheme.TypeScale.heroTitle)
+                        .font(scale.heroTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                     Text("Browse, update, and cleanly uninstall installed applications")
-                        .font(AppTheme.TypeScale.body)
+                        .font(scale.body)
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+                HStack(spacing: 8) {
                     if viewModel.loadState == .loading {
                         ProgressView()
                             .progressViewStyle(.circular)
@@ -76,6 +96,7 @@ struct AppManagerView: View {
                             ) { viewModel.checkForUpdates() }
                         }
                     }
+                    Spacer(minLength: 0)
                 }
             }
         }
@@ -85,16 +106,18 @@ struct AppManagerView: View {
     }
 
     // MARK: - Filter Bar
+    // Single-row HStack (not FlowLayout) so toggles never reflow chrome height
+    // and shift where the list starts.
 
     private var filterBar: some View {
-        FlowLayout(spacing: 12, lineSpacing: 8, alignment: .leading) {
+        HStack(spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(AppTheme.textSecondary)
-                    .font(.system(size: 13))
+                    .font(scale.caption)
                 TextField("Search apps…", text: $viewModel.searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(scale.body)
                     .foregroundStyle(AppTheme.textPrimary)
                 if !viewModel.searchText.isEmpty {
                     Button { viewModel.searchText = "" } label: {
@@ -107,23 +130,32 @@ struct AppManagerView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .frame(minWidth: 180, idealWidth: 240, maxWidth: 280)
+            .frame(maxWidth: 280)
 
             Toggle("Hide system apps", isOn: $viewModel.hideSystemApps)
                 .toggleStyle(.checkbox)
-                .font(.system(size: 12, weight: .medium))
+                .font(scale.caption)
                 .foregroundStyle(AppTheme.textSecondary)
+                .fixedSize()
 
-            if viewModel.outdatedCount > 0 {
-                Toggle("Updates only (\(viewModel.outdatedCount))", isOn: $viewModel.showOnlyOutdated)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(AppTheme.warning)
-            }
+            // Always reserve space so the filter row height/width stays stable
+            // when updates become available after "Check Updates".
+            Toggle(
+                "Updates only\(viewModel.outdatedCount > 0 ? " (\(viewModel.outdatedCount))" : "")",
+                isOn: $viewModel.showOnlyOutdated
+            )
+            .toggleStyle(.checkbox)
+            .font(scale.caption)
+            .foregroundStyle(viewModel.outdatedCount > 0 ? AppTheme.warning : AppTheme.textSecondary)
+            .disabled(viewModel.outdatedCount == 0)
+            .opacity(viewModel.outdatedCount > 0 ? 1 : 0.45)
+            .fixedSize()
+
+            Spacer(minLength: 8)
 
             sortMenu
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: scale.space(36), alignment: .leading)
     }
 
     private var sortMenu: some View {
@@ -147,13 +179,14 @@ struct AppManagerView: View {
                 Image(systemName: "arrow.up.arrow.down")
                 Text("Sort: \(viewModel.sortField.rawValue)")
             }
-            .font(.system(size: 12, weight: .semibold))
+            .font(scale.caption)
             .foregroundStyle(AppTheme.textSecondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .menuStyle(.borderlessButton)
+        .fixedSize()
     }
 
     // MARK: - Metrics Row
@@ -186,17 +219,17 @@ struct AppManagerView: View {
                     color: failed > 0 ? AppTheme.review : AppTheme.success
                 )
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
     }
 
     private func metricChip(label: String, sub: String, color: Color) -> some View {
         HStack(spacing: 6) {
             Text(label)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(scale.chip)
                 .foregroundStyle(color)
             Text(sub)
-                .font(.system(size: 11, weight: .medium))
+                .font(scale.chipSub)
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .padding(.horizontal, 12)
@@ -223,21 +256,16 @@ struct AppManagerView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var appList: some View {
-        // Horizontal scroll preserves fixed columns on 13" without crushing cells.
-        ScrollView([.vertical, .horizontal]) {
-            LazyVStack(spacing: 2) {
-                tableHeader
-                ForEach(viewModel.filteredApps) { app in
-                    AppRow(app: app, onUninstall: { viewModel.requestUninstall(for: app) })
-                }
+        StableListContainer(resetToken: listResetToken) {
+            tableHeader
+        } content: {
+            ForEach(viewModel.filteredApps) { app in
+                AppRow(app: app, onUninstall: { viewModel.requestUninstall(for: app) })
             }
-            .frame(minWidth: 820)
-            .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-            .padding(.bottom, AppTheme.Spacing.pageVertical)
         }
     }
 
@@ -246,19 +274,22 @@ struct AppManagerView: View {
             Text("Application")
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text("Version")
-                .frame(width: 100, alignment: .leading)
+                .frame(width: scale.colVersion, alignment: .leading)
             Text("Size")
-                .frame(width: 90, alignment: .trailing)
-            Text("Installed")
-                .frame(width: 100, alignment: .trailing)
-            Text("Last Used")
-                .frame(width: 100, alignment: .trailing)
-            Spacer().frame(width: 80)
+                .frame(width: scale.colSize, alignment: .trailing)
+            if scale.sizeClass != .compact {
+                Text("Installed")
+                    .frame(width: scale.colDate, alignment: .trailing)
+                Text("Last Used")
+                    .frame(width: scale.colDate, alignment: .trailing)
+            }
+            Spacer().frame(width: scale.colActions)
         }
-        .font(.system(size: 11, weight: .semibold))
+        .font(scale.tableHeader)
         .foregroundStyle(AppTheme.textSecondary)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .background(Color.black.opacity(0.12))
     }
 
     private var loadingPlaceholder: some View {
@@ -268,21 +299,23 @@ struct AppManagerView: View {
                 .scaleEffect(1.4)
                 .tint(AppTheme.accent)
             Text("Scanning installed applications…")
-                .font(.system(size: 14, weight: .medium))
+                .font(scale.body)
                 .foregroundStyle(AppTheme.textSecondary)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func emptyPrompt(icon: String, text: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 40))
+                .font(.system(size: scale.scaled(40)))
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
             Text(text)
-                .font(.system(size: 14, weight: .medium))
+                .font(scale.body)
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -291,6 +324,7 @@ struct AppManagerView: View {
 private struct AppRow: View {
     let app: InstalledApp
     let onUninstall: () -> Void
+    @Environment(\.displayScale) private var scale
     @State private var isHovered = false
 
     private static let dateFormatter: DateFormatter = {
@@ -308,7 +342,7 @@ private struct AppRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(app.name)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(scale.rowTitle)
                             .foregroundStyle(AppTheme.textPrimary)
                             .lineLimit(1)
                         if app.isSystemApp {
@@ -326,7 +360,7 @@ private struct AppRow: View {
                     }
                     if let bundleID = app.bundleID {
                         Text(bundleID)
-                            .font(.system(size: 10, weight: .regular, design: .monospaced))
+                            .font(scale.font(10, weight: .regular, design: .monospaced))
                             .foregroundStyle(AppTheme.textSecondary.opacity(0.7))
                             .lineLimit(1)
                     }
@@ -336,28 +370,30 @@ private struct AppRow: View {
 
             // Version
             Text(app.version.isEmpty ? "—" : app.version)
-                .font(.system(size: 12, design: .monospaced))
+                .font(scale.rowMono)
                 .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 100, alignment: .leading)
+                .frame(width: scale.colVersion, alignment: .leading)
                 .lineLimit(1)
 
             // Size
             Text(ByteCountFormatter.string(fromByteCount: app.sizeBytes, countStyle: .file))
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(scale.font(12, weight: .semibold, design: .rounded))
                 .foregroundStyle(app.sizeBytes > 500_000_000 ? AppTheme.review : AppTheme.textPrimary)
-                .frame(width: 90, alignment: .trailing)
+                .frame(width: scale.colSize, alignment: .trailing)
 
-            // Install date
-            Text(app.installDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
-                .font(.system(size: 11))
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 100, alignment: .trailing)
+            if scale.sizeClass != .compact {
+                // Install date
+                Text(app.installDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                    .font(scale.rowMeta)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: scale.colDate, alignment: .trailing)
 
-            // Last used
-            Text(app.lastUsed.map { Self.dateFormatter.string(from: $0) } ?? "Never")
-                .font(.system(size: 11))
-                .foregroundStyle(app.lastUsed == nil ? AppTheme.textSecondary.opacity(0.5) : AppTheme.textSecondary)
-                .frame(width: 100, alignment: .trailing)
+                // Last used
+                Text(app.lastUsed.map { Self.dateFormatter.string(from: $0) } ?? "Never")
+                    .font(scale.rowMeta)
+                    .foregroundStyle(app.lastUsed == nil ? AppTheme.textSecondary.opacity(0.5) : AppTheme.textSecondary)
+                    .frame(width: scale.colDate, alignment: .trailing)
+            }
 
             // Actions
             HStack(spacing: 8) {
@@ -389,11 +425,11 @@ private struct AppRow: View {
                 .disabled(app.isSystemApp)
                 .help(app.isSystemApp ? "System apps cannot be removed (SIP-protected)" : "Uninstall \(app.name)")
             }
-            .frame(width: 80, alignment: .trailing)
+            .frame(width: scale.colActions, alignment: .trailing)
             .opacity(isHovered ? 1 : 0.6)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, scale.space(10))
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
@@ -418,17 +454,18 @@ private struct AppRow: View {
     private var appIcon: some View {
         Group {
             let icon = NSWorkspace.shared.icon(forFile: app.path)
+            let side = scale.scaled(32)
             Image(nsImage: icon)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 32, height: 32)
+                .frame(width: side, height: side)
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
     }
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold))
+            .font(scale.badge)
             .foregroundStyle(color)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)

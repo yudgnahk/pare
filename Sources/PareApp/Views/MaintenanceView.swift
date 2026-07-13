@@ -3,6 +3,7 @@ import PareCore
 
 struct MaintenanceView: View {
     @StateObject private var viewModel = MaintenanceViewModel()
+    @Environment(\.displayScale) private var scale
 
     var body: some View {
         ZStack {
@@ -29,10 +30,10 @@ struct MaintenanceView: View {
             HStack(alignment: .center, spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Maintenance")
-                        .font(AppTheme.TypeScale.heroTitle)
+                        .font(scale.heroTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                     Text("One-shot system actions — no file deletions")
-                        .font(AppTheme.TypeScale.body)
+                        .font(scale.body)
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -66,6 +67,7 @@ struct MaintenanceView: View {
 private struct ActionCard: View {
     let action: MaintenanceAction
     @ObservedObject var viewModel: MaintenanceViewModel
+    @Environment(\.displayScale) private var scale
 
     @State private var logExpanded = false
 
@@ -102,7 +104,7 @@ private struct ActionCard: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(action.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(scale.font(14, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -119,7 +121,7 @@ private struct ActionCard: View {
 
     private var descriptionRow: some View {
         Text(action.description)
-            .font(.system(size: 12, weight: .medium))
+            .font(scale.caption)
             .foregroundStyle(AppTheme.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.top, 10)

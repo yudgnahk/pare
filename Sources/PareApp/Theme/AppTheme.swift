@@ -94,13 +94,16 @@ enum AppTheme {
         static let defaultHeight: CGFloat = 780
     }
 
-    // MARK: - Typography
+    // MARK: - Typography (static fallbacks)
+    //
+    // Prefer `@Environment(\.displayScale)` for live window scaling.
+    // These match the compact (1.0×) baseline for previews / non-injected contexts.
 
     enum TypeScale {
-        static let heroTitle: Font = .system(size: 28, weight: .bold, design: .rounded)
-        static let sectionTitle: Font = .system(size: 18, weight: .bold, design: .rounded)
-        static let body: Font = .system(size: 13, weight: .medium)
-        static let caption: Font = .system(size: 12, weight: .medium)
-        static let micro: Font = .system(size: 11, weight: .semibold)
+        static let heroTitle: Font = DisplayScale.compact.heroTitle
+        static let sectionTitle: Font = DisplayScale.compact.sectionTitle
+        static let body: Font = DisplayScale.compact.body
+        static let caption: Font = DisplayScale.compact.caption
+        static let micro: Font = DisplayScale.compact.micro
     }
 }
