@@ -127,7 +127,8 @@ Safe to remove with review:
 
 Correct cleanup method for build cache:
 - `docker builder prune --filter "until=168h"` — clears build cache older than 7 days, never touches volumes
-- `docker system prune --filter "until=168h"` — removes unused images/containers/networks; add `--volumes` only if you want to remove volumes too (destructive for databases)
+- `docker system prune -f` — unused images/containers/networks/build cache; **Pare never passes `--volumes`**
+- **Never** Trash `Docker.raw` or run volume prune from Pare — see `docs/features/docker-safety.md`
 
 ## Implementation History
 

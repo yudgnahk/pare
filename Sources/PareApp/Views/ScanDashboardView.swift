@@ -5,7 +5,6 @@ import PareCore
 struct ScanDashboardView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
     @StateObject private var exclusionListViewModel = ExclusionListViewModel()
-    @StateObject private var projectRootsViewModel = ProjectRootsViewModel()
     @State private var showSettings = false
     @State private var showProjectPaths = false
 
@@ -18,7 +17,6 @@ struct ScanDashboardView: View {
                     header
                     cleanupStatusBanner
                     metrics
-                    projectRootsSection
                     deviceBackupsSection
                     summaries
                     byToolBreakdown
@@ -40,14 +38,6 @@ struct ScanDashboardView: View {
         }
         .sheet(isPresented: $showProjectPaths) {
             ProjectScanPathsView()
-        }
-    }
-
-    @ViewBuilder
-    private var projectRootsSection: some View {
-        // Show the card when discovery has run (so user sees results) OR there are manual entries.
-        if projectRootsViewModel.hasRunDiscovery || projectRootsViewModel.hasAnyRoots {
-            ProjectRootsCard(viewModel: projectRootsViewModel)
         }
     }
 
