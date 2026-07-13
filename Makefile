@@ -6,7 +6,7 @@ PROFILE ?= baseline
 TOP ?= 20
 ARGS ?=
 
-.PHONY: help build test run start run-app run-baseline run-developer run-designer run-video-builder release clean
+.PHONY: help build test run start run-app run-baseline run-developer run-designer run-video-builder icon release clean
 
 help:
 	@printf "Targets:\n"
@@ -19,6 +19,7 @@ help:
 	@printf "  make run-developer        Run developer scan\n"
 	@printf "  make run-designer         Run designer scan\n"
 	@printf "  make run-video-builder    Run video-builder scan\n"
+	@printf "  make icon                 Generate AppIcon.icns from scripts/icon.svg (macOS 13+ only)\n"
 	@printf "  make release              Build signed + notarized DMG (requires env vars — see scripts/release.sh)\n"
 	@printf "  make clean                Remove .build artifacts\n"
 	@printf "\nExamples:\n"
@@ -37,8 +38,10 @@ start: run-baseline
 
 run-app: build
 	mkdir -p $(APP_BUNDLE)/Contents/MacOS
+	mkdir -p $(APP_BUNDLE)/Contents/Resources
 	cp .build/debug/PareApp $(APP_BUNDLE)/Contents/MacOS/PareApp
 	cp scripts/AppInfo.plist $(APP_BUNDLE)/Contents/Info.plist
+	@[ -f scripts/AppIcon.icns ] && cp scripts/AppIcon.icns $(APP_BUNDLE)/Contents/Resources/ || true
 	open $(APP_BUNDLE)
 
 run:
@@ -55,6 +58,9 @@ run-designer:
 
 run-video-builder:
 	swift run $(APP) --profile video-builder --top $(TOP) $(ARGS)
+
+icon:
+	bash scripts/generate-icon.sh
 
 release:
 	bash scripts/release.sh

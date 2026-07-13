@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Pare app icon — source SVG 1024×1024.
+     Generate AppIcon.icns:  bash scripts/generate-icon.sh          -->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024"
+     xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Background gradient (top-left → bottom-right marine → ink) -->
+    <linearGradient id="bg" x1="10%" y1="0%" x2="90%" y2="100%">
+      <stop offset="0%"   stop-color="#1C3348"/>
+      <stop offset="100%" stop-color="#0A1420"/>
+    </linearGradient>
+
+    <!-- Disk radial gradient (highlight at top-left) -->
+    <radialGradient id="disk" cx="36%" cy="28%" r="68%">
+      <stop offset="0%"   stop-color="#9AECE5"/>
+      <stop offset="45%"  stop-color="#5CC8BC"/>
+      <stop offset="100%" stop-color="#1F7870"/>
+    </radialGradient>
+
+    <!-- Ambient highlight overlay on disk -->
+    <radialGradient id="highlight" cx="38%" cy="25%" r="55%">
+      <stop offset="0%"   stop-color="rgba(255,255,255,0.22)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Icon background (macOS rounded-rect proportions) -->
+  <rect width="1024" height="1024" rx="222" fill="url(#bg)"/>
+
+  <!-- Disk shape: circle cx=512 cy=512 r=358, lower-right segment removed.
+       Point A (22° from east): (844, 646)
+       Point B (117° from east): (349, 831)
+       Large arc counter-clockwise from A to B (265° of the circle);
+       Z closes with the chord — the paring cut. -->
+  <path d="M 844 646 A 358 358 0 1 0 349 831 Z"
+        fill="url(#disk)"
+        stroke="rgba(255,255,255,0.09)"
+        stroke-width="10"/>
+
+  <!-- Ambient highlight on disk surface -->
+  <path d="M 844 646 A 358 358 0 1 0 349 831 Z"
+        fill="url(#highlight)"/>
+
+  <!-- Shadow on cut face (depth beneath the bright edge) -->
+  <line x1="341" y1="838" x2="851" y2="653"
+        stroke="rgba(0,0,0,0.55)"
+        stroke-width="26"
+        stroke-linecap="round"/>
+
+  <!-- Highlight on cut face — the freshly-cut edge catching light -->
+  <line x1="349" y1="831" x2="844" y2="646"
+        stroke="rgba(220,248,246,0.78)"
+        stroke-width="12"
+        stroke-linecap="round"/>
+</svg>
