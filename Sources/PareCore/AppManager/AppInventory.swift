@@ -31,6 +31,18 @@ public actor AppInventory {
             apps.append(app)
         }
 
+        // Mark Homebrew-managed apps using Caskroom receipts (cheap).
+        let caskTokens = HomebrewCaskroom.installedTokens()
+        for i in apps.indices {
+            if HomebrewCaskroom.manages(
+                appName: apps[i].name,
+                path: apps[i].path,
+                installedTokens: caskTokens
+            ) {
+                apps[i].isHomebrewManaged = true
+            }
+        }
+
         // Fetch sizes concurrently — expensive disk walk, do it in parallel
         var sized: [InstalledApp] = []
         await withTaskGroup(of: InstalledApp.self) { group in

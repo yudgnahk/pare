@@ -19,6 +19,10 @@ public actor MigrationAdvisor {
 
         guard let catalog = await fetchCatalog() else { return [] }
 
+        // Already-adopted / installed casks must never reappear in the migrate list.
+        // (AppInventory may also set isHomebrewManaged; this is the definitive gate.)
+        let installedCaskTokens = HomebrewCaskroom.installedTokens()
+
         // Build lookup sets from cask catalog
         var appNameToCask: [String: String] = [:]   // lowercase app name → cask token
         var bundleIDToCask: [String: String] = [:]  // bundle ID → cask token
@@ -53,6 +57,15 @@ public actor MigrationAdvisor {
         for app in installedApps {
             guard !app.isHomebrewManaged, !app.isSystemApp else { continue }
 
+            // Path already under Caskroom → managed even if flag is stale.
+            if HomebrewCaskroom.manages(
+                appName: app.name,
+                path: app.path,
+                installedTokens: installedCaskTokens
+            ) {
+                continue
+            }
+
             var matchedToken: String?
 
             // Match by bundle ID first (most precise)
@@ -68,7 +81,20 @@ public actor MigrationAdvisor {
                 }
             }
 
-            guard let token = matchedToken, !seen.contains(token) else { continue }
+            // Also try normalized path basename (e.g. "Antigravity.app")
+            if matchedToken == nil {
+                let base = URL(fileURLWithPath: app.path)
+                    .deletingPathExtension()
+                    .lastPathComponent
+                    .lowercased()
+                if let token = appNameToCask[base] {
+                    matchedToken = token
+                }
+            }
+
+            guard let token = matchedToken,
+                  !seen.contains(token),
+                  !installedCaskTokens.contains(token) else { continue }
             seen.insert(token)
 
             results.append(MigrationCandidate(
