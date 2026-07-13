@@ -18,6 +18,8 @@ struct PareApp: App {
                     maxHeight: .infinity
                 )
         }
+        // Full-bleed window like App B — no opaque black title bar strip.
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .defaultSize(width: AppTheme.Window.defaultWidth, height: AppTheme.Window.defaultHeight)
         .commands {
@@ -48,16 +50,13 @@ struct ContentView: View {
                 ZStack {
                     AppBackgroundView()
                     detailContent
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .move(edge: .trailing)).combined(with: .scale(scale: 0.98)),
-                            removal: .opacity
-                        ))
                         .id(selection)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(AppTheme.Motion.standard, value: selection)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Content paints under traffic lights (hidden title bar).
+            .ignoresSafeArea()
         }
     }
 
