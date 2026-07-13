@@ -7,10 +7,14 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Leave room for window traffic lights over the sidebar (hidden title bar).
+            Color.clear
+                .frame(height: 12)
+
             brandHeader
                 .padding(.horizontal, 16)
-                .padding(.top, 20)
-                .padding(.bottom, 18)
+                .padding(.top, 28)
+                .padding(.bottom, 14)
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {

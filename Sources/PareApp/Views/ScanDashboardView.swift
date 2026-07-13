@@ -38,8 +38,7 @@ struct ScanDashboardView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(AppTheme.Motion.gentle, value: showsHero)
-        .animation(AppTheme.Motion.standard, value: viewModel.isScanning)
+        // No global animations on the results tree — they re-run during scroll and lag hard.
         .sheet(isPresented: $viewModel.showCleanConfirmation) {
             QuickCleanConfirmationSheet(viewModel: viewModel)
         }
@@ -85,7 +84,6 @@ struct ScanDashboardView: View {
                         Text(viewModel.formattedBytes(viewModel.totalReclaimableBytes))
                             .font(scale.font(36, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.textPrimary)
-                            .animation(AppTheme.Motion.standard, value: viewModel.totalReclaimableBytes)
 
                         Text("Reclaimable across \(viewModel.summaries.count) categories")
                             .font(scale.body)
@@ -355,20 +353,13 @@ struct ScanDashboardView: View {
                     )
                 } else {
                     VStack(spacing: 10) {
-                        ForEach(Array(viewModel.summaries.enumerated()), id: \.element.id) { index, summary in
+                        ForEach(viewModel.summaries) { summary in
                             CategorySummaryRow(
                                 title: summary.category.rawValue,
                                 bytesText: viewModel.formattedBytes(summary.reclaimableBytes),
                                 fileCount: summary.fileCount,
                                 share: viewModel.summaryShare(for: summary.reclaimableBytes),
                                 color: color(for: summary.category)
-                            )
-                            .opacity(viewModel.resultsVisible ? 1 : 0)
-                            .offset(y: viewModel.resultsVisible ? 0 : 6)
-                            .animation(
-                                .spring(response: 0.36, dampingFraction: 0.85)
-                                .delay(Double(index) * 0.05),
-                                value: viewModel.resultsVisible
                             )
                         }
                     }
@@ -392,7 +383,7 @@ struct ScanDashboardView: View {
                     )
                 } else {
                     LazyVStack(spacing: 10) {
-                        ForEach(Array(viewModel.topFindings.prefix(12).enumerated()), id: \.element.id) { index, finding in
+                        ForEach(viewModel.topFindings.prefix(12)) { finding in
                             TopFileRow(
                                 path: finding.path,
                                 category: finding.category.rawValue,
@@ -401,13 +392,6 @@ struct ScanDashboardView: View {
                                 sizeText: viewModel.formattedBytes(finding.sizeBytes),
                                 lastUsedText: viewModel.formattedDate(finding.lastUsed),
                                 onExclude: { viewModel.exclude(path: finding.path) }
-                            )
-                            .opacity(viewModel.resultsVisible ? 1 : 0)
-                            .scaleEffect(viewModel.resultsVisible ? 1 : 0.98)
-                            .animation(
-                                .spring(response: 0.38, dampingFraction: 0.86)
-                                .delay(Double(index) * 0.04),
-                                value: viewModel.resultsVisible
                             )
                         }
                     }
@@ -421,7 +405,6 @@ struct ScanDashboardView: View {
         if !viewModel.perToolRollups.isEmpty {
             ByToolBreakdownCard(
                 rollups: viewModel.perToolRollups,
-                resultsVisible: viewModel.resultsVisible,
                 formatBytes: viewModel.formattedBytes
             )
         }
@@ -455,7 +438,7 @@ struct ScanDashboardView: View {
                     )
                 } else {
                     VStack(spacing: 14) {
-                        ForEach(Array(viewModel.largeFilesByCategory.enumerated()), id: \.element.id) { index, group in
+                        ForEach(viewModel.largeFilesByCategory) { group in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text(group.category.rawValue)
@@ -480,13 +463,6 @@ struct ScanDashboardView: View {
                                     )
                                 }
                             }
-                            .opacity(viewModel.resultsVisible ? 1 : 0)
-                            .offset(y: viewModel.resultsVisible ? 0 : 8)
-                            .animation(
-                                .spring(response: 0.37, dampingFraction: 0.86)
-                                .delay(Double(index) * 0.06),
-                                value: viewModel.resultsVisible
-                            )
                         }
                     }
                 }
@@ -770,7 +746,6 @@ private struct DeepCleanConfirmationSheet: View {
 
 private struct ByToolBreakdownCard: View {
     let rollups: [ScanDashboardViewModel.ToolRollupItem]
-    let resultsVisible: Bool
     let formatBytes: (Int64) -> String
     @Environment(\.displayScale) private var scale
 
@@ -784,7 +759,7 @@ private struct ByToolBreakdownCard: View {
                     .foregroundStyle(AppTheme.textPrimary)
 
                 VStack(spacing: 8) {
-                    ForEach(Array(rollups.enumerated()), id: \.element.id) { index, rollup in
+                    ForEach(rollups) { rollup in
                         ToolRollupRow(
                             rollup: rollup,
                             isExpanded: expandedApps.contains(rollup.app),
@@ -796,13 +771,6 @@ private struct ByToolBreakdownCard: View {
                                 expandedApps.insert(rollup.app)
                             }
                         }
-                        .opacity(resultsVisible ? 1 : 0)
-                        .offset(y: resultsVisible ? 0 : 6)
-                        .animation(
-                            .spring(response: 0.36, dampingFraction: 0.85)
-                            .delay(Double(index) * 0.05),
-                            value: resultsVisible
-                        )
                     }
                 }
             }
@@ -948,7 +916,7 @@ private struct ToolRollupRow: View {
             }
         }
         .clipped()
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: isExpanded)
+        // Expand/collapse without heavy springs during scroll.
     }
 }
 
