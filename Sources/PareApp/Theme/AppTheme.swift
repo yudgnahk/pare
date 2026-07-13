@@ -51,7 +51,8 @@ enum AppTheme {
         static let xxl: CGFloat = 32
         static let pageHorizontal: CGFloat = 28
         static let pageVertical: CGFloat = 22
-        static let sidebarWidth: CGFloat = 220
+        /// Fixed left nav column — always visible (not collapsible SplitView).
+        static let sidebarWidth: CGFloat = 232
     }
 
     // MARK: - Radius
