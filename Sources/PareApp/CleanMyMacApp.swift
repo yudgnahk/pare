@@ -11,7 +11,6 @@ struct PareApp: App {
             ContentView(scanViewModel: scanViewModel, historyViewModel: historyViewModel)
                 .environmentObject(textZoom)
                 .modifier(TextZoomKeyMonitor(zoom: textZoom))
-                // Declare a floor that fits 13" MacBooks; content expands to full screen.
                 .frame(
                     minWidth: AppTheme.Window.minWidth,
                     maxWidth: .infinity,
@@ -30,41 +29,51 @@ struct PareApp: App {
 struct ContentView: View {
     @ObservedObject var scanViewModel: ScanDashboardViewModel
     @ObservedObject var historyViewModel: HistoryViewModel
+    @State private var selection: AppDestination = .smartScan
 
     var body: some View {
         DisplayScaleReader {
-            TabView {
-                ScanDashboardView(viewModel: scanViewModel)
-                    .tabItem {
-                        Label("Scan", systemImage: "magnifyingglass")
-                    }
-
-                AppManagerView()
-                    .tabItem {
-                        Label("Apps", systemImage: "apps.iphone")
-                    }
-
-                HomebrewManagerView()
-                    .tabItem {
-                        Label("Homebrew", systemImage: "shippingbox")
-                    }
-
-                DiskAnalyzerView()
-                    .tabItem {
-                        Label("Disk", systemImage: "externaldrive.badge.magnifyingglass")
-                    }
-
-                MaintenanceView()
-                    .tabItem {
-                        Label("Maintenance", systemImage: "wrench.and.screwdriver")
-                    }
-
-                HistoryView(viewModel: historyViewModel)
-                    .tabItem {
-                        Label("History", systemImage: "clock.arrow.circlepath")
-                    }
+            NavigationSplitView {
+                SidebarView(selection: $selection)
+                    .navigationSplitViewColumnWidth(
+                        min: 200,
+                        ideal: AppTheme.Spacing.sidebarWidth,
+                        max: 280
+                    )
+            } detail: {
+                ZStack {
+                    AppBackgroundView()
+                    detailContent
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .trailing)).combined(with: .scale(scale: 0.98)),
+                            removal: .opacity
+                        ))
+                        .id(selection)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(AppTheme.Motion.standard, value: selection)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationSplitViewStyle(.balanced)
+        }
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        switch selection {
+        case .smartScan:
+            ScanDashboardView(viewModel: scanViewModel)
+        case .apps:
+            AppManagerView()
+        case .homebrew:
+            HomebrewManagerView()
+        case .disk:
+            DiskAnalyzerView()
+        case .maintenance:
+            MaintenanceView()
+        case .history:
+            HistoryView(viewModel: historyViewModel)
+        case .settings:
+            SettingsView()
         }
     }
 }

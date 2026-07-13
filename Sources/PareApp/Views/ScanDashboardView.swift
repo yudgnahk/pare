@@ -9,27 +9,37 @@ struct ScanDashboardView: View {
     @State private var showSettings = false
     @State private var showProjectPaths = false
 
+    /// Calm hero when idle or first-time scan; rich results after success.
+    private var showsHero: Bool {
+        switch viewModel.state {
+        case .idle:
+            return true
+        case .scanning:
+            return viewModel.summaries.isEmpty
+        case .success:
+            return false
+        }
+    }
+
     var body: some View {
         ZStack {
-            AppBackgroundView()
+            // Background comes from the shell; keep transparent fill for transitions.
+            Color.clear
 
-            ScrollView {
-                VStack(spacing: AppTheme.Spacing.xl) {
-                    header
-                    cleanupStatusBanner
-                    metrics
-                    deviceBackupsSection
-                    summaries
-                    byToolBreakdown
-                    largeFilesByCategory
-                    topFiles
+            if showsHero {
+                HeroScanView(viewModel: viewModel) {
+                    exclusionListViewModel.load()
+                    showSettings = true
                 }
-                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                .padding(.vertical, AppTheme.Spacing.pageVertical)
-                .frame(maxWidth: .infinity)
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            } else {
+                resultsScroll
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(AppTheme.Motion.gentle, value: showsHero)
+        .animation(AppTheme.Motion.standard, value: viewModel.isScanning)
         .sheet(isPresented: $viewModel.showCleanConfirmation) {
             QuickCleanConfirmationSheet(viewModel: viewModel)
         }
@@ -44,26 +54,42 @@ struct ScanDashboardView: View {
         }
     }
 
-    @ViewBuilder
-    private var deviceBackupsSection: some View {
-        if !viewModel.deviceBackupFindings.isEmpty {
-            DeviceBackupsCard(viewModel: viewModel)
+    private var resultsScroll: some View {
+        ScrollView {
+            VStack(spacing: AppTheme.Spacing.xl) {
+                resultsHeader
+                cleanupStatusBanner
+                metrics
+                deviceBackupsSection
+                summaries
+                byToolBreakdown
+                largeFilesByCategory
+                topFiles
+            }
+            .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+            .padding(.vertical, AppTheme.Spacing.pageVertical)
+            .frame(maxWidth: .infinity)
         }
     }
 
-    private var header: some View {
+    /// Compact post-scan header with reclaimable hero metric + clean actions.
+    private var resultsHeader: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
+                HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Pare")
-                            .font(scale.heroTitle)
-                            .foregroundStyle(AppTheme.textPrimary)
+                        Text("Smart Scan")
+                            .font(scale.font(13, weight: .semibold))
+                            .foregroundStyle(AppTheme.accent)
 
-                        Text("Smart cleanup insights for your system and dev workloads")
+                        Text(viewModel.formattedBytes(viewModel.totalReclaimableBytes))
+                            .font(scale.font(36, weight: .bold, design: .rounded))
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .animation(AppTheme.Motion.standard, value: viewModel.totalReclaimableBytes)
+
+                        Text("Reclaimable across \(viewModel.summaries.count) categories")
                             .font(scale.body)
                             .foregroundStyle(AppTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
 
                         HStack(spacing: 8) {
                             Image(systemName: "clock")
@@ -98,12 +124,10 @@ struct ScanDashboardView: View {
                     }
                 }
 
-                // Actions wrap so Scan + Quick/Deep Clean never overflow on 13–14".
                 FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
                     if viewModel.isScanning {
                         ScanPulseView()
                             .frame(width: 18, height: 18)
-                            .padding(.trailing, 2)
 
                         SecondaryActionButton(title: "Cancel") {
                             viewModel.cancelScan()
@@ -111,7 +135,7 @@ struct ScanDashboardView: View {
                     }
 
                     PrimaryActionButton(
-                        title: "Scan Now",
+                        title: viewModel.isScanning ? "Scanning…" : "Rescan",
                         systemImage: "sparkles",
                         isLoading: viewModel.isScanning,
                         style: .compact
@@ -155,6 +179,13 @@ struct ScanDashboardView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var deviceBackupsSection: some View {
+        if !viewModel.deviceBackupFindings.isEmpty {
+            DeviceBackupsCard(viewModel: viewModel)
         }
     }
 

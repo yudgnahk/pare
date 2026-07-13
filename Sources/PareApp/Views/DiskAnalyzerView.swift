@@ -7,7 +7,7 @@ struct DiskAnalyzerView: View {
 
     var body: some View {
         ZStack {
-            AppBackgroundView()
+            // Shell provides AppBackgroundView.
 
             VStack(spacing: 0) {
                 header

@@ -20,7 +20,7 @@ struct HomebrewManagerView: View {
 
     var body: some View {
         ZStack {
-            AppBackgroundView()
+            // Shell provides AppBackgroundView.
 
             if !viewModel.isInstalled {
                 notInstalledPlaceholder
@@ -52,9 +52,17 @@ struct HomebrewManagerView: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppTheme.accent.opacity(0.14))
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "shippingbox")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(AppTheme.accent)
+                }
+                VStack(alignment: .leading, spacing: 3) {
                     Text("Homebrew Manager")
                         .font(scale.heroTitle)
                         .foregroundStyle(AppTheme.textPrimary)
@@ -63,8 +71,9 @@ struct HomebrewManagerView: View {
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                headerActions
+                Spacer(minLength: 0)
             }
+            headerActions
         }
         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
         .padding(.top, AppTheme.Spacing.pageVertical)

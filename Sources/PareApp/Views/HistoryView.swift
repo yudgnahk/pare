@@ -9,21 +9,14 @@ struct HistoryView: View {
     @State private var expandedIDs: Set<UUID> = []
 
     var body: some View {
-        ZStack {
-            AppBackgroundView()
-
+        ModuleChrome(
+            title: "Cleanup History",
+            subtitle: "Review and restore previously cleaned items.",
+            systemImage: "clock.arrow.circlepath"
+        ) {
             VStack(spacing: 0) {
-                // Header
+                // Header actions
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Cleanup History")
-                            .font(scale.heroTitle)
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Review and restore previously cleaned items.")
-                            .font(scale.body)
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
 
                     if !viewModel.transactions.isEmpty {
                         FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
@@ -64,8 +57,7 @@ struct HistoryView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                .padding(.top, AppTheme.Spacing.pageVertical)
-                .padding(.bottom, AppTheme.Spacing.lg)
+                .padding(.bottom, AppTheme.Spacing.md)
 
                 if let error = viewModel.errorMessage {
                     HStack(spacing: 10) {
