@@ -196,22 +196,41 @@ final class HomebrewManagerViewModel: ObservableObject {
     func migrate(candidate: MigrationCandidate) {
         runOperation(
             label: "Adopting \(candidate.appName)…",
-            args: ["install", "--cask", "--adopt", candidate.caskToken]
+            args: ["install", "--cask", "--adopt", candidate.caskToken],
+            onSuccess: { [weak self] in
+                // Drop immediately so the row disappears without waiting for Done.
+                self?.migrationCandidates.removeAll { $0.caskToken == candidate.caskToken }
+            }
         )
     }
 
     func dismissOperation() {
+        let shouldReload: Bool
+        if case .succeeded = operationState {
+            shouldReload = true
+        } else if case .failed = operationState {
+            shouldReload = true
+        } else {
+            shouldReload = false
+        }
+
         operationState = .idle
         operationLog = []
         showOperationSheet = false
 
-        // Reload after any operation completes
-        if loadState == .loaded { load() }
+        // Reload inventory + migrate list so adopted casks stay gone after Done.
+        if shouldReload, loadState == .loaded || loadState == .idle {
+            load()
+        }
     }
 
     // MARK: - Private
 
-    private func runOperation(label: String, args: [String]) {
+    private func runOperation(
+        label: String,
+        args: [String],
+        onSuccess: (() -> Void)? = nil
+    ) {
         operationLog = []
         operationState = .running(label: label)
         showOperationSheet = true
@@ -222,6 +241,7 @@ final class HomebrewManagerViewModel: ObservableObject {
                     self.operationLog.append(line)
                 }
                 self.operationState = .succeeded
+                onSuccess?()
             } catch let error as BrewError {
                 self.operationState = .failed(error.localizedDescription)
             } catch {
