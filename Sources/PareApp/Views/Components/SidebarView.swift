@@ -57,10 +57,10 @@ struct SidebarView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Pare")
-                    .font(scale.font(17, weight: .bold, design: .rounded))
+                    .font(scale.font(16, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text("Surgical cleanup")
-                    .font(scale.font(10, weight: .medium))
+                    .font(scale.font(11, weight: .medium))
                     .foregroundStyle(AppTheme.textTertiary)
             }
             Spacer(minLength: 0)
@@ -72,8 +72,8 @@ struct SidebarView: View {
     private func sectionBlock(_ section: SidebarSection) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(section.rawValue.uppercased())
-                .font(scale.font(10, weight: .bold, design: .rounded))
-                .tracking(1.0)
+                .font(scale.font(11, weight: .bold, design: .rounded))
+                .tracking(0.9)
                 .foregroundStyle(AppTheme.textTertiary)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 4)
@@ -93,12 +93,12 @@ struct SidebarView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: destination.systemImage)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .frame(width: 20, alignment: .center)
                     .foregroundStyle(selected ? AppTheme.accent : AppTheme.textSecondary)
 
                 Text(destination.title)
-                    .font(scale.font(13, weight: selected ? .semibold : .medium))
+                    .font(scale.font(14, weight: selected ? .semibold : .medium))
                     .foregroundStyle(selected ? AppTheme.textPrimary : AppTheme.textSecondary)
                     .lineLimit(1)
 

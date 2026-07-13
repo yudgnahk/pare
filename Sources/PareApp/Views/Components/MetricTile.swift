@@ -12,8 +12,8 @@ struct MetricTile: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text(label.uppercased())
-                        .font(scale.font(11, weight: .bold, design: .rounded))
-                        .tracking(1.1)
+                        .font(scale.micro)
+                        .tracking(1.0)
                         .foregroundStyle(AppTheme.textSecondary)
                         .lineLimit(1)
 
@@ -26,14 +26,14 @@ struct MetricTile: View {
                 }
 
                 Text(value)
-                    .font(scale.font(30, weight: .bold, design: .rounded))
+                    .font(scale.font(24, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.65)
+                    .minimumScaleFactor(0.7)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(detail)
-                    .font(scale.caption)
+                    .font(scale.body)
                     .foregroundStyle(AppTheme.textSecondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)

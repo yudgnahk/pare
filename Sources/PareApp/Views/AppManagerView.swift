@@ -67,10 +67,10 @@ struct AppManagerView: View {
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("App Manager")
-                        .font(scale.heroTitle)
+                        .font(scale.pageTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                     Text("Browse, update, and cleanly uninstall installed applications")
-                        .font(scale.body)
+                        .font(scale.caption)
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

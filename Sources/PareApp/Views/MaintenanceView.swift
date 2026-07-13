@@ -37,10 +37,10 @@ struct MaintenanceView: View {
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text("Maintenance")
-                    .font(scale.heroTitle)
+                    .font(scale.pageTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                 Text("One-shot system actions — no file deletions")
-                    .font(scale.body)
+                    .font(scale.caption)
                     .foregroundStyle(AppTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -133,9 +133,9 @@ private struct ActionCard: View {
     private var metaRow: some View {
         HStack(spacing: 6) {
             Image(systemName: "clock")
-                .font(.system(size: 10))
+                .font(scale.font(11))
             Text("≈ \(action.estimatedSeconds)s")
-                .font(.system(size: 11, weight: .medium))
+                .font(scale.caption)
         }
         .foregroundStyle(AppTheme.textSecondary.opacity(0.7))
         .padding(.top, 6)

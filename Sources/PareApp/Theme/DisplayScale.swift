@@ -65,19 +65,33 @@ struct DisplayScale: Equatable {
     }
 
     // MARK: - Scaled fonts
+    //
+    // Hierarchy is intentionally tight so module titles don’t dwarf body/list text.
+    // pageTitle (modules) < heroTitle (welcome only); body/rows sit close to section.
 
-    var heroTitle: Font { font(28, weight: .bold, design: .rounded) }
-    var sectionTitle: Font { font(18, weight: .bold, design: .rounded) }
-    var body: Font { font(13, weight: .medium) }
-    var caption: Font { font(12, weight: .medium) }
-    var micro: Font { font(11, weight: .semibold) }
-    var rowTitle: Font { font(13, weight: .semibold) }
-    var rowMeta: Font { font(11, weight: .regular) }
-    var rowMono: Font { font(12, weight: .regular, design: .monospaced) }
-    var tableHeader: Font { font(11, weight: .semibold) }
-    var chip: Font { font(13, weight: .bold, design: .rounded) }
-    var chipSub: Font { font(11, weight: .medium) }
-    var badge: Font { font(9, weight: .bold) }
+    /// Welcome / marketing headline only (Smart Scan home).
+    var heroTitle: Font { font(26, weight: .bold, design: .rounded) }
+    /// Module screen titles (Apps, Homebrew, Settings, …).
+    var pageTitle: Font { font(21, weight: .bold, design: .rounded) }
+    /// Card / section headings inside a page.
+    var sectionTitle: Font { font(16, weight: .semibold, design: .rounded) }
+    /// Primary readable content.
+    var body: Font { font(14, weight: .medium) }
+    /// Secondary labels under titles, filter text.
+    var caption: Font { font(13, weight: .medium) }
+    /// Compact chips, badges, meta labels.
+    var micro: Font { font(12, weight: .semibold) }
+    /// List / table primary row text.
+    var rowTitle: Font { font(14, weight: .semibold) }
+    /// List secondary line (dates, descriptions).
+    var rowMeta: Font { font(12, weight: .regular) }
+    /// Monospaced version / path fragments in rows.
+    var rowMono: Font { font(13, weight: .regular, design: .monospaced) }
+    /// Column headers in Apps / Homebrew tables.
+    var tableHeader: Font { font(12, weight: .semibold) }
+    var chip: Font { font(14, weight: .bold, design: .rounded) }
+    var chipSub: Font { font(12, weight: .medium) }
+    var badge: Font { font(10, weight: .bold) }
 
     func font(
         _ base: CGFloat,

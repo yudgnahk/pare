@@ -78,11 +78,11 @@ struct ScanDashboardView: View {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Smart Scan")
-                            .font(scale.font(13, weight: .semibold))
+                            .font(scale.caption)
                             .foregroundStyle(AppTheme.accent)
 
                         Text(viewModel.formattedBytes(viewModel.totalReclaimableBytes))
-                            .font(scale.font(36, weight: .bold, design: .rounded))
+                            .font(scale.font(28, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.textPrimary)
 
                         Text("Reclaimable across \(viewModel.summaries.count) categories")
@@ -95,7 +95,7 @@ struct ScanDashboardView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
                         }
-                        .font(scale.micro)
+                        .font(scale.caption)
                         .foregroundStyle(AppTheme.textSecondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -418,7 +418,7 @@ struct ScanDashboardView: View {
                     .foregroundStyle(AppTheme.textPrimary)
 
                 Text("Only files larger than \(viewModel.formattedBytes(ScanPolicy.largeFileThresholdBytes)) are shown.")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(scale.body)
                     .foregroundStyle(AppTheme.textSecondary)
 
                 if let feedback = viewModel.revealFeedback {
@@ -442,11 +442,11 @@ struct ScanDashboardView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text(group.category.rawValue)
-                                        .font(.system(size: 14, weight: .bold))
+                                        .font(scale.rowTitle)
                                         .foregroundStyle(AppTheme.textPrimary)
                                     Spacer()
                                     Text(viewModel.formattedBytes(group.totalBytes))
-                                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                                        .font(scale.font(14, weight: .bold, design: .rounded))
                                         .foregroundStyle(AppTheme.textSecondary)
                                 }
 
@@ -783,6 +783,7 @@ private struct ToolRollupRow: View {
     let isExpanded: Bool
     let formatBytes: (Int64) -> String
     let onTap: () -> Void
+    @Environment(\.displayScale) private var scale
 
     private var toolIcon: String {
         switch rollup.app {
@@ -812,28 +813,28 @@ private struct ToolRollupRow: View {
             Button(action: onTap) {
                 HStack(spacing: 12) {
                     Image(systemName: toolIcon)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(scale.font(14, weight: .semibold))
                         .foregroundStyle(AppTheme.accent)
                         .frame(width: 20)
 
                     Text(rollup.app)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(scale.rowTitle)
                         .foregroundStyle(AppTheme.textPrimary)
 
                     Spacer()
 
                     Text("\(Int(rollup.share * 100))%")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(scale.font(12, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.textSecondary)
-                        .frame(width: 34, alignment: .trailing)
+                        .frame(width: 40, alignment: .trailing)
 
                     Text(formatBytes(rollup.totalBytes))
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(scale.font(14, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .frame(width: 72, alignment: .trailing)
+                        .frame(width: 80, alignment: .trailing)
 
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(scale.micro)
                         .foregroundStyle(AppTheme.textSecondary)
                 }
                 .padding(.horizontal, 12)
@@ -844,7 +845,6 @@ private struct ToolRollupRow: View {
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Share bar + file count header
                     HStack(spacing: 10) {
                         Spacer().frame(width: 32)
                         GeometryReader { geo in
@@ -859,9 +859,9 @@ private struct ToolRollupRow: View {
                         }
                         .frame(height: 4)
                         Text("\(rollup.fileCount) file\(rollup.fileCount == 1 ? "" : "s")")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(scale.micro)
                             .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 68, alignment: .trailing)
+                            .frame(width: 72, alignment: .trailing)
                     }
                     .padding(.horizontal, 12)
                     .padding(.top, 8)
@@ -869,7 +869,7 @@ private struct ToolRollupRow: View {
 
                     if rollup.topFiles.isEmpty {
                         Text("No files above 1 MB")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(scale.caption)
                             .foregroundStyle(AppTheme.textSecondary)
                             .padding(.leading, 44)
                             .padding(.bottom, 8)
@@ -878,24 +878,24 @@ private struct ToolRollupRow: View {
                             HStack(spacing: 10) {
                                 Spacer().frame(width: 32)
                                 Image(systemName: "doc.fill")
-                                    .font(.system(size: 10, weight: .regular))
+                                    .font(scale.font(11, weight: .regular))
                                     .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
                                     .frame(width: 12)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(file.fileName)
-                                        .font(.system(size: 12, weight: .semibold))
+                                        .font(scale.caption)
                                         .foregroundStyle(AppTheme.textPrimary)
                                         .lineLimit(1)
                                     Text(file.abbreviatedParent)
-                                        .font(.system(size: 10, weight: .regular))
+                                        .font(scale.rowMeta)
                                         .foregroundStyle(AppTheme.textSecondary)
                                         .lineLimit(1)
                                 }
                                 Spacer()
                                 Text(formatBytes(file.sizeBytes))
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .font(scale.font(13, weight: .bold, design: .rounded))
                                     .foregroundStyle(AppTheme.textPrimary)
-                                    .frame(width: 68, alignment: .trailing)
+                                    .frame(width: 72, alignment: .trailing)
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 5)
@@ -904,7 +904,7 @@ private struct ToolRollupRow: View {
                         let remaining = rollup.fileCount - rollup.topFiles.count
                         if remaining > 0 {
                             Text("and \(remaining) more file\(remaining == 1 ? "" : "s")")
-                                .font(.system(size: 11, weight: .medium))
+                                .font(scale.caption)
                                 .foregroundStyle(AppTheme.textSecondary)
                                 .padding(.leading, 56)
                                 .padding(.top, 2)
@@ -912,11 +912,9 @@ private struct ToolRollupRow: View {
                         }
                     }
                 }
-                .transition(.opacity)
             }
         }
         .clipped()
-        // Expand/collapse without heavy springs during scroll.
     }
 }
 
