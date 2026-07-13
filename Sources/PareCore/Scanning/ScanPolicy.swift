@@ -4,6 +4,53 @@ public enum ScanPolicy {
     public static let largeFileThresholdBytes: Int64 = 50 * 1024 * 1024
     public static let defaultCacheMinAgeSeconds: TimeInterval = 3 * 24 * 60 * 60
 
+    /// Pure reconstructible download/extract caches (npx, npm cacache, Go/Cargo
+    /// module caches, AI tool package caches, Homebrew bottles). No age gate —
+    /// they rebuild on demand (same policy as common Mac cleaners).
+    public static let reconstructibleCacheMinAgeSeconds: TimeInterval = 0
+
+    /// Path markers for pure reconstructible package/toolchain download caches.
+    public static let reconstructibleCachePathMarkers: [String] = [
+        "/.npm/_npx",
+        "/.npm/_cacache",
+        "/library/caches/go-build",
+        "/.cargo/registry/",
+        "/.cargo/git/",
+        "/.rustup/downloads",
+        "/go/pkg/mod/cache",
+        "/.cache/opencode",
+        "/.local/share/opencode/",
+        "/library/caches/homebrew",
+        "/library/caches/yarn",
+        "/library/caches/pnpm",
+        "/library/caches/cocoapods",
+        "/library/caches/org.swift.swiftpm",
+        "/.bun/install/cache",
+    ]
+
+    public static func isReconstructibleCachePath(_ url: URL) -> Bool {
+        let path = url.path.lowercased()
+        return reconstructibleCachePathMarkers.contains { path.contains($0) }
+    }
+
+    /// Age gate for cleanup re-checks. Reconstructible package caches use a short
+    /// floor; other categories keep their default.
+    public static func minimumAgeSeconds(forCleanupPath url: URL, category: ScanCategory) -> TimeInterval? {
+        if isReconstructibleCachePath(url) {
+            return reconstructibleCacheMinAgeSeconds
+        }
+        return defaultMinimumAgeSeconds(for: category)
+    }
+
+    /// `true` when the URL's last activity is at least `minimumAgeSeconds` ago.
+    /// Prefers **mtime** (updates when the cache is used); falls back to creation date.
+    public static func passesUnusedAge(for url: URL, minimumAgeSeconds: TimeInterval) -> Bool {
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
+        guard let values = try? url.resourceValues(forKeys: keys) else { return true }
+        guard let lastUsed = values.contentModificationDate ?? values.creationDate else { return true }
+        return Date().timeIntervalSince(lastUsed) >= minimumAgeSeconds
+    }
+
     // AI dotfile markers (e.g. "/.continue/cache", "/.tabnine") are appended from app-catalog.json
     // at first access — add new AI tools to the catalog, not here.
     private static let lowImpactMarkers: [String] = {
@@ -133,7 +180,9 @@ public enum ScanPolicy {
     public static let developerReviewPathMarkers = [
         "/library/application support/code/user/workspacestorage",
         "/library/application support/code/user/history",
-        "/.vscode/extensions/",
+        // Installed extensions are live installs — only wrong-platform stubs and
+        // duplicate versions are reclaimable, not the whole extension tree as review.
+        "/library/application support/cursor/cachedextensionvsixs",
         "/library/application support/jetbrains/goland",
         "/library/application support/jetbrains/datagrip",
         "/library/application support/jetbrains/intellijidea",
@@ -299,14 +348,46 @@ public enum ScanPolicy {
         "/library/application support/com.operasoftware.opera/default/local storage",
     ]
 
-    /// Directory names that identify project build artifacts (e.g. node_modules, dist, venv).
-    /// Used by `ProjectArtifactRule`, `ProjectArtifactsRule`, and `CleanupEngine` to allow safely
-    /// cleaning user project trees.
-    public static let projectArtifactDirectoryNames: Set<String> = [
-        "node_modules", "target", "venv", ".venv", "__pycache__",
-        "build", ".gradle", ".bundle", "dist", ".next", ".nuxt", ".cache",
-        ".parcel-cache", ".turbo", ".nx",
+    /// Project **dependency trees** (libs/deps at project root).
+    /// These are *not* free space — removing them breaks installs until reinstall.
+    /// Pare must **not** count them as reclaimable. Prefer global caches (`~/.npm`, cargo, etc.).
+    public static let projectDependencyDirectoryNames: Set<String> = [
+        "node_modules",
+        "venv",
+        ".venv",
+        ".bundle",          // Ruby bundler project-local gems
     ]
+
+    /// Project-**local** build/tool caches and outputs (regenerable by build).
+    /// These are the only project dirs Pare surfaces as reclaimable findings.
+    public static let projectLocalArtifactDirectoryNames: Set<String> = [
+        "__pycache__",
+        ".cache",
+        ".parcel-cache",
+        ".turbo",
+        ".nx",
+        ".next",
+        ".nuxt",
+        "target",           // Rust/Java-style build output (not third-party deps)
+        "build",
+        "dist",
+        ".gradle",          // project-local Gradle cache
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "coverage",
+        ".tox",
+        ".eggs",
+    ]
+
+    /// Union used by walkers and cleanup path allow-lists for *local* artifacts only.
+    /// Does **not** include dependency trees (`node_modules`, `.venv`, …).
+    public static let projectArtifactDirectoryNames: Set<String> = projectLocalArtifactDirectoryNames
+
+    /// `true` when the directory name is a dependency tree that must never be reclaimable.
+    public static func isProjectDependencyDirectory(_ name: String) -> Bool {
+        projectDependencyDirectoryNames.contains(name.lowercased())
+    }
 
     /// Path markers for polyglot package manager caches stored in dotfiles (Python/Ruby/Rust/Go/Java).
     /// These paths are NOT under ~/Library/Caches/ so they don't pass `isLowImpactPath` without help.
@@ -328,6 +409,11 @@ public enum ScanPolicy {
         "/.gem/ruby/",
         "/.bundle/cache",
         "/.rbenv/cache",
+        "/.bun/install/cache",
+        "/.local/share/pnpm",
+        "/library/pnpm",
+        "/.local/share/opencode/",
+        "/library/caches/homebrew",
     ]
 
     /// Returns `true` when the URL's last path component is a known build-artifact directory name.
@@ -464,10 +550,67 @@ public enum ScanPolicy {
     static let nonMacOSDownloadExtensions: Set<String> =
         windowsExecutableExtensions.union(linuxExecutableExtensions)
 
-    /// Returns `true` for files that are unambiguously non-macOS platform binaries
-    /// sitting at the TOP LEVEL of `~/Downloads`. This anchoring is intentional:
-    /// it avoids falsely matching `.exe` files inside project `downloads/` subdirs
-    /// or nested tool caches.
+    /// Simple directory names used by multi-platform native trees (Node prebuilds,
+    /// JetBrains plugins, VS Code extension bins, etc.). Alone these can collide with
+    /// source folders (e.g. `win32` type stubs), so callers should require a macOS
+    /// sibling unless the root is a known native-only tree (JetBrains plugins).
+    public static let nonMacPlatformDirectoryNames: Set<String> = [
+        "win", "win32", "win64", "windows",
+        "linux", "linux-x86_64", "linux-aarch64", "linux-arm64",
+        "linux-x86", "linux_x64", "linux_aarch64", "linux_arm64",
+    ]
+
+    /// Directory names that hold macOS natives in multi-platform trees.
+    public static let macPlatformDirectoryNames: Set<String> = [
+        "darwin", "macos", "osx", "mac",
+        "darwin-x64", "darwin-arm64", "darwin_x64", "darwin_arm64",
+        "macos-x64", "macos-arm64", "osx-x64", "osx-arm64",
+        "mac-x64", "mac-arm64",
+    ]
+
+    /// Home-relative roots that ship multi-platform natives where the *parent* tree
+    /// is NOT fully reclaimable (installed editor extensions / IDE plugins).
+    /// Fully reclaimable caches (npx, Yarn, pnpm, Bun) are owned by package-manager
+    /// rules as whole folders — listing win32/ under them would double-count.
+    public static let wrongPlatformScanRootRelativePaths: [String] = [
+        ".vscode/extensions",
+        ".cursor/extensions",
+        ".windsurf/extensions",
+        "Library/Application Support/Code/CachedExtensionVSIXs",
+        "Library/Application Support/Cursor/CachedExtensionVSIXs",
+        "Library/Application Support/JetBrains",
+    ]
+
+    /// Compound platform-arch directory names such as `win32-x64` / `linux-arm64`.
+    /// These almost never collide with source folders and are safe to flag alone.
+    public static func isCompoundNonMacPlatformDirectoryName(_ name: String) -> Bool {
+        let n = name.lowercased()
+        if macPlatformDirectoryNames.contains(n) { return false }
+        if isMacPlatformDirectoryName(n) { return false }
+        let prefixes = ["win32-", "win64-", "windows-", "win32_", "win64_", "windows_", "linux-", "linux_"]
+        return prefixes.contains { n.hasPrefix($0) && n.count > $0.count }
+    }
+
+    public static func isMacPlatformDirectoryName(_ name: String) -> Bool {
+        let n = name.lowercased()
+        if macPlatformDirectoryNames.contains(n) { return true }
+        return n.hasPrefix("darwin-") || n.hasPrefix("darwin_")
+            || n.hasPrefix("macos-") || n.hasPrefix("macos_")
+            || n.hasPrefix("osx-") || n.hasPrefix("osx_")
+            || n.hasPrefix("mac-") || n.hasPrefix("mac_")
+    }
+
+    public static func isNonMacPlatformDirectoryName(_ name: String) -> Bool {
+        let n = name.lowercased()
+        return nonMacPlatformDirectoryNames.contains(n) || isCompoundNonMacPlatformDirectoryName(n)
+    }
+
+    /// `true` when any path component is a non-macOS platform native directory name.
+    /// Used to avoid double-counting file findings under whole-folder wrong-platform hits.
+    public static func isUnderWrongPlatformNativeDirectory(_ url: URL) -> Bool {
+        url.pathComponents.contains { isNonMacPlatformDirectoryName($0) }
+    }
+
     /// Returns `true` for apps inside /System/Applications — SIP-protected and cannot be removed.
     public static func isSystemApp(_ url: URL) -> Bool {
         url.path.hasPrefix("/System/")
@@ -480,6 +623,10 @@ public enum ScanPolicy {
         return url.path.lowercased().hasPrefix("\(home)/library/group containers/")
     }
 
+    /// Returns `true` for files that are unambiguously non-macOS platform binaries
+    /// sitting at the TOP LEVEL of `~/Downloads`. This anchoring is intentional:
+    /// it avoids falsely matching `.exe` files inside project `downloads/` subdirs
+    /// or nested tool caches.
     public static func isWrongPlatformBinary(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
         guard nonMacOSDownloadExtensions.contains(ext) else { return false }
@@ -489,5 +636,11 @@ public enum ScanPolicy {
         guard path.hasPrefix(downloadsPrefix) else { return false }
         // Top-level only — reject files inside subdirectories of ~/Downloads.
         return !path.dropFirst(downloadsPrefix.count).contains("/")
+    }
+
+    /// Downloads top-level wrong-platform files **or** paths inside non-macOS native
+    /// platform directories (whole-folder reclaim). Age gates are skipped for both.
+    public static func isWrongPlatformPath(_ url: URL) -> Bool {
+        isWrongPlatformBinary(url) || isUnderWrongPlatformNativeDirectory(url)
     }
 }

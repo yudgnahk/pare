@@ -23,7 +23,10 @@ public struct UserCachesRule: ScanRule {
         "/Library/Caches/pnpm",
         "/Library/Caches/CocoaPods",
         "/Library/Caches/org.swift.swiftpm",
+        "/Library/Caches/Homebrew",
+        "/Library/Caches/go-build",
         "/.npm/_cacache",
+        "/.npm/_npx",
         "/Library/Caches/com.microsoft.VSCode.ShipIt",
         "/Library/Application Support/Code/CachedExtensionVSIXs"
     ]

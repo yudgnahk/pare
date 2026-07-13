@@ -352,6 +352,32 @@ final class PathSafetyTests: XCTestCase {
 
     // MARK: - isWrongPlatformBinary
 
+    func testWrongPlatformBinariesRuleIsSafeRisk() {
+        let rule = WrongPlatformBinariesRule()
+        XCTAssertEqual(rule.riskLevel, .safe,
+                       "Non-macOS installers/stubs cannot run on Mac — safe to auto-select for clean")
+    }
+
+    func testWrongPlatformDownloadsFindingIsSafe() async throws {
+        let home = FileManager.default.temporaryDirectory
+            .appending(path: "pare_wp_\(UUID().uuidString)")
+        let downloads = home.appending(path: "Downloads")
+        try FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let exe = downloads.appending(path: "Setup.exe")
+        // Above downloadsMinBytes (512 KB).
+        try Data(repeating: 0x00, count: 600 * 1024).write(to: exe)
+
+        let rule = WrongPlatformBinariesRule()
+        let env = ScanEnvironment(homeDirectory: home)
+        let findings = await rule.customScan(environment: env) ?? []
+        let hit = findings.first { $0.path.hasSuffix("Setup.exe") }
+        XCTAssertNotNil(hit, "Should flag top-level .exe in Downloads")
+        XCTAssertEqual(hit?.riskLevel, .safe)
+        XCTAssertEqual(hit?.category, .temporaryFiles)
+    }
+
     func testWindowsInstallerAtDownloadsTopLevelIsWrongPlatform() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let url = URL(fileURLWithPath: "\(home)/Downloads/Setup.exe")
@@ -390,6 +416,116 @@ final class PathSafetyTests: XCTestCase {
         // SomeApp's internal "downloads" cache folder must not trigger the bypass.
         let url = URL(fileURLWithPath: "/Users/test/Library/Application Support/SomeApp/downloads/plugin.dll")
         XCTAssertFalse(ScanPolicy.isWrongPlatformBinary(url))
+    }
+
+    // MARK: - Wrong-platform native directories (packages / tools)
+
+    func testCompoundNonMacPlatformDirectoryNames() {
+        XCTAssertTrue(ScanPolicy.isCompoundNonMacPlatformDirectoryName("win32-x64"))
+        XCTAssertTrue(ScanPolicy.isCompoundNonMacPlatformDirectoryName("linux-arm64"))
+        XCTAssertTrue(ScanPolicy.isCompoundNonMacPlatformDirectoryName("linux_x64"))
+        XCTAssertFalse(ScanPolicy.isCompoundNonMacPlatformDirectoryName("darwin-arm64"))
+        XCTAssertFalse(ScanPolicy.isCompoundNonMacPlatformDirectoryName("win32"))
+        XCTAssertFalse(ScanPolicy.isCompoundNonMacPlatformDirectoryName("src"))
+    }
+
+    func testIsUnderWrongPlatformNativeDirectory() {
+        let win32 = URL(fileURLWithPath: "/tmp/.npm/_npx/pkg/node_modules/onnx/bin/napi-v6/win32/x64/a.dll")
+        let linux = URL(fileURLWithPath: "/tmp/prebuilds/linux-x64/binding.node")
+        let darwin = URL(fileURLWithPath: "/tmp/prebuilds/darwin-arm64/binding.node")
+        XCTAssertTrue(ScanPolicy.isUnderWrongPlatformNativeDirectory(win32))
+        XCTAssertTrue(ScanPolicy.isUnderWrongPlatformNativeDirectory(linux))
+        XCTAssertFalse(ScanPolicy.isUnderWrongPlatformNativeDirectory(darwin))
+    }
+
+    func testWrongPlatformRuleFlagsWholePlatformFoldersInEditorExtensions() async throws {
+        let home = FileManager.default.temporaryDirectory
+            .appending(path: "pare_wp_dirs_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        // Multi-platform native bins under installed VS Code extensions.
+        let bin = home.appending(path: ".vscode/extensions/ms-python.pylance/dist/bundled/bin")
+        for name in ["darwin-arm64", "linux-x64", "win32-x64"] {
+            let dir = bin.appending(path: name)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try Data(repeating: 0x11, count: 1024).write(to: dir.appending(path: "server"))
+        }
+
+        // Simple sibling tree with darwin/linux/win32.
+        let napi = home.appending(path: ".vscode/extensions/foo.bar/native")
+        for platform in ["darwin", "linux", "win32"] {
+            let arch = napi.appending(path: "\(platform)/arm64")
+            try FileManager.default.createDirectory(at: arch, withIntermediateDirectories: true)
+            let file = arch.appending(path: platform == "win32" ? "lib.dll" : "lib.bin")
+            try Data(repeating: 0xAB, count: 4096).write(to: file)
+        }
+
+        // Source-only win32 without mac sibling — must NOT be flagged.
+        let sourceWin32 = home.appending(path: ".vscode/extensions/foo.bar/lib/win32")
+        try FileManager.default.createDirectory(at: sourceWin32, withIntermediateDirectories: true)
+        try Data("print('hi')".utf8).write(to: sourceWin32.appending(path: "helpers.py"))
+
+        let findings = await WrongPlatformBinariesRule().customScan(
+            environment: ScanEnvironment(homeDirectory: home)
+        ) ?? []
+        let paths = findings.map(\.path)
+
+        XCTAssertTrue(paths.contains { $0.hasSuffix("/bin/win32-x64") })
+        XCTAssertTrue(paths.contains { $0.hasSuffix("/bin/linux-x64") })
+        XCTAssertFalse(paths.contains { $0.hasSuffix("/bin/darwin-arm64") })
+
+        XCTAssertTrue(paths.contains { $0.hasSuffix("/native/win32") })
+        XCTAssertTrue(paths.contains { $0.hasSuffix("/native/linux") })
+        XCTAssertFalse(paths.contains { $0.hasSuffix("/native/darwin") })
+        XCTAssertFalse(paths.contains { $0.hasSuffix("/lib/win32") })
+        XCTAssertFalse(paths.contains { $0.contains("lib.dll") })
+    }
+
+    func testPackageManagerCachesReportsNpxExtractAsWholeFolder() async throws {
+        let home = FileManager.default.temporaryDirectory
+            .appending(path: "pare_npx_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let extract = home.appending(path: ".npm/_npx/abc123")
+        try FileManager.default.createDirectory(at: extract, withIntermediateDirectories: true)
+        let file = extract.appending(path: "pkg/index.js")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(repeating: 0xAB, count: 4096).write(to: file)
+        let old = Date().addingTimeInterval(-2 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: extract.path)
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: file.path)
+
+        let findings = await PackageManagerCachesRule().customScan(
+            environment: ScanEnvironment(homeDirectory: home)
+        ) ?? []
+        XCTAssertTrue(findings.contains { $0.path.hasSuffix("/.npm/_npx/abc123") },
+                      "npx extract should be one whole-folder finding. Got: \(findings.map(\.path))")
+        XCTAssertFalse(findings.contains { $0.path.hasSuffix("index.js") })
+    }
+
+    func testReconstructibleCachePathMarkers() {
+        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+            URL(fileURLWithPath: "/Users/t/.npm/_npx/abc")))
+        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+            URL(fileURLWithPath: "/Users/t/Library/Caches/go-build")))
+        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+            URL(fileURLWithPath: "/Users/t/.cargo/registry/cache")))
+        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+            URL(fileURLWithPath: "/Users/t/go/pkg/mod/cache")))
+        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+            URL(fileURLWithPath: "/Users/t/Library/Caches/Yarn")))
+        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+            URL(fileURLWithPath: "/Users/t/.cache/opencode")))
+        XCTAssertFalse(ScanPolicy.isReconstructibleCachePath(
+            URL(fileURLWithPath: "/Users/t/Documents/project")))
+    }
+
+    func testIsWrongPlatformPathCoversNativeDirs() {
+        let dir = URL(fileURLWithPath: "/Users/t/.vscode/extensions/pkg/win32")
+        XCTAssertTrue(ScanPolicy.isWrongPlatformPath(dir))
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let exe = URL(fileURLWithPath: "\(home)/Downloads/Setup.exe")
+        XCTAssertTrue(ScanPolicy.isWrongPlatformPath(exe))
     }
 }
 
