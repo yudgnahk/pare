@@ -3,6 +3,7 @@ import PareCore
 
 struct DiskAnalyzerView: View {
     @StateObject private var viewModel = DiskAnalyzerViewModel()
+    @Environment(\.displayScale) private var scale
 
     var body: some View {
         ZStack {
@@ -33,17 +34,17 @@ struct DiskAnalyzerView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Disk Analyzer")
-                    .font(AppTheme.TypeScale.heroTitle)
+                    .font(scale.heroTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                 if let url = viewModel.rootURL {
                     Text(url.path)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .font(scale.font(12, weight: .medium, design: .monospaced))
                         .foregroundStyle(AppTheme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 } else {
                     Text("Choose a directory to analyze disk usage.")
-                        .font(AppTheme.TypeScale.body)
+                        .font(scale.body)
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

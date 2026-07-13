@@ -5,6 +5,7 @@ import PareCore
 
 struct HistoryView: View {
     @ObservedObject var viewModel: HistoryViewModel
+    @Environment(\.displayScale) private var scale
     @State private var expandedIDs: Set<UUID> = []
 
     var body: some View {
@@ -16,10 +17,10 @@ struct HistoryView: View {
                 VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Cleanup History")
-                            .font(AppTheme.TypeScale.heroTitle)
+                            .font(scale.heroTitle)
                             .foregroundStyle(AppTheme.textPrimary)
                         Text("Review and restore previously cleaned items.")
-                            .font(AppTheme.TypeScale.body)
+                            .font(scale.body)
                             .foregroundStyle(AppTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }

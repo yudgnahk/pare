@@ -3,6 +3,20 @@ import PareCore
 
 struct HomebrewManagerView: View {
     @StateObject private var viewModel = HomebrewManagerViewModel()
+    @Environment(\.displayScale) private var scale
+
+    /// Resets list scroll when search, tab, or dependency toggle changes.
+    private var listResetToken: String {
+        [
+            viewModel.selectedTab.rawValue,
+            viewModel.searchText,
+            viewModel.showAllFormulae ? "1" : "0",
+            "\(viewModel.filteredFormulae.count)",
+            "\(viewModel.filteredCasks.count)",
+            "\(viewModel.filteredOutdated.count)",
+            "\(viewModel.filteredMigrationCandidates.count)"
+        ].joined(separator: "|")
+    }
 
     var body: some View {
         ZStack {
@@ -11,15 +25,17 @@ struct HomebrewManagerView: View {
             if !viewModel.isInstalled {
                 notInstalledPlaceholder
             } else {
+                // Fixed chrome + scrollable list region only.
                 VStack(spacing: 0) {
                     headerBar
                     tabPickerRow
                         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                        .padding(.top, AppTheme.Spacing.md)
+                        .padding(.top, scale.space(AppTheme.Spacing.md))
                         .padding(.bottom, 6)
                     filterBar
                         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                        .padding(.bottom, AppTheme.Spacing.sm)
+                        .padding(.bottom, scale.space(AppTheme.Spacing.sm))
+                        .frame(minHeight: scale.space(36), alignment: .leading)
                     tabContent
                 }
             }
@@ -40,10 +56,10 @@ struct HomebrewManagerView: View {
             VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Homebrew Manager")
-                        .font(AppTheme.TypeScale.heroTitle)
+                        .font(scale.heroTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                     Text("Manage formulae, casks, updates, and migrate apps to Homebrew")
-                        .font(AppTheme.TypeScale.body)
+                        .font(scale.body)
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -64,7 +80,7 @@ struct HomebrewManagerView: View {
                 .tint(AppTheme.accent)
                 .frame(height: AppTheme.Control.secondaryHeight)
         } else {
-            FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+            HStack(spacing: 8) {
                 PrimaryActionButton(
                     title: "Refresh",
                     systemImage: "arrow.clockwise",
@@ -81,8 +97,8 @@ struct HomebrewManagerView: View {
                         tint: .warning
                     ) { viewModel.upgradeAll() }
                 }
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -91,33 +107,33 @@ struct HomebrewManagerView: View {
     // auto-grabs key focus and swallows keystrokes before the TextField sees them.
 
     private var tabPickerRow: some View {
-        // Tabs wrap on narrow windows instead of overflowing the segmented bar.
-        FlowLayout(spacing: 2, lineSpacing: 2, alignment: .leading) {
-            ForEach(HomebrewManagerViewModel.Tab.allCases, id: \.self) { tab in
-                Button { viewModel.selectedTab = tab } label: {
-                    Text(tabLabel(tab))
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.9)
-                        .foregroundStyle(
-                            viewModel.selectedTab == tab
-                                ? AppTheme.textPrimary
-                                : AppTheme.textSecondary
-                        )
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(
-                            viewModel.selectedTab == tab
-                                ? Color.white.opacity(0.18)
-                                : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        )
+        // Single-row scroll keeps chrome height fixed on narrow windows.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 2) {
+                ForEach(HomebrewManagerViewModel.Tab.allCases, id: \.self) { tab in
+                    Button { viewModel.selectedTab = tab } label: {
+                        Text(tabLabel(tab))
+                            .font(scale.caption)
+                            .lineLimit(1)
+                            .foregroundStyle(
+                                viewModel.selectedTab == tab
+                                    ? AppTheme.textPrimary
+                                    : AppTheme.textSecondary
+                            )
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(
+                                viewModel.selectedTab == tab
+                                    ? Color.white.opacity(0.18)
+                                    : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            )
+                    }
+                    .buttonStyle(.borderless)
                 }
-                .buttonStyle(.borderless)
             }
+            .padding(3)
         }
-        .padding(3)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
@@ -128,10 +144,10 @@ struct HomebrewManagerView: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(AppTheme.textSecondary)
-                    .font(.system(size: 13))
+                    .font(scale.caption)
                 TextField("Search…", text: $viewModel.searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(scale.body)
                     .foregroundStyle(AppTheme.textPrimary)
                 if !viewModel.searchText.isEmpty {
                     Button { viewModel.searchText = "" } label: {
@@ -144,17 +160,23 @@ struct HomebrewManagerView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .frame(maxWidth: 260)
+            .frame(maxWidth: 280)
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            if viewModel.selectedTab == .formulae {
-                Toggle("Show dependencies", isOn: $viewModel.showAllFormulae)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .onChange(of: viewModel.showAllFormulae) { _ in viewModel.reloadFormulae() }
-            }
+            // Always present so chrome height doesn't jump when leaving Formulae.
+            Toggle("Show dependencies", isOn: $viewModel.showAllFormulae)
+                .toggleStyle(.checkbox)
+                .font(scale.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+                .opacity(viewModel.selectedTab == .formulae ? 1 : 0)
+                .disabled(viewModel.selectedTab != .formulae)
+                .fixedSize()
+                .onChange(of: viewModel.showAllFormulae) { _ in
+                    if viewModel.selectedTab == .formulae {
+                        viewModel.reloadFormulae()
+                    }
+                }
         }
     }
 
@@ -203,36 +225,35 @@ struct HomebrewManagerView: View {
             if viewModel.filteredFormulae.isEmpty {
                 emptyPrompt(icon: "shippingbox", text: "No formulae match the current filters")
             } else {
-                ScrollView([.vertical, .horizontal]) {
-                    LazyVStack(spacing: 2) {
-                        formulaeHeader
-                        ForEach(viewModel.filteredFormulae) { formula in
-                            FormulaRow(formula: formula) {
-                                viewModel.uninstall(formula: formula)
-                            }
+                StableListContainer(resetToken: listResetToken) {
+                    formulaeHeader
+                } content: {
+                    ForEach(viewModel.filteredFormulae) { formula in
+                        FormulaRow(formula: formula) {
+                            viewModel.uninstall(formula: formula)
                         }
                     }
-                    .frame(minWidth: 720)
-                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                    .padding(.bottom, AppTheme.Spacing.pageVertical)
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var formulaeHeader: some View {
         HStack {
             Text("Name").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Version").frame(width: 120, alignment: .leading)
-            Text("Installed").frame(width: 100, alignment: .trailing)
-            Text("Requested").frame(width: 90, alignment: .center)
-            Spacer().frame(width: 50)
+            Text("Version").frame(width: scale.scaled(120), alignment: .leading)
+            if scale.sizeClass != .compact {
+                Text("Installed").frame(width: scale.colDate, alignment: .trailing)
+                Text("Requested").frame(width: scale.scaled(90), alignment: .center)
+            }
+            Spacer().frame(width: scale.scaled(50))
         }
-        .font(.system(size: 11, weight: .semibold))
+        .font(scale.tableHeader)
         .foregroundStyle(AppTheme.textSecondary)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .background(Color.black.opacity(0.12))
     }
 
     // MARK: - Casks
@@ -242,36 +263,35 @@ struct HomebrewManagerView: View {
             if viewModel.filteredCasks.isEmpty {
                 emptyPrompt(icon: "app.badge", text: "No casks match the current filters")
             } else {
-                ScrollView([.vertical, .horizontal]) {
-                    LazyVStack(spacing: 2) {
-                        casksHeader
-                        ForEach(viewModel.filteredCasks) { cask in
-                            CaskRow(cask: cask) {
-                                viewModel.uninstall(cask: cask)
-                            }
+                StableListContainer(resetToken: listResetToken) {
+                    casksHeader
+                } content: {
+                    ForEach(viewModel.filteredCasks) { cask in
+                        CaskRow(cask: cask) {
+                            viewModel.uninstall(cask: cask)
                         }
                     }
-                    .frame(minWidth: 780)
-                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                    .padding(.bottom, AppTheme.Spacing.pageVertical)
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var casksHeader: some View {
         HStack {
             Text("Token").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Version").frame(width: 140, alignment: .leading)
-            Text("App").frame(width: 180, alignment: .leading)
-            Text("Installed").frame(width: 100, alignment: .trailing)
-            Spacer().frame(width: 50)
+            Text("Version").frame(width: scale.scaled(120), alignment: .leading)
+            if scale.sizeClass != .compact {
+                Text("App").frame(width: scale.scaled(160), alignment: .leading)
+                Text("Installed").frame(width: scale.colDate, alignment: .trailing)
+            }
+            Spacer().frame(width: scale.scaled(50))
         }
-        .font(.system(size: 11, weight: .semibold))
+        .font(scale.tableHeader)
         .foregroundStyle(AppTheme.textSecondary)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .background(Color.black.opacity(0.12))
     }
 
     // MARK: - Outdated
@@ -281,36 +301,35 @@ struct HomebrewManagerView: View {
             if viewModel.filteredOutdated.isEmpty {
                 emptyPrompt(icon: "checkmark.seal", text: "All packages are up to date")
             } else {
-                ScrollView([.vertical, .horizontal]) {
-                    LazyVStack(spacing: 2) {
-                        outdatedHeader
-                        ForEach(viewModel.filteredOutdated) { pkg in
-                            OutdatedRow(package: pkg) {
-                                viewModel.upgrade(package: pkg)
-                            }
+                StableListContainer(resetToken: listResetToken) {
+                    outdatedHeader
+                } content: {
+                    ForEach(viewModel.filteredOutdated) { pkg in
+                        OutdatedRow(package: pkg) {
+                            viewModel.upgrade(package: pkg)
                         }
                     }
-                    .frame(minWidth: 740)
-                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                    .padding(.bottom, AppTheme.Spacing.pageVertical)
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var outdatedHeader: some View {
         HStack {
             Text("Package").frame(maxWidth: .infinity, alignment: .leading)
-            Text("Installed").frame(width: 140, alignment: .leading)
-            Text("Available").frame(width: 140, alignment: .leading)
-            Text("Type").frame(width: 80, alignment: .center)
-            Spacer().frame(width: 80)
+            Text("Installed").frame(width: scale.scaled(120), alignment: .leading)
+            Text("Available").frame(width: scale.scaled(120), alignment: .leading)
+            if scale.sizeClass != .compact {
+                Text("Type").frame(width: scale.scaled(80), alignment: .center)
+            }
+            Spacer().frame(width: scale.colActions)
         }
-        .font(.system(size: 11, weight: .semibold))
+        .font(scale.tableHeader)
         .foregroundStyle(AppTheme.textSecondary)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .background(Color.black.opacity(0.12))
     }
 
     // MARK: - Migrate
@@ -327,22 +346,19 @@ struct HomebrewManagerView: View {
             } else {
                 VStack(spacing: 0) {
                     migrateExplainer
-                    ScrollView([.vertical, .horizontal]) {
-                        LazyVStack(spacing: 2) {
-                            ForEach(viewModel.filteredMigrationCandidates) { candidate in
-                                MigrateCandidateRow(candidate: candidate) {
-                                    viewModel.migrate(candidate: candidate)
-                                }
+                    StableListContainer(resetToken: listResetToken) {
+                        EmptyView()
+                    } content: {
+                        ForEach(viewModel.filteredMigrationCandidates) { candidate in
+                            MigrateCandidateRow(candidate: candidate) {
+                                viewModel.migrate(candidate: candidate)
                             }
                         }
-                        .frame(minWidth: 680)
-                        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                        .padding(.bottom, AppTheme.Spacing.pageVertical)
                     }
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var migrateExplainer: some View {
@@ -350,8 +366,9 @@ struct HomebrewManagerView: View {
             Image(systemName: "info.circle")
                 .foregroundStyle(AppTheme.accent)
             Text("These apps are installed outside Homebrew but have matching casks. Adopting them lets Homebrew manage their updates.")
-                .font(.system(size: 12))
+                .font(scale.caption)
                 .foregroundStyle(AppTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
         .padding(.vertical, 10)
@@ -366,7 +383,7 @@ struct HomebrewManagerView: View {
                 .scaleEffect(1.4)
                 .tint(AppTheme.accent)
             Text("Loading Homebrew packages…")
-                .font(.system(size: 14, weight: .medium))
+                .font(scale.body)
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -375,10 +392,10 @@ struct HomebrewManagerView: View {
     private func emptyPrompt(icon: String, text: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 40))
+                .font(.system(size: scale.scaled(40)))
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
             Text(text)
-                .font(.system(size: 14, weight: .medium))
+                .font(scale.body)
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 400)
@@ -389,13 +406,13 @@ struct HomebrewManagerView: View {
     private var notInstalledPlaceholder: some View {
         VStack(spacing: 20) {
             Image(systemName: "shippingbox.fill")
-                .font(.system(size: 64))
+                .font(.system(size: scale.scaled(64)))
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
             Text("Homebrew Not Installed")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(scale.font(22, weight: .bold, design: .rounded))
                 .foregroundStyle(AppTheme.textPrimary)
             Text("Homebrew is a popular package manager for macOS.\nInstall it to manage formulae, casks, and more.")
-                .font(.system(size: 14))
+                .font(scale.body)
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
             Button("Visit brew.sh") {
@@ -413,6 +430,7 @@ struct HomebrewManagerView: View {
 private struct FormulaRow: View {
     let formula: BrewFormula
     let onUninstall: () -> Void
+    @Environment(\.displayScale) private var scale
     @State private var isHovered = false
 
     private static let dateFormatter: DateFormatter = {
@@ -424,14 +442,14 @@ private struct FormulaRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(formula.name)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(scale.rowTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                         .lineLimit(1)
                     if formula.pinned { badge("pinned", color: AppTheme.accent) }
                 }
                 if !formula.desc.isEmpty {
                     Text(formula.desc)
-                        .font(.system(size: 11))
+                        .font(scale.rowMeta)
                         .foregroundStyle(AppTheme.textSecondary.opacity(0.7))
                         .lineLimit(1)
                 }
@@ -439,20 +457,22 @@ private struct FormulaRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(formula.version)
-                .font(.system(size: 12, design: .monospaced))
+                .font(scale.rowMono)
                 .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 120, alignment: .leading)
+                .frame(width: scale.scaled(120), alignment: .leading)
                 .lineLimit(1)
 
-            Text(formula.installDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
-                .font(.system(size: 11))
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 100, alignment: .trailing)
+            if scale.sizeClass != .compact {
+                Text(formula.installDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                    .font(scale.rowMeta)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: scale.colDate, alignment: .trailing)
 
-            Image(systemName: formula.installedOnRequest ? "checkmark" : "minus")
-                .font(.system(size: 11))
-                .foregroundStyle(formula.installedOnRequest ? AppTheme.success : AppTheme.textSecondary.opacity(0.4))
-                .frame(width: 90, alignment: .center)
+                Image(systemName: formula.installedOnRequest ? "checkmark" : "minus")
+                    .font(scale.rowMeta)
+                    .foregroundStyle(formula.installedOnRequest ? AppTheme.success : AppTheme.textSecondary.opacity(0.4))
+                    .frame(width: scale.scaled(90), alignment: .center)
+            }
 
             Button(action: onUninstall) {
                 Image(systemName: "trash")
@@ -460,11 +480,11 @@ private struct FormulaRow: View {
             }
             .buttonStyle(.borderless)
             .help("Uninstall \(formula.name)")
-            .frame(width: 50, alignment: .trailing)
+            .frame(width: scale.scaled(50), alignment: .trailing)
             .opacity(isHovered ? 1 : 0.5)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, scale.space(10))
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
@@ -474,7 +494,7 @@ private struct FormulaRow: View {
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold))
+            .font(scale.badge)
             .foregroundStyle(color)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
@@ -487,6 +507,7 @@ private struct FormulaRow: View {
 private struct CaskRow: View {
     let cask: BrewCask
     let onUninstall: () -> Void
+    @Environment(\.displayScale) private var scale
     @State private var isHovered = false
 
     private static let dateFormatter: DateFormatter = {
@@ -498,7 +519,7 @@ private struct CaskRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(cask.token)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(scale.rowTitle)
                         .foregroundStyle(cask.isOrphaned ? AppTheme.warning : AppTheme.textPrimary)
                         .lineLimit(1)
                     if cask.isOrphaned {
@@ -510,35 +531,37 @@ private struct CaskRow: View {
                 }
                 if cask.isOrphaned {
                     Text("App not found — removed without brew uninstall")
-                        .font(.system(size: 10))
+                        .font(scale.font(10, weight: .regular))
                         .foregroundStyle(AppTheme.warning.opacity(0.8))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(cask.version)
-                .font(.system(size: 12, design: .monospaced))
+                .font(scale.rowMono)
                 .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 140, alignment: .leading)
+                .frame(width: scale.scaled(120), alignment: .leading)
                 .lineLimit(1)
 
-            Text(cask.isOrphaned ? "—" : (cask.installedAppNames.first ?? "—"))
-                .font(.system(size: 12))
-                .foregroundStyle(cask.isOrphaned ? AppTheme.textSecondary.opacity(0.4) : AppTheme.textSecondary)
-                .frame(width: 180, alignment: .leading)
-                .lineLimit(1)
+            if scale.sizeClass != .compact {
+                Text(cask.isOrphaned ? "—" : (cask.installedAppNames.first ?? "—"))
+                    .font(scale.caption)
+                    .foregroundStyle(cask.isOrphaned ? AppTheme.textSecondary.opacity(0.4) : AppTheme.textSecondary)
+                    .frame(width: scale.scaled(160), alignment: .leading)
+                    .lineLimit(1)
 
-            Text(cask.installDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
-                .font(.system(size: 11))
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 100, alignment: .trailing)
+                Text(cask.installDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
+                    .font(scale.rowMeta)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: scale.colDate, alignment: .trailing)
+            }
 
             Button(action: onUninstall) {
                 HStack(spacing: 4) {
                     Image(systemName: cask.isOrphaned ? "trash.fill" : "trash")
                     if cask.isOrphaned {
                         Text("Clean up")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(scale.micro)
                     }
                 }
                 .foregroundStyle(AppTheme.warning)
@@ -547,11 +570,11 @@ private struct CaskRow: View {
             .help(cask.isOrphaned
                   ? "Remove \(cask.token) from Homebrew records (app already deleted)"
                   : "Uninstall \(cask.token)")
-            .frame(width: cask.isOrphaned ? 90 : 50, alignment: .trailing)
+            .frame(width: cask.isOrphaned ? scale.scaled(90) : scale.scaled(50), alignment: .trailing)
             .opacity(isHovered ? 1 : (cask.isOrphaned ? 0.8 : 0.5))
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, cask.isOrphaned ? 12 : 10)
+        .padding(.vertical, scale.space(cask.isOrphaned ? 12 : 10))
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(
@@ -565,7 +588,7 @@ private struct CaskRow: View {
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold))
+            .font(scale.badge)
             .foregroundStyle(color)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
@@ -578,13 +601,14 @@ private struct CaskRow: View {
 private struct OutdatedRow: View {
     let package: BrewOutdatedPackage
     let onUpgrade: () -> Void
+    @Environment(\.displayScale) private var scale
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: 6) {
                 Text(package.name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(scale.rowTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
                 if package.pinned { badge("pinned", color: AppTheme.accent) }
@@ -593,21 +617,23 @@ private struct OutdatedRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(package.installedVersions.joined(separator: ", "))
-                .font(.system(size: 12, design: .monospaced))
+                .font(scale.rowMono)
                 .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 140, alignment: .leading)
+                .frame(width: scale.scaled(120), alignment: .leading)
                 .lineLimit(1)
 
             Text(package.currentVersion)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .font(scale.font(12, weight: .semibold, design: .monospaced))
                 .foregroundStyle(AppTheme.warning)
-                .frame(width: 140, alignment: .leading)
+                .frame(width: scale.scaled(120), alignment: .leading)
                 .lineLimit(1)
 
-            Text(package.isFormula ? "formula" : "cask")
-                .font(.system(size: 11))
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(width: 80, alignment: .center)
+            if scale.sizeClass != .compact {
+                Text(package.isFormula ? "formula" : "cask")
+                    .font(scale.rowMeta)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: scale.scaled(80), alignment: .center)
+            }
 
             HStack(spacing: 8) {
                 if !package.pinned {
@@ -616,22 +642,22 @@ private struct OutdatedRow: View {
                             Image(systemName: "arrow.up.circle.fill")
                             Text("Upgrade")
                         }
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(scale.micro)
                         .foregroundStyle(AppTheme.success)
                     }
                     .buttonStyle(.borderless)
                     .help("Upgrade \(package.name) to \(package.currentVersion)")
                 } else {
                     Text("Pinned")
-                        .font(.system(size: 11))
+                        .font(scale.rowMeta)
                         .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
                 }
             }
-            .frame(width: 80, alignment: .trailing)
+            .frame(width: scale.colActions, alignment: .trailing)
             .opacity(isHovered ? 1 : 0.7)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, scale.space(10))
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
@@ -641,7 +667,7 @@ private struct OutdatedRow: View {
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.system(size: 9, weight: .bold))
+            .font(scale.badge)
             .foregroundStyle(color)
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
@@ -654,18 +680,19 @@ private struct OutdatedRow: View {
 private struct MigrateCandidateRow: View {
     let candidate: MigrationCandidate
     let onMigrate: () -> Void
+    @Environment(\.displayScale) private var scale
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.appName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(scale.rowTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
                 if let bid = candidate.bundleID {
                     Text(bid)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(scale.font(10, weight: .regular, design: .monospaced))
                         .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
                         .lineLimit(1)
                 }
@@ -673,33 +700,35 @@ private struct MigrateCandidateRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(candidate.caskToken)
-                .font(.system(size: 12, design: .monospaced))
+                .font(scale.rowMono)
                 .foregroundStyle(AppTheme.accent)
-                .frame(width: 180, alignment: .leading)
+                .frame(width: scale.scaled(160), alignment: .leading)
                 .lineLimit(1)
 
-            Text(candidate.currentPath)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
-                .frame(maxWidth: 260, alignment: .leading)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            if scale.sizeClass != .compact {
+                Text(candidate.currentPath)
+                    .font(scale.font(10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
+                    .frame(maxWidth: scale.scaled(260), alignment: .leading)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
 
             Button(action: onMigrate) {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.down.circle.fill")
                     Text("Adopt")
                 }
-                .font(.system(size: 11, weight: .semibold))
+                .font(scale.micro)
                 .foregroundStyle(AppTheme.success)
             }
             .buttonStyle(.borderless)
             .help(candidate.adoptCommand)
-            .frame(width: 80, alignment: .trailing)
+            .frame(width: scale.colActions, alignment: .trailing)
             .opacity(isHovered ? 1 : 0.7)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, scale.space(10))
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)

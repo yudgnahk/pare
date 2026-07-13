@@ -5,6 +5,7 @@ import PareCore
 struct ScanDashboardView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
     @StateObject private var exclusionListViewModel = ExclusionListViewModel()
+    @Environment(\.displayScale) private var scale
     @State private var showSettings = false
     @State private var showProjectPaths = false
 
@@ -56,11 +57,11 @@ struct ScanDashboardView: View {
                 HStack(alignment: .top, spacing: AppTheme.Spacing.md) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Pare")
-                            .font(AppTheme.TypeScale.heroTitle)
+                            .font(scale.heroTitle)
                             .foregroundStyle(AppTheme.textPrimary)
 
                         Text("Smart cleanup insights for your system and dev workloads")
-                            .font(AppTheme.TypeScale.body)
+                            .font(scale.body)
                             .foregroundStyle(AppTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
 
@@ -70,7 +71,7 @@ struct ScanDashboardView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
                         }
-                        .font(AppTheme.TypeScale.micro)
+                        .font(scale.micro)
                         .foregroundStyle(AppTheme.textSecondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
@@ -312,7 +313,7 @@ struct ScanDashboardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Category Overview")
-                    .font(AppTheme.TypeScale.sectionTitle)
+                    .font(scale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 if viewModel.summaries.isEmpty {
@@ -349,7 +350,7 @@ struct ScanDashboardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Top Files and Caches")
-                    .font(AppTheme.TypeScale.sectionTitle)
+                    .font(scale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 if viewModel.topFindings.isEmpty {
@@ -399,7 +400,7 @@ struct ScanDashboardView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Large Files by Category")
-                    .font(AppTheme.TypeScale.sectionTitle)
+                    .font(scale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 Text("Only files larger than \(viewModel.formattedBytes(ScanPolicy.largeFileThresholdBytes)) are shown.")
@@ -740,6 +741,7 @@ private struct ByToolBreakdownCard: View {
     let rollups: [ScanDashboardViewModel.ToolRollupItem]
     let resultsVisible: Bool
     let formatBytes: (Int64) -> String
+    @Environment(\.displayScale) private var scale
 
     @State private var expandedApps: Set<String> = []
 
@@ -747,7 +749,7 @@ private struct ByToolBreakdownCard: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Text("By Tool")
-                    .font(AppTheme.TypeScale.sectionTitle)
+                    .font(scale.sectionTitle)
                     .foregroundStyle(AppTheme.textPrimary)
 
                 VStack(spacing: 8) {
