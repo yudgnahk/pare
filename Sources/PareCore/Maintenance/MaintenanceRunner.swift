@@ -63,6 +63,10 @@ public struct MaintenanceRunner: Sendable {
             return runVacuumDatabases()
         case MaintenanceCatalog.dockerPrune.id:
             return runDockerPrune()
+        case MaintenanceCatalog.dockerBuilderPrune7d.id:
+            return runDockerBuilderPrune(untilHours: 168, label: "7 days")
+        case MaintenanceCatalog.dockerBuilderPrune1d.id:
+            return runDockerBuilderPrune(untilHours: 24, label: "1 day")
         default:
             return AsyncThrowingStream { $0.finish(throwing: MaintenanceError.unknownAction(action.id)) }
         }
@@ -166,6 +170,11 @@ public struct MaintenanceRunner: Sendable {
     /// databases and app data. Do not add volume flags here.
     static let dockerSystemPruneArguments: [String] = ["system", "prune", "-f"]
 
+    /// Age-filtered build-cache prune args. `untilHours`: 168 (7d default) or 24 (low disk).
+    static func dockerBuilderPruneArguments(untilHours: Int) -> [String] {
+        ["builder", "prune", "-f", "--filter", "until=\(untilHours)h"]
+    }
+
     private func runDockerPrune() -> AsyncThrowingStream<String, Error> {
         guard let docker = dockerExecutable else {
             return AsyncThrowingStream { $0.finish(throwing: MaintenanceError.executableNotFound("docker")) }
@@ -186,6 +195,36 @@ public struct MaintenanceRunner: Sendable {
                         continuation.yield(line)
                     }
                     continuation.yield("Docker prune complete (volumes preserved).")
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Age-filtered build-cache prune. Prefer 168h (7d); use 24h when disk is low.
+    /// Never touches named volumes or the Docker.raw VM disk.
+    private func runDockerBuilderPrune(untilHours: Int, label: String) -> AsyncThrowingStream<String, Error> {
+        guard let docker = dockerExecutable else {
+            return AsyncThrowingStream { $0.finish(throwing: MaintenanceError.executableNotFound("docker")) }
+        }
+        let args = Self.dockerBuilderPruneArguments(untilHours: untilHours)
+        let filter = "until=\(untilHours)h"
+        precondition(
+            !args.contains(where: { $0 == "--volumes" || $0 == "-v" }),
+            "Docker builder prune must never pass --volumes"
+        )
+        return AsyncThrowingStream { continuation in
+            Task {
+                continuation.yield("→ Running docker builder prune -f --filter \(filter)…")
+                continuation.yield("  Removes image build cache older than \(label). Volumes and Docker.raw are not touched.")
+                let stream = shellStream(docker, args)
+                do {
+                    for try await line in stream {
+                        continuation.yield(line)
+                    }
+                    continuation.yield("Docker build-cache prune complete (>\(label) removed).")
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
