@@ -313,6 +313,30 @@ final class Phase7RuleTests: XCTestCase {
         XCTAssertFalse(args.contains("-v"))
     }
 
+    func testDockerBuilderPruneArgumentsAgeFilters() {
+        let sevenDay = MaintenanceRunner.dockerBuilderPruneArguments(untilHours: 168)
+        XCTAssertEqual(sevenDay, ["builder", "prune", "-f", "--filter", "until=168h"])
+        XCTAssertFalse(sevenDay.contains("--volumes"))
+
+        let oneDay = MaintenanceRunner.dockerBuilderPruneArguments(untilHours: 24)
+        XCTAssertEqual(oneDay, ["builder", "prune", "-f", "--filter", "until=24h"])
+        XCTAssertFalse(oneDay.contains("--volumes"))
+    }
+
+    func testDockerBuilderPruneActionsAreCatalogued() {
+        let ids = MaintenanceCatalog.all.map(\.id)
+        XCTAssertTrue(ids.contains(MaintenanceCatalog.dockerBuilderPrune7d.id))
+        XCTAssertTrue(ids.contains(MaintenanceCatalog.dockerBuilderPrune1d.id))
+        XCTAssertTrue(
+            MaintenanceCatalog.dockerBuilderPrune7d.description.contains("168h"),
+            "7-day action should document until=168h"
+        )
+        XCTAssertTrue(
+            MaintenanceCatalog.dockerBuilderPrune1d.description.contains("24h"),
+            "1-day (low space) action should document until=24h"
+        )
+    }
+
     func testDockerReviewMarkersDoNotIncludeVMsTree() {
         for marker in ScanPolicy.developerDockerReviewPathMarkers {
             XCTAssertFalse(marker.contains("/vms"),
