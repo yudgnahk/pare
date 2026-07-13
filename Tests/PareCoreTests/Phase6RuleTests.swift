@@ -183,6 +183,8 @@ final class RustCachesRuleTests: XCTestCase {
 
         let cargoCache = tmp.appending(path: ".cargo/registry/cache")
         try createDirWithContent(at: cargoCache)
+        backdateItem(at: cargoCache, days: 1)
+        backdateItem(at: cargoCache.appending(path: "content.bin"), days: 1)
 
         let rule = RustCachesRule()
         let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
@@ -199,6 +201,7 @@ final class RustCachesRuleTests: XCTestCase {
         // Create ~/.cargo/bin/ — should NOT be flagged
         let cargoBin = tmp.appending(path: ".cargo/bin")
         try createDirWithContent(at: cargoBin)
+        backdateItem(at: cargoBin, days: 1)
 
         let rule = RustCachesRule()
         let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
@@ -211,6 +214,8 @@ final class RustCachesRuleTests: XCTestCase {
 
         let rustupDownloads = tmp.appending(path: ".rustup/downloads")
         try createDirWithContent(at: rustupDownloads)
+        backdateItem(at: rustupDownloads, days: 1)
+        backdateItem(at: rustupDownloads.appending(path: "content.bin"), days: 1)
 
         let rule = RustCachesRule()
         let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
@@ -236,6 +241,8 @@ final class GoCachesRuleTests: XCTestCase {
 
         let goBuild = tmp.appending(path: "Library/Caches/go-build")
         try createDirWithContent(at: goBuild)
+        backdateItem(at: goBuild, days: 1)
+        backdateItem(at: goBuild.appending(path: "content.bin"), days: 1)
 
         let rule = GoCachesRule()
         let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
@@ -251,6 +258,8 @@ final class GoCachesRuleTests: XCTestCase {
 
         let goModCache = tmp.appending(path: "go/pkg/mod/cache")
         try createDirWithContent(at: goModCache)
+        backdateItem(at: goModCache, days: 1)
+        backdateItem(at: goModCache.appending(path: "content.bin"), days: 1)
 
         let rule = GoCachesRule()
         let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
@@ -367,19 +376,36 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         XCTAssertTrue(findings!.isEmpty, "No findings when no roots are configured")
     }
 
-    func testDetectsNodeModulesWithAgeGate() async throws {
+    func testDoesNotMarkDependencyTreesReclaimable() async throws {
         let tmp = makeTempDir()
         defer { try? FileManager.default.removeItem(at: tmp) }
 
-        let nodeModules = tmp.appending(path: "myapp/node_modules")
-        try createDirWithContent(at: nodeModules)
-        backdateItem(at: nodeModules, days: 10)
+        for name in ["node_modules", "venv", ".venv", ".bundle"] {
+            let dir = tmp.appending(path: "myapp/\(name)")
+            try createDirWithContent(at: dir)
+            backdateItem(at: dir, days: 10)
+        }
 
         let discovery = await makeDiscovery(root: tmp)
         let rule = ProjectArtifactsRule(discovery: discovery)
         let findings = await rule.customScan(environment: ScanEnvironment.current())!
 
-        XCTAssertTrue(findings.contains { $0.path.hasSuffix("node_modules") && $0.riskLevel == .safe })
+        XCTAssertTrue(findings.isEmpty, "Dependency trees must never be reclaimable findings")
+    }
+
+    func testDetectsLocalCacheWithAgeGate() async throws {
+        let tmp = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let cache = tmp.appending(path: "myapp/.cache")
+        try createDirWithContent(at: cache)
+        backdateItem(at: cache, days: 10)
+
+        let discovery = await makeDiscovery(root: tmp)
+        let rule = ProjectArtifactsRule(discovery: discovery)
+        let findings = await rule.customScan(environment: ScanEnvironment.current())!
+
+        XCTAssertTrue(findings.contains { $0.path.hasSuffix(".cache") && $0.riskLevel == .safe })
     }
 
     func testSkipsFreshArtifacts() async throws {
@@ -413,21 +439,40 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         XCTAssertEqual(distFinding?.riskLevel, .review, "dist/ should be .review")
     }
 
-    func testDoesNotDoubleCountNestedNodeModules() async throws {
+    func testDoesNotDoubleCountNestedLocalCaches() async throws {
         let tmp = makeTempDir()
         defer { try? FileManager.default.removeItem(at: tmp) }
 
-        let outer = tmp.appending(path: "app/node_modules")
-        let inner = outer.appending(path: "some_package/node_modules")
-        try createDirWithContent(at: inner)
+        let outer = tmp.appending(path: "app/.cache")
+        let inner = outer.appending(path: "subdir/.cache")
+        try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
+        // Visible file under outer — directorySize skips hidden paths.
+        try Data(repeating: 0x00, count: 256).write(to: outer.appending(path: "blob.bin"))
+        try Data(repeating: 0x00, count: 256).write(to: inner.appending(path: "inner.bin"))
         backdateItem(at: outer, days: 10)
 
         let discovery = await makeDiscovery(root: tmp)
         let rule = ProjectArtifactsRule(discovery: discovery)
         let findings = await rule.customScan(environment: ScanEnvironment.current())!
 
-        let nmFindings = findings.filter { $0.path.hasSuffix("node_modules") }
-        XCTAssertEqual(nmFindings.count, 1, "Inner node_modules should not be counted separately")
+        let cacheFindings = findings.filter { $0.path.hasSuffix(".cache") }
+        XCTAssertEqual(cacheFindings.count, 1, "Only outer .cache should be counted; nested is not walked")
+    }
+
+    func testSkipsWalkingIntoDependencyTrees() async throws {
+        let tmp = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        // .cache buried inside node_modules must not surface (we skip the whole tree).
+        let nested = tmp.appending(path: "app/node_modules/pkg/.cache")
+        try createDirWithContent(at: nested)
+        backdateItem(at: nested, days: 10)
+
+        let discovery = await makeDiscovery(root: tmp)
+        let rule = ProjectArtifactsRule(discovery: discovery)
+        let findings = await rule.customScan(environment: ScanEnvironment.current())!
+
+        XCTAssertTrue(findings.isEmpty, "Must not walk into node_modules to find nested caches")
     }
 
     func testDetectsPhase6ArtifactNames() async throws {

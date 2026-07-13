@@ -70,6 +70,17 @@
       "homePaths": [
         ".copilot/logs"
       ]
+    },
+    {
+      "id": "opencode",
+      "displayName": "OpenCode",
+      "category": "ai",
+      "libraryPaths": [],
+      "homePaths": [
+        ".cache/opencode",
+        ".local/share/opencode/log",
+        ".local/share/opencode/snapshot"
+      ]
     }
   ]
 }

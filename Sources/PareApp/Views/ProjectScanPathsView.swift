@@ -19,7 +19,7 @@ struct ProjectScanPathsView: View {
                         Text("Project Scan Paths")
                             .font(.system(size: 20, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.textPrimary)
-                        Text("Pare will look for build artifacts (node_modules, dist, venv, etc.) inside these directories.")
+                        Text("Pare looks for local build caches (.cache, .next, dist, target, …) inside these directories. Dependency trees like node_modules and .venv are never marked reclaimable.")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(AppTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)

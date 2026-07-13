@@ -25,51 +25,72 @@ public struct BrowserExtendedArtifactsRule: ScanRule {
         let home = environment.homeDirectory
         var findings: [ScanFinding] = []
 
-        // -- Shader caches (.safe) --
-        let shaderPaths: [(String, String)] = [
-            ("Library/Application Support/Google/Chrome/GrShaderCache", "Chrome"),
-            ("Library/Application Support/Microsoft Edge/GrShaderCache", "Microsoft Edge"),
-            ("Library/Application Support/BraveSoftware/Brave-Browser/GrShaderCache", "Brave"),
-            ("Library/Application Support/Arc/User Data/GrShaderCache", "Arc"),
-            ("Library/Application Support/com.operasoftware.Opera/GrShaderCache", "Opera"),
+        // -- Shader / GPU / Code caches (.safe) — no age gate (regenerable) --
+        let safeRoots: [(String, String)] = [
+            ("Library/Application Support/Google/Chrome", "Chrome"),
+            ("Library/Application Support/Microsoft Edge", "Microsoft Edge"),
+            ("Library/Application Support/BraveSoftware/Brave-Browser", "Brave"),
+            ("Library/Application Support/Arc/User Data", "Arc"),
+            ("Library/Application Support/com.operasoftware.Opera", "Opera"),
         ]
-        for (relPath, browser) in shaderPaths {
-            findings += artifactFindings(
-                at: home.appending(path: relPath),
-                reason: "\(browser) GPU shader cache (regenerated automatically)",
-                riskLevel: .safe
-            )
+        let safeSuffixes: [(String, String)] = [
+            ("GrShaderCache", "GPU shader cache"),
+            ("GraphiteDawnCache", "Graphite Dawn cache"),
+            ("ShaderCache", "shader cache"),
+        ]
+        let safeProfileSuffixes: [(String, String)] = [
+            ("Service Worker", "Service Worker cache (regenerated automatically)"),
+            ("GPUCache", "GPU cache"),
+            ("Code Cache", "V8 code cache"),
+            ("DawnWebGPUCache", "WebGPU cache"),
+            ("DawnGraphiteCache", "Dawn Graphite cache"),
+        ]
+
+        for (rootRel, browser) in safeRoots {
+            let root = home.appending(path: rootRel)
+            for (suffix, label) in safeSuffixes {
+                findings += artifactFindings(
+                    at: root.appending(path: suffix),
+                    reason: "\(browser) \(label) (regenerated automatically)",
+                    riskLevel: .safe,
+                    applyAgeGate: false
+                )
+            }
+            // Multi-profile: Default, Profile 1, Guest Profile, …
+            for profile in Self.chromiumProfileDirs(under: root) {
+                let profileName = profile.lastPathComponent
+                for (suffix, label) in safeProfileSuffixes {
+                    findings += artifactFindings(
+                        at: profile.appending(path: suffix),
+                        reason: "\(browser) \(profileName) \(label)",
+                        riskLevel: .safe,
+                        applyAgeGate: false
+                    )
+                }
+            }
         }
 
         // -- Session restore, WebSQL, IndexedDB, local storage (.review) --
-        let reviewTargets: [(String, String)] = [
-            ("Library/Application Support/Google/Chrome/Default/Sessions", "Chrome session restore"),
-            ("Library/Application Support/Google/Chrome/Default/databases", "Chrome WebSQL databases"),
-            ("Library/Application Support/Google/Chrome/Default/IndexedDB", "Chrome IndexedDB"),
-            ("Library/Application Support/Google/Chrome/Default/Local Storage", "Chrome local storage"),
-            ("Library/Application Support/Microsoft Edge/Default/Sessions", "Edge session restore"),
-            ("Library/Application Support/Microsoft Edge/Default/databases", "Edge WebSQL databases"),
-            ("Library/Application Support/Microsoft Edge/Default/IndexedDB", "Edge IndexedDB"),
-            ("Library/Application Support/Microsoft Edge/Default/Local Storage", "Edge local storage"),
-            ("Library/Application Support/BraveSoftware/Brave-Browser/Default/Sessions", "Brave session restore"),
-            ("Library/Application Support/BraveSoftware/Brave-Browser/Default/databases", "Brave WebSQL databases"),
-            ("Library/Application Support/BraveSoftware/Brave-Browser/Default/IndexedDB", "Brave IndexedDB"),
-            ("Library/Application Support/BraveSoftware/Brave-Browser/Default/Local Storage", "Brave local storage"),
-            ("Library/Application Support/Arc/User Data/Default/Sessions", "Arc session restore"),
-            ("Library/Application Support/Arc/User Data/Default/databases", "Arc WebSQL databases"),
-            ("Library/Application Support/Arc/User Data/Default/IndexedDB", "Arc IndexedDB"),
-            ("Library/Application Support/Arc/User Data/Default/Local Storage", "Arc local storage"),
-            ("Library/Application Support/com.operasoftware.Opera/Default/Sessions", "Opera session restore"),
-            ("Library/Application Support/com.operasoftware.Opera/Default/databases", "Opera WebSQL databases"),
-            ("Library/Application Support/com.operasoftware.Opera/Default/IndexedDB", "Opera IndexedDB"),
-            ("Library/Application Support/com.operasoftware.Opera/Default/Local Storage", "Opera local storage"),
+        // Local Storage / IndexedDB can hold site state and auth tokens — never auto-clean.
+        let reviewProfileSuffixes: [(String, String)] = [
+            ("Sessions", "session restore"),
+            ("databases", "WebSQL databases"),
+            ("IndexedDB", "IndexedDB"),
+            ("Local Storage", "local storage (may include site logins)"),
         ]
-        for (relPath, reason) in reviewTargets {
-            findings += artifactFindings(
-                at: home.appending(path: relPath),
-                reason: reason,
-                riskLevel: .review
-            )
+        for (rootRel, browser) in safeRoots {
+            let root = home.appending(path: rootRel)
+            for profile in Self.chromiumProfileDirs(under: root) {
+                let profileName = profile.lastPathComponent
+                for (suffix, label) in reviewProfileSuffixes {
+                    findings += artifactFindings(
+                        at: profile.appending(path: suffix),
+                        reason: "\(browser) \(profileName) \(label)",
+                        riskLevel: .review,
+                        applyAgeGate: true
+                    )
+                }
+            }
         }
 
         return findings
@@ -77,7 +98,33 @@ public struct BrowserExtendedArtifactsRule: ScanRule {
 
     // MARK: Private
 
-    private func artifactFindings(at url: URL, reason: String, riskLevel: RiskLevel) -> [ScanFinding] {
+    /// Chromium profile directories (Default, Profile N, Guest Profile, System Profile).
+    private static func chromiumProfileDirs(under root: URL) -> [URL] {
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return contents.filter { url in
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                return false
+            }
+            let name = url.lastPathComponent
+            if name == "Default" || name == "Guest Profile" || name == "System Profile" {
+                return true
+            }
+            if name.hasPrefix("Profile ") { return true }
+            return false
+        }
+    }
+
+    private func artifactFindings(
+        at url: URL,
+        reason: String,
+        riskLevel: RiskLevel,
+        applyAgeGate: Bool
+    ) -> [ScanFinding] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         let size = FileSystemUtils.directorySize(url: url)
         guard size > 0 else { return [] }
@@ -85,8 +132,8 @@ public struct BrowserExtendedArtifactsRule: ScanRule {
         let resourceValues = try? url.resourceValues(forKeys: [.contentModificationDateKey])
         let lastUsed = resourceValues?.contentModificationDate
 
-        // Skip directories that haven't aged past the cache minimum.
-        if let date = lastUsed,
+        if applyAgeGate,
+           let date = lastUsed,
            Date().timeIntervalSince(date) < ScanPolicy.defaultCacheMinAgeSeconds {
             return []
         }

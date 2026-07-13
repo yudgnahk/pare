@@ -29,27 +29,45 @@ public struct ScanReportAnnotator: Sendable {
     public init() {}
 
     public static func sourceApp(for finding: ScanFinding) -> String {
-        let path = finding.path.lowercased()
-        if path.contains("com.microsoft.vscode") || path.contains("/code/") || path.contains("/.vscode/") {
+        sourceApp(forPath: finding.path)
+    }
+
+    /// Same attribution as the “Where space goes” chart — used to group category browser rows by tool.
+    public static func sourceApp(forPath path: String) -> String {
+        let path = path.lowercased()
+        if path.contains("com.microsoft.vscode") || path.contains("/code/") || path.contains("/.vscode/")
+            || path.contains("com.visualstudio.code") {
             return "VS Code"
         }
-        if path.contains("jetbrains") {
+        if path.contains("jetbrains") || path.contains("intellij") || path.contains("datagrip")
+            || path.contains("pycharm") || path.contains("webstorm") || path.contains("phpstorm")
+            || path.contains("rubymine") || path.contains("androidstudio") || path.contains("goland")
+            || path.contains("clion") || path.contains("rustrover") {
             return "JetBrains"
         }
         if path.contains("com.docker.docker") || path.contains("/docker/") {
             return "Docker"
         }
-        if path.contains("xcode") || path.contains("coresimulator") {
+        if path.contains("xcode") || path.contains("coresimulator") || path.contains("deriveddata") {
             return "Xcode"
         }
         if path.contains("com.apple.safari") || path.contains("/safari/") {
             return "Safari"
         }
-        if path.contains("google/chrome") || path.contains("chromium") {
+        if path.contains("google/chrome") || path.contains("chromium") || path.contains("google chrome") {
             return "Chrome"
+        }
+        if path.contains("bravesoftware") || path.contains("brave-browser") {
+            return "Brave"
+        }
+        if path.contains("microsoft edge") || path.contains("com.microsoft.edgemac") {
+            return "Edge"
         }
         if path.contains("firefox") {
             return "Firefox"
+        }
+        if path.contains("com.operasoftware.opera") || path.contains("/opera/") {
+            return "Opera"
         }
         if path.contains("com.adobe") || path.contains("/adobe/") {
             return "Adobe"
@@ -63,8 +81,22 @@ public struct ScanReportAnnotator: Sendable {
         if path.contains("finalcut") || path.contains("final cut pro") {
             return "Final Cut Pro"
         }
-        if path.contains("homebrew") || path.contains("/npm/") || path.contains("node_modules") || path.contains("/.cargo/") || path.contains("/.gradle/") {
+        // Package managers / language toolchains (match chart + Developer Package Caches).
+        if path.contains("homebrew") || path.contains("/.npm/") || path.contains("/npm/")
+            || path.contains("node_modules") || path.contains("/.cargo/") || path.contains("/.rustup/")
+            || path.contains("/.gradle/") || path.contains("/.m2/") || path.contains("/.ivy2/")
+            || path.contains("/pnpm/") || path.contains("cocoapods") || path.contains("swiftpm")
+            || path.contains("org.swift.swiftpm") || path.contains("/go/pkg/") || path.contains("go-build")
+            || path.contains("/.pyenv/") || path.contains("/.gem/") || path.contains("/.bundle/")
+            || path.contains("/.rbenv/") || path.contains("/.cache/pip") || path.contains("/.cache/opencode")
+            || path.contains("/yarn/") {
             return "Package Managers"
+        }
+        if path.contains("cursor") && (path.contains("cache") || path.contains("application support")) {
+            return "Cursor"
+        }
+        if path.contains("opencode") {
+            return "OpenCode"
         }
         if path.contains("/library/logs/") || path.contains("/diagnosticreports/") || path.contains("/crashreporter/") {
             return "System Logs"
@@ -96,7 +128,7 @@ public struct ScanReportAnnotator: Sendable {
         if path.contains("notion") {
             return "Notion"
         }
-        if path.contains("arc") && path.contains("the browser company") {
+        if path.contains("arc") && (path.contains("the browser company") || path.contains("user data")) {
             return "Arc"
         }
         if path.contains("com.apple.mail") || path.contains("/mail/") {
@@ -113,7 +145,7 @@ public struct ScanReportAnnotator: Sendable {
         }
         // Fallback: extract the app name from a reverse-DNS bundle ID in cache paths
         // e.g. ~/Library/Caches/com.apple.Maps/ → "Maps"
-        if let bundleApp = bundleAppName(from: finding.path) {
+        if let bundleApp = bundleAppName(from: path) {
             return bundleApp
         }
         return "Other"

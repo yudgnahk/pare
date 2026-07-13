@@ -18,7 +18,14 @@ public struct ScanRunner: Sendable {
         self.cache = cache
     }
 
-    public func run(rules: [any ScanRule], forceRescan: Bool = false) async -> ScanReport {
+    /// Progress callback: (completedRules, totalRules, lastRuleTitle).
+    public typealias ProgressHandler = @Sendable (Int, Int, String) -> Void
+
+    public func run(
+        rules: [any ScanRule],
+        forceRescan: Bool = false,
+        onProgress: ProgressHandler? = nil
+    ) async -> ScanReport {
         let effectiveTraversal: any FileTraversing
         if let cache {
             let fingerprint = rules.map(\.id).sorted().joined(separator: ",")
@@ -33,8 +40,9 @@ public struct ScanRunner: Sendable {
 
         var findings: [ScanFinding] = []
         var grouped: [ScanCategory: (Int64, Int)] = [:]
+        let total = rules.count
 
-        for rule in rules {
+        for (index, rule) in rules.enumerated() {
             guard !Task.isCancelled else { break }
             let (ruleFindings, ruleGrouped) = await runRule(rule, traversal: effectiveTraversal)
             findings.append(contentsOf: ruleFindings)
@@ -42,6 +50,7 @@ public struct ScanRunner: Sendable {
                 let current = grouped[category] ?? (0, 0)
                 grouped[category] = (current.0 + value.0, current.1 + value.1)
             }
+            onProgress?(index + 1, total, rule.title)
         }
 
         let summaries = grouped
