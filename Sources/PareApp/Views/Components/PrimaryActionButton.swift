@@ -58,11 +58,11 @@ struct PrimaryActionButton: View {
                         .tint(AppTheme.textPrimary)
                 } else {
                     Image(systemName: systemImage)
-                        .font(scale.font(style == .prominent ? 13 : 12, weight: .semibold))
+                        .font(scale.font(style == .prominent ? 14 : 13, weight: .semibold))
                 }
 
                 Text(isLoading ? loadingTitle : title)
-                    .font(scale.font(style == .prominent ? 13 : 12, weight: .semibold))
+                    .font(scale.font(style == .prominent ? 14 : 13, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
@@ -166,10 +166,10 @@ struct SecondaryActionButton: View {
                         .tint(role.foreground)
                 } else if let systemImage {
                     Image(systemName: systemImage)
-                        .font(scale.font(12, weight: .semibold))
+                        .font(scale.font(13, weight: .semibold))
                 }
                 Text(title)
-                    .font(scale.font(12, weight: .semibold))
+                    .font(scale.font(13, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }

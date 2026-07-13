@@ -69,7 +69,7 @@ struct PrimaryRingButton: View {
                         .tint(AppTheme.accent)
                 } else {
                     Text(title)
-                        .font(scale.font(16, weight: .bold, design: .rounded))
+                        .font(scale.font(15, weight: .bold, design: .rounded))
                         .foregroundStyle(AppTheme.textPrimary)
                 }
             }

@@ -110,6 +110,7 @@ enum AppTheme {
 
     enum TypeScale {
         static let heroTitle: Font = DisplayScale.compact.heroTitle
+        static let pageTitle: Font = DisplayScale.compact.pageTitle
         static let sectionTitle: Font = DisplayScale.compact.sectionTitle
         static let body: Font = DisplayScale.compact.body
         static let caption: Font = DisplayScale.compact.caption

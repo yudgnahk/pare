@@ -10,9 +10,9 @@ struct LargeFileRow: View {
     let canReveal: Bool
     let onReveal: () -> Void
     var onExclude: (() -> Void)? = nil
+    @Environment(\.displayScale) private var scale
 
     var body: some View {
-        // Stack path + action on narrow widths so the Finder button never clips.
         ViewThatFits(in: .horizontal) {
             wideLayout
             compactLayout
@@ -58,7 +58,7 @@ struct LargeFileRow: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
                 Text(riskBadgeLabel)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(scale.badge)
                     .tracking(0.4)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
@@ -66,13 +66,13 @@ struct LargeFileRow: View {
                     .foregroundStyle(riskColor)
 
                 Text(reason)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(scale.caption)
                     .foregroundStyle(AppTheme.textSecondary)
                     .lineLimit(1)
             }
 
             Text(path)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(scale.rowMono)
                 .foregroundStyle(AppTheme.textPrimary)
                 .lineLimit(2)
                 .truncationMode(.middle)
@@ -82,7 +82,7 @@ struct LargeFileRow: View {
                 Text("•")
                 Text(lastUsedText)
             }
-            .font(.system(size: 11, weight: .medium))
+            .font(scale.caption)
             .foregroundStyle(AppTheme.textSecondary)
         }
     }

@@ -34,17 +34,17 @@ struct DiskAnalyzerView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Disk Analyzer")
-                    .font(scale.heroTitle)
+                    .font(scale.pageTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                 if let url = viewModel.rootURL {
                     Text(url.path)
-                        .font(scale.font(12, weight: .medium, design: .monospaced))
+                        .font(scale.rowMono)
                         .foregroundStyle(AppTheme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 } else {
                     Text("Choose a directory to analyze disk usage.")
-                        .font(scale.body)
+                        .font(scale.caption)
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -158,19 +158,20 @@ private struct DiskNodeRow: View {
     let formatBytes: (Int64) -> String
     let onReveal: () -> Void
     let onTrash: () -> Void
+    @Environment(\.displayScale) private var scale
 
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: node.isDirectory ? "folder.fill" : "doc.fill")
-                .font(.system(size: 13, weight: .medium))
+                .font(scale.font(14, weight: .medium))
                 .foregroundStyle(node.isDirectory ? AppTheme.accent : AppTheme.textSecondary.opacity(0.7))
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(node.name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(scale.rowTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
 
@@ -190,9 +191,9 @@ private struct DiskNodeRow: View {
             Spacer(minLength: 8)
 
             Text(formatBytes(node.sizeBytes))
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(scale.font(14, weight: .bold, design: .rounded))
                 .foregroundStyle(AppTheme.textPrimary)
-                .frame(width: 78, alignment: .trailing)
+                .frame(width: scale.scaled(84), alignment: .trailing)
 
             if isHovered {
                 HStack(spacing: 4) {

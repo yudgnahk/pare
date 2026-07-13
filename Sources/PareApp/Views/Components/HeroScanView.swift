@@ -22,7 +22,7 @@ struct HeroScanView: View {
 
                 VStack(spacing: 10) {
                     Text(headline)
-                        .font(scale.font(32, weight: .bold, design: .rounded))
+                        .font(scale.heroTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                         .multilineTextAlignment(.center)
 
@@ -30,12 +30,12 @@ struct HeroScanView: View {
                         .font(scale.body)
                         .foregroundStyle(AppTheme.textSecondary)
                         .multilineTextAlignment(.center)
-                        .frame(maxWidth: 420)
+                        .frame(maxWidth: 440)
                         .fixedSize(horizontal: false, vertical: true)
 
                     if let last = lastScanCaption {
                         Text(last)
-                            .font(scale.micro)
+                            .font(scale.caption)
                             .foregroundStyle(AppTheme.textTertiary)
                             .padding(.top, 4)
                     }

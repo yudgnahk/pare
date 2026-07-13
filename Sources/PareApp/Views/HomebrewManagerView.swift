@@ -64,10 +64,10 @@ struct HomebrewManagerView: View {
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Homebrew Manager")
-                        .font(scale.heroTitle)
+                        .font(scale.pageTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                     Text("Manage formulae, casks, updates, and migrate apps to Homebrew")
-                        .font(scale.body)
+                        .font(scale.caption)
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

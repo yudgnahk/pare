@@ -26,11 +26,11 @@ struct ModuleChrome<Content: View>: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(scale.heroTitle)
+                        .font(scale.pageTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                     if let subtitle {
                         Text(subtitle)
-                            .font(scale.body)
+                            .font(scale.caption)
                             .foregroundStyle(AppTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
