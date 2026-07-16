@@ -50,7 +50,9 @@ final class FakeHomeBuilder {
         // --- UserCachesRule targets ---
         // NOTE: Do NOT use directories ending in ".app" — FileSystemTraversal
         // uses .skipsPackageDescendants which treats them as bundle packages.
+        // UserCachesRule reports the whole top-level cache folder, not each file.
         let oldCache = try file("Library", "Caches", "com.test.example", "old-cache.bin", ageSeconds: 5 * 86400)
+        let cacheFolder = oldCache.deletingLastPathComponent()
         let freshCache = try file("Library", "Caches", "com.test.example", "fresh-cache.bin", ageSeconds: 0.5 * 86400)  // 12 hours old
         let cookiesFile = try file("Library", "Caches", "com.test.example", "cookies.db", ageSeconds: 10 * 86400)  // sensitive marker
 
@@ -63,7 +65,9 @@ final class FakeHomeBuilder {
         let settingsJson = try file("Library", "Application Support", "Code", "User", "settings.json")
 
         return (
-            shouldFind: [oldCache, crashLog, diagReport],
+            shouldFind: [cacheFolder, crashLog, diagReport],
+            // Fresh/cookie files live under the reported cache folder path; they are not
+            // individual findings, but must never appear as standalone finding paths.
             shouldNotFind: [freshCache, cookiesFile, document, settingsJson]
         )
     }
@@ -178,21 +182,23 @@ final class ScanIntegrationTests: XCTestCase {
     // MARK: - Exclusion list prevents excluded paths from appearing in findings
 
     func testExclusionListFiltersFindings() async throws {
-        // Seed a cacheable file that would normally be found.
+        // Seed cache folders; UserCachesRule reports whole top-level folders.
         let excluded = try builder.file("Library", "Caches", "com.test.excluded", "data.bin")
         let notExcluded = try builder.file("Library", "Caches", "com.test.kept", "data.bin")
+        let excludedFolder = excluded.deletingLastPathComponent()
+        let keptFolder = notExcluded.deletingLastPathComponent()
 
         var exclusions = ExclusionList()
-        exclusions.add(ExclusionEntry(path: excluded.deletingLastPathComponent().path, matchType: .prefix))
+        exclusions.add(ExclusionEntry(path: excludedFolder.path, matchType: .prefix))
 
         let runner = makeRunner(exclusionList: exclusions)
         let report = await runner.run(rules: RuleCatalog.baseline)
 
         let foundPaths = Set(report.findings.map(\.path))
-        XCTAssertFalse(foundPaths.contains(excluded.path),
-                       "Excluded directory's files should not appear in findings")
-        XCTAssertTrue(foundPaths.contains(notExcluded.path),
-                      "Non-excluded file should still appear in findings")
+        XCTAssertFalse(foundPaths.contains(excludedFolder.path),
+                       "Excluded cache folder should not appear in findings")
+        XCTAssertTrue(foundPaths.contains(keptFolder.path),
+                      "Non-excluded cache folder should still appear in findings")
     }
 
     // MARK: - Risk labels are propagated correctly
@@ -273,6 +279,8 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
     func testScanThenQuickCleanMovesFilesToTrash() async throws {
         let file1 = try makeCacheFile(name: "cache-a.bin")
         let file2 = try makeCacheFile(name: "cache-b.bin")
+        // UserCachesRule reports the whole top-level cache folder, not each file.
+        let cacheFolder = file1.deletingLastPathComponent()
 
         let runner = ScanRunner(
             environment: ScanEnvironment(homeDirectory: fakeHome),
@@ -280,16 +288,19 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
 
-        // Both files should be in the scan report.
         let foundPaths = Set(report.findings.map(\.path))
-        XCTAssertTrue(foundPaths.contains(file1.path))
-        XCTAssertTrue(foundPaths.contains(file2.path))
+        XCTAssertTrue(
+            foundPaths.contains(cacheFolder.path),
+            "Expected whole cache folder finding, got: \(foundPaths)"
+        )
 
         // Run quick clean.
         let engine = CleanupEngine(store: makeStore())
         let result = try await engine.quickClean(findings: report.findings, profileName: "baseline")
 
         XCTAssertEqual(result.succeeded.count, report.findings.filter { $0.riskLevel == .safe }.count)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cacheFolder.path),
+                       "Cache folder should have been moved to Trash")
         XCTAssertFalse(FileManager.default.fileExists(atPath: file1.path), "file1 should be in Trash")
         XCTAssertFalse(FileManager.default.fileExists(atPath: file2.path), "file2 should be in Trash")
         XCTAssertNotNil(result.transaction)
@@ -300,6 +311,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
     func testQuickCleanThenRestoreBringsFilesBack() async throws {
         let file1 = try makeCacheFile(name: "restore-a.bin")
         let file2 = try makeCacheFile(name: "restore-b.bin")
+        let cacheFolder = file1.deletingLastPathComponent()
 
         let runner = ScanRunner(
             environment: ScanEnvironment(homeDirectory: fakeHome),
@@ -315,7 +327,8 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
             return
         }
 
-        // Files should be gone.
+        // Whole cache folder (and contents) should be gone.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cacheFolder.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: file1.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: file2.path))
 
@@ -326,7 +339,9 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
                        "All cleaned files should be restorable")
         XCTAssertTrue(skipped.isEmpty, "No files should fail to restore")
 
-        // Files should be back.
+        // Folder and files should be back.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cacheFolder.path),
+                      "cache folder should be restored")
         XCTAssertTrue(FileManager.default.fileExists(atPath: file1.path), "file1 should be restored")
         XCTAssertTrue(FileManager.default.fileExists(atPath: file2.path), "file2 should be restored")
     }

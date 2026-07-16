@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Pare app icon — source SVG 1024×1024.
-     Generate AppIcon.icns:  bash scripts/generate-icon.sh          -->
+     Generate AppIcon.icns + PareLogo.png:  bash scripts/generate-icon.sh
+
+     Gradients are linear (not radial) so macOS sips/CoreSVG rasterise colors
+     correctly. CoreSVG paints radialGradient fills as solid white. -->
 <svg width="1024" height="1024" viewBox="0 0 1024 1024"
      xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -10,18 +13,18 @@
       <stop offset="100%" stop-color="#0A1420"/>
     </linearGradient>
 
-    <!-- Disk radial gradient (highlight at top-left) -->
-    <radialGradient id="disk" cx="36%" cy="28%" r="68%">
+    <!-- Disk gradient — light teal highlight (upper-left) → deep teal -->
+    <linearGradient id="disk" x1="22%" y1="12%" x2="88%" y2="92%">
       <stop offset="0%"   stop-color="#9AECE5"/>
       <stop offset="45%"  stop-color="#5CC8BC"/>
       <stop offset="100%" stop-color="#1F7870"/>
-    </radialGradient>
+    </linearGradient>
 
-    <!-- Ambient highlight overlay on disk -->
-    <radialGradient id="highlight" cx="38%" cy="25%" r="55%">
-      <stop offset="0%"   stop-color="rgba(255,255,255,0.22)"/>
-      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
-    </radialGradient>
+    <!-- Soft highlight sheen across the disk surface -->
+    <linearGradient id="highlight" x1="25%" y1="10%" x2="60%" y2="55%">
+      <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
   </defs>
 
   <!-- Icon background (macOS rounded-rect proportions) -->

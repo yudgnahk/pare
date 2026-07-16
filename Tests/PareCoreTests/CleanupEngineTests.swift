@@ -131,6 +131,41 @@ final class CleanupEngineTests: XCTestCase {
                       "Docker.raw must remain on disk")
     }
 
+    /// Mis-tagged Spotlight cache must never be trashed (forces reindex).
+    func testCleanBlocksSearchIndexSensitivePathRegardlessOfRiskLevel() async throws {
+        let base = URL(fileURLWithPath: "/private/tmp/CleanupEngineSpotlight-\(UUID().uuidString)")
+        let spotlightDir = base.appending(path: "Library/Caches/com.apple.Spotlight")
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        try FileManager.default.createDirectory(at: spotlightDir, withIntermediateDirectories: true)
+        let cacheFile = spotlightDir.appending(path: "Cache.db")
+        try Data(repeating: 0xAB, count: 2048).write(to: cacheFile)
+        let oldDate = Date().addingTimeInterval(-10 * 24 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: cacheFile.path)
+
+        let finding = ScanFinding(
+            category: .userCaches,
+            riskLevel: .safe,
+            reason: "mis-tagged as safe user cache",
+            path: cacheFile.path,
+            sizeBytes: 2048,
+            lastUsed: oldDate,
+            confidence: 1.0
+        )
+        let engine = CleanupEngine(store: makeStore())
+        let result = try await engine.clean(findings: [finding], profileName: "test")
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        XCTAssertEqual(result.skipped.count, 1)
+        XCTAssertTrue(
+            result.skipped[0].reason.contains("Search-index")
+                || result.skipped[0].reason.contains("Spotlight"),
+            result.skipped[0].reason
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cacheFile.path),
+                      "Spotlight cache must remain on disk")
+    }
+
     // MARK: - CleanupEngine: missing file is skipped gracefully
 
     func testCleanSkipsMissingFile() async throws {
