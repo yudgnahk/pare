@@ -294,6 +294,49 @@ final class PathSafetyTests: XCTestCase {
         XCTAssertTrue(ScanPolicy.isLowImpactPath(url))
     }
 
+    // Search-index stores must never pass isLowImpactPath (would force reindex).
+    func testSpotlightCacheIsNotLowImpact() {
+        let url = URL(fileURLWithPath: "/Users/test/Library/Caches/com.apple.Spotlight/Cache.db")
+        XCTAssertTrue(ScanPolicy.isSearchIndexSensitivePath(url))
+        XCTAssertFalse(ScanPolicy.isLowImpactPath(url))
+        XCTAssertFalse(ScanPolicy.isReconstructibleCachePath(url))
+    }
+
+    func testHelpdCacheIsNotLowImpact() {
+        let url = URL(fileURLWithPath: "/Users/test/Library/Caches/com.apple.helpd/Index")
+        XCTAssertTrue(ScanPolicy.isSearchIndexSensitivePath(url))
+        XCTAssertFalse(ScanPolicy.isLowImpactPath(url))
+    }
+
+    func testSuggestionsIsSearchIndexSensitive() {
+        let url = URL(fileURLWithPath: "/Users/test/Library/Suggestions/some.db")
+        XCTAssertTrue(ScanPolicy.isSearchIndexSensitivePath(url))
+        XCTAssertFalse(ScanPolicy.isReconstructibleCachePath(url))
+    }
+
+    func testMediaAnalysisCacheIsSearchIndexSensitive() {
+        let url = URL(fileURLWithPath: "/Users/test/Library/Containers/com.apple.mediaanalysisd/Data/Library/Caches/foo")
+        XCTAssertTrue(ScanPolicy.isSearchIndexSensitivePath(url))
+    }
+
+    func testCoreSpotlightMetadataIsSearchIndexSensitive() {
+        let url = URL(fileURLWithPath: "/Users/test/Library/Metadata/CoreSpotlight/index.db")
+        XCTAssertTrue(ScanPolicy.isSearchIndexSensitivePath(url))
+        XCTAssertFalse(ScanPolicy.isLowImpactPath(url))
+    }
+
+    func testShouldWarnAboutSpotlightIndexingThresholds() {
+        XCTAssertFalse(ScanPolicy.shouldWarnAboutSpotlightIndexing(itemCount: 10, totalBytes: 100))
+        XCTAssertTrue(ScanPolicy.shouldWarnAboutSpotlightIndexing(
+            itemCount: ScanPolicy.largeCleanSpotlightWarningItemThreshold,
+            totalBytes: 0
+        ))
+        XCTAssertTrue(ScanPolicy.shouldWarnAboutSpotlightIndexing(
+            itemCount: 1,
+            totalBytes: ScanPolicy.largeCleanSpotlightWarningBytesThreshold
+        ))
+    }
+
     func testLibraryLogsPathPasses() {
         let url = URL(fileURLWithPath: "/Users/test/Library/Logs/SomeApp/debug.log")
         XCTAssertTrue(ScanPolicy.isLowImpactPath(url))
@@ -790,5 +833,45 @@ final class JetBrainsStaleVersionTests: XCTestCase {
 
         XCTAssertNotNil(findings)
         XCTAssertEqual(findings?.count, 0)
+    }
+}
+
+// MARK: - UserCachesRule: never report search-index caches
+
+final class UserCachesSearchIndexProtectionTests: XCTestCase {
+    func testDoesNotReportSpotlightHelpdSuggestionsOrMediaAnalysis() async throws {
+        let home = FileManager.default.temporaryDirectory
+            .appending(path: "pare_user_caches_si_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let fm = FileManager.default
+        let paths: [(String, Int)] = [
+            ("Library/Caches/com.apple.Spotlight", 2 * 1024 * 1024),
+            ("Library/Caches/com.apple.helpd", 2 * 1024 * 1024),
+            ("Library/Caches/com.example.safe", 2 * 1024 * 1024),
+            ("Library/Suggestions", 2 * 1024 * 1024),
+            ("Library/Containers/com.apple.mediaanalysisd/Data/Library/Caches", 2 * 1024 * 1024),
+        ]
+        for (relative, size) in paths {
+            let dir = home.appending(path: relative)
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            try Data(repeating: 0x42, count: size).write(to: dir.appending(path: "payload.bin"))
+        }
+
+        let findings = await UserCachesRule().customScan(
+            environment: ScanEnvironment(homeDirectory: home)
+        ) ?? []
+        let joined = findings.map(\.path).joined(separator: "\n")
+
+        XCTAssertFalse(joined.localizedCaseInsensitiveContains("com.apple.Spotlight"),
+                       "Must not report Spotlight cache: \(joined)")
+        XCTAssertFalse(joined.localizedCaseInsensitiveContains("com.apple.helpd"),
+                       "Must not report helpd cache: \(joined)")
+        XCTAssertFalse(joined.localizedCaseInsensitiveContains("Suggestions"),
+                       "Must not report Library/Suggestions: \(joined)")
+        XCTAssertFalse(joined.localizedCaseInsensitiveContains("mediaanalysisd"),
+                       "Must not report mediaanalysisd: \(joined)")
+        XCTAssertTrue(findings.contains { $0.path.localizedCaseInsensitiveContains("com.example.safe") },
+                      "Ordinary user caches should still be reported: \(joined)")
     }
 }
