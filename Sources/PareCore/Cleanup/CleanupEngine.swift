@@ -135,6 +135,16 @@ public actor CleanupEngine {
                 continue
             }
 
+            // Spotlight / Core Spotlight / Help / media analysis — deleting these
+            // forces a costly reindex. Never trash even if a rule mis-reports them.
+            if ScanPolicy.isSearchIndexSensitivePath(url) {
+                skipped.append((
+                    finding.path,
+                    "Search-index path protected — cleaning would force Spotlight/media reindexing"
+                ))
+                continue
+            }
+
             // ADVANCED findings must never be deleted directly.
             if finding.riskLevel == .advanced {
                 skipped.append((finding.path, "ADVANCED-risk finding — use app-native cleanup"))

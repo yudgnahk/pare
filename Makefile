@@ -6,7 +6,7 @@ PROFILE ?= baseline
 TOP ?= 20
 ARGS ?=
 
-.PHONY: help build test run start run-app run-baseline run-developer run-designer run-video-builder icon release clean
+.PHONY: help build test run start run-app ensure-icon run-baseline run-developer run-designer run-video-builder icon release clean
 
 help:
 	@printf "Targets:\n"
@@ -36,12 +36,27 @@ test:
 
 start: run-baseline
 
-run-app: build
+# Ensure Dock/in-app assets exist (regenerate when SVG is newer).
+ensure-icon:
+	@if [ ! -f scripts/AppIcon.icns ] || [ ! -f scripts/PareLogo.png ] \
+		|| [ scripts/icon.svg -nt scripts/AppIcon.icns ] \
+		|| [ scripts/icon.svg -nt scripts/PareLogo.png ]; then \
+		bash scripts/generate-icon.sh; \
+	fi
+
+run-app: build ensure-icon
 	mkdir -p $(APP_BUNDLE)/Contents/MacOS
 	mkdir -p $(APP_BUNDLE)/Contents/Resources
 	cp .build/debug/PareApp $(APP_BUNDLE)/Contents/MacOS/PareApp
 	cp scripts/AppInfo.plist $(APP_BUNDLE)/Contents/Info.plist
-	@[ -f scripts/AppIcon.icns ] && cp scripts/AppIcon.icns $(APP_BUNDLE)/Contents/Resources/ || true
+	cp scripts/AppIcon.icns $(APP_BUNDLE)/Contents/Resources/AppIcon.icns
+	cp scripts/PareLogo.png $(APP_BUNDLE)/Contents/Resources/PareLogo.png
+	# Copy SPM resource bundles next to the executable (e.g. app-catalog.json).
+	@if [ -d .build/debug/Pare_PareCore.bundle ]; then \
+		cp -R .build/debug/Pare_PareCore.bundle $(APP_BUNDLE)/Contents/MacOS/; \
+	fi
+	# Bump modtime so Dock/Finder refresh the icon after rebuilds.
+	touch $(APP_BUNDLE)
 	open $(APP_BUNDLE)
 
 run:

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# generate-icon.sh — Rasterise scripts/icon.svg → scripts/AppIcon.icns
+# generate-icon.sh — Rasterise scripts/icon.svg → Dock .icns + in-app PNG
+#
+# Outputs:
+#   scripts/AppIcon.icns  — macOS app/Dock icon (all standard sizes)
+#   scripts/PareLogo.png  — 256×256 PNG for in-app branding (sidebar, etc.)
 #
 # Uses only macOS built-in tools (sips + iconutil); no Homebrew required.
 # Requires macOS 13+ (sips SVG support).
@@ -12,6 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SVG="$SCRIPT_DIR/icon.svg"
 ICNS="$SCRIPT_DIR/AppIcon.icns"
+LOGO_PNG="$SCRIPT_DIR/PareLogo.png"
 TMP_DIR=$(mktemp -d)
 ICONSET="$TMP_DIR/AppIcon.iconset"
 
@@ -42,14 +47,19 @@ rasterize 512  "$ICONSET/icon_256x256@2x.png"
 rasterize 512  "$ICONSET/icon_512x512.png"
 rasterize 1024 "$ICONSET/icon_512x512@2x.png"
 
-echo "   ✓ 10 sizes generated"
+# In-app logo (same art, single PNG for SwiftUI / Bundle.main)
+rasterize 256  "$LOGO_PNG"
+
+echo "   ✓ 10 icon sizes + PareLogo.png generated"
 echo ""
 echo "▶  Compiling AppIcon.icns…"
 iconutil -c icns "$ICONSET" -o "$ICNS"
 rm -rf "$TMP_DIR"
 
 ICNS_SIZE=$(du -sh "$ICNS" | cut -f1)
+LOGO_SIZE=$(du -sh "$LOGO_PNG" | cut -f1)
 echo "   ✓ $ICNS ($ICNS_SIZE)"
+echo "   ✓ $LOGO_PNG ($LOGO_SIZE)"
 echo ""
-echo "  Run 'make run-app' to launch with the icon."
-echo "  Run 'make release' to include it in the distributable."
+echo "  Run 'make run-app' to launch with the Dock icon and in-app logo."
+echo "  Run 'make release' to include them in the distributable."

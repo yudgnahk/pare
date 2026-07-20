@@ -106,13 +106,27 @@ chmod +x "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
 cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
 
-# Copy icon (run scripts/generate-icon.sh first if missing)
-if [ -f "$SCRIPTS_DIR/AppIcon.icns" ]; then
-    cp "$SCRIPTS_DIR/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-    echo "   ✓ AppIcon.icns copied"
-else
-    echo "   ⚠  AppIcon.icns not found — run: bash scripts/generate-icon.sh"
+# Dock icon + in-app logo (generate from SVG if assets are missing/stale)
+if [ ! -f "$SCRIPTS_DIR/AppIcon.icns" ] || [ ! -f "$SCRIPTS_DIR/PareLogo.png" ] \
+    || [ "$SCRIPTS_DIR/icon.svg" -nt "$SCRIPTS_DIR/AppIcon.icns" ] \
+    || [ "$SCRIPTS_DIR/icon.svg" -nt "$SCRIPTS_DIR/PareLogo.png" ]; then
+    bash "$SCRIPTS_DIR/generate-icon.sh"
 fi
+cp "$SCRIPTS_DIR/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+cp "$SCRIPTS_DIR/PareLogo.png" "$APP_BUNDLE/Contents/Resources/PareLogo.png"
+echo "   ✓ AppIcon.icns + PareLogo.png copied"
+
+# SPM resource bundles live next to the executable
+for arch_dir in \
+    "$BUILD_DIR/arm64-apple-macosx/release" \
+    "$BUILD_DIR/x86_64-apple-macosx/release" \
+    "$BUILD_DIR/release"; do
+    if [ -d "$arch_dir/Pare_PareCore.bundle" ]; then
+        cp -R "$arch_dir/Pare_PareCore.bundle" "$APP_BUNDLE/Contents/MacOS/"
+        echo "   ✓ Pare_PareCore.bundle copied"
+        break
+    fi
+done
 
 # Update version/build in the bundle's plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP_BUNDLE/Contents/Info.plist"

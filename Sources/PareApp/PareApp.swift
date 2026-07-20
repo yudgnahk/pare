@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 @main
 struct PareApp: App {
+    @NSApplicationDelegateAdaptor(PareAppDelegate.self) private var appDelegate
     @StateObject private var scanViewModel = ScanDashboardViewModel()
     @StateObject private var historyViewModel = HistoryViewModel()
     @StateObject private var textZoom = TextZoomController()
@@ -27,6 +29,14 @@ struct PareApp: App {
         }
     }
 }
+
+/// Applies the brand Dock icon once AppKit is ready (Info.plist also references AppIcon).
+private final class PareAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        PareBrandLogo.applyDockIconIfAvailable()
+    }
+}
+
 
 struct ContentView: View {
     @ObservedObject var scanViewModel: ScanDashboardViewModel
