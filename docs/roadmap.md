@@ -253,6 +253,14 @@ Spec: `docs/features/phase-8-productivity-system.md`
 
 ---
 
+## Competitive analysis (living)
+
+- [x] App A comparison refreshed — `docs/features/comparison-app-a.md` (2026-07-20)
+- [x] App B comparison — `docs/features/comparison-app-b.md`
+- [x] Ranked next-5 backlog — `docs/reviews/2026-07-20-competitive-gaps.md`
+
+---
+
 ## Phase 9 — Polish & Distribution
 
 - [ ] Code signing — Developer ID Application certificate (requires your keychain cert)

@@ -99,3 +99,13 @@ See `docs/user-stories.md` for full scope, acceptance criteria, and session prom
 - [ ] **US-4** Distribution Readiness — code signing, notarization, diagnostics export
 - [x] **US-5** Leave Homebrew — detach cask, keep app (escape hatch for Chrome/VS Code)
 - [x] **US-6** Safer Upgrade All — non-greedy default; optional greedy with confirm
+
+## Competitive next steps (2026-07-20)
+
+See `docs/reviews/2026-07-20-competitive-gaps.md` for full ranking.
+
+1. **US-4 / Phase 9** — notarized distribution + diagnostics export  
+2. **Full Disk Access + empty-scan coaching** — first-run trust  
+3. **Safe Care** one-pass safe clean journey (App B Smart Care, Pare-shaped)  
+4. **Scan progress** — rule name + index during unified scan  
+5. **Quality bar** — green `make test`, doc/rule-count sync, rename legacy `PareApp.swift`  
