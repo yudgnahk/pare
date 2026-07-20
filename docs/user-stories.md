@@ -246,3 +246,90 @@ Implement US-4 (Distribution Readiness) from docs/user-stories.md.
 Run swift test. Build and verify the entitlements are embedded in the binary
 with `codesign -d --entitlements - .build/release/PareApp`.
 ```
+
+---
+
+## US-5 — Leave Homebrew (Detach Cask, Keep App)
+
+**As a user who installed browsers/IDEs via Homebrew Cask, I want to stop Homebrew from managing selected apps without deleting them, so terminal `brew upgrade --greedy` (or accidental upgrades) cannot replace a running app bundle and break my session.**
+
+### Problem
+
+Casks like Google Chrome and VS Code set `auto_updates: true`. When Brew upgrades them it replaces `/Applications/….app` on disk. A process that is already open becomes unusable until quit/relaunch. Users may still run greedy upgrades outside Pare; the durable fix is to detach ownership while keeping the app.
+
+### What it covers
+
+- **Core**: `CaskLeaveHomebrew` — resolve installed `.app` paths, refuse (or force-quit) if running, stage apps aside, `brew uninstall --cask` **without** `--zap`, restore apps to `/Applications` (or `~/Applications`).
+- **Orphaned casks** (receipt but no app): leave = plain `brew uninstall --cask` (cleanup only).
+- **SwiftUI**: per-cask **Leave Homebrew** action with confirmation explaining: app stays; Brew no longer upgrades/uninstalls it; prefs/data are not wiped; re-adopt later via Migrate.
+- **Copy for auto-update casks**: hint that the app will update itself after leaving.
+
+### Out of scope
+
+- Bulk multi-select leave (v1 is one cask at a time)
+- Deleting Caskroom receipts without going through `brew uninstall`
+- Changing formula unlink behavior (formulae use real `brew unlink`)
+
+### Acceptance criteria
+
+- Leaving a cask keeps the `.app` on disk and removes the cask from `brew list --cask`
+- User data / prefs are not removed (no `--zap`)
+- If the app is running, leave fails with a clear message unless the user chooses force-quit
+- After leave, the cask disappears from the Casks tab; the app may appear under Migrate
+- Unit tests cover path resolution, stage/restore, and orphaned short-circuit
+
+### Key files
+
+- `Sources/PareCore/Homebrew/CaskLeaveHomebrew.swift` — new
+- `Sources/PareApp/ViewModels/HomebrewManagerViewModel.swift` — leave action
+- `Sources/PareApp/Views/HomebrewManagerView.swift` — button + confirm
+- `Tests/PareCoreTests/HomebrewTests.swift` — leave helpers
+- `docs/features/homebrew-manager.md` — document Leave operation
+
+### Session prompt
+
+```text
+Implement US-5 (Leave Homebrew) from docs/user-stories.md.
+```
+
+---
+
+## US-6 — Safer Homebrew Upgrade All (Non-Greedy Default)
+
+**As a user upgrading packages from Pare, I want “Upgrade All” to skip self-updating casks by default, so Chrome/VS Code are not force-replaced mid-session while Zalo-style casks still get Brew updates.**
+
+### Problem
+
+Pare previously ran `brew upgrade --greedy` for Upgrade All, which upgrades `auto_updates: true` casks (Chrome, VS Code, Slack, …) and can break running apps. Homebrew’s default `brew upgrade` already skips those casks.
+
+### What it covers
+
+- **Upgrade All** → `brew upgrade` (no `--greedy`)
+- Outdated list still uses `--greedy` discovery so self-updating apps remain visible
+- Split counts: packages Brew will upgrade vs self-updating (auto) casks
+- UI: Upgrade All button uses the non-greedy count; outdated auto-update rows show clearer “updates itself” help and optional single-package upgrade still allowed with warning in help text
+- Optional secondary action: **Upgrade self-updating too** → `brew upgrade --greedy` with an explicit confirmation warning
+
+### Out of scope
+
+- Auto quit/relaunch around individual cask upgrades (future polish)
+- Changing terminal Homebrew behavior outside Pare
+
+### Acceptance criteria
+
+- Upgrade All does not pass `--greedy`
+- Self-updating outdated casks are still listed and labeled
+- User can still upgrade a single auto-update cask explicitly
+- Docs/user story and feature doc match the new default
+
+### Key files
+
+- `Sources/PareApp/ViewModels/HomebrewManagerViewModel.swift`
+- `Sources/PareApp/Views/HomebrewManagerView.swift`
+- `docs/features/homebrew-manager.md`
+
+### Session prompt
+
+```text
+Implement US-6 (Safer Upgrade All) from docs/user-stories.md together with US-5.
+```

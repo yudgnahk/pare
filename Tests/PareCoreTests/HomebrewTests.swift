@@ -581,6 +581,219 @@ final class HomebrewTests: XCTestCase {
         let candidates = filterCandidates(apps: apps, catalog: catalog)
         XCTAssertEqual(candidates.map(\.appName), ["Alfred", "Zoom"])
     }
+
+    // MARK: - CaskLeaveHomebrew
+
+    func testLeaveResolveInstalledAppPathsFindsApps() {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LeaveResolve-\(UUID().uuidString)")
+        let appsDir = tmp.appendingPathComponent("Applications")
+        let app = appsDir.appendingPathComponent("Zalo.app")
+        try? FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let found = CaskLeaveHomebrew.resolveInstalledAppPaths(
+            appNames: ["Zalo.app", "Missing.app"],
+            searchPaths: [appsDir.path]
+        )
+        XCTAssertEqual(found.map(\.lastPathComponent), ["Zalo.app"])
+    }
+
+    func testLeaveResolveAddsAppSuffixWhenMissing() {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LeaveSuffix-\(UUID().uuidString)")
+        let appsDir = tmp.appendingPathComponent("Applications")
+        let app = appsDir.appendingPathComponent("Firefox.app")
+        try? FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let found = CaskLeaveHomebrew.resolveInstalledAppPaths(
+            appNames: ["Firefox"],
+            searchPaths: [appsDir.path]
+        )
+        XCTAssertEqual(found.count, 1)
+    }
+
+    func testLeaveRunningAppsDetection() {
+        let app = URL(fileURLWithPath: "/Applications/Google Chrome.app")
+        let running = CaskLeaveHomebrew.runningApps(
+            among: [app],
+            runningPaths: [
+                "/Applications/Google Chrome.app",
+                "/Applications/Safari.app"
+            ]
+        )
+        XCTAssertEqual(running, ["Google Chrome.app"])
+    }
+
+    func testLeaveStageAndRestoreApps() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("LeaveStage-\(UUID().uuidString)")
+        let appsDir = root.appendingPathComponent("Applications")
+        let original = appsDir.appendingPathComponent("Demo.app")
+        let marker = original.appendingPathComponent("Contents").appendingPathComponent("marker.txt")
+        try fm.createDirectory(at: marker.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "hello".write(to: marker, atomically: true, encoding: .utf8)
+        defer { try? fm.removeItem(at: root) }
+
+        let staging = root.appendingPathComponent("stage")
+        let pairs = try CaskLeaveHomebrew.stageApps(
+            appPaths: [original],
+            stagingRoot: staging
+        )
+        XCTAssertEqual(pairs.count, 1)
+        XCTAssertTrue(fm.fileExists(atPath: pairs[0].staged.path))
+        XCTAssertTrue(fm.fileExists(atPath: original.path))
+
+        // Simulate brew uninstall removing the original.
+        try fm.removeItem(at: original)
+        XCTAssertFalse(fm.fileExists(atPath: original.path))
+
+        try CaskLeaveHomebrew.restoreApps(pairs: pairs)
+        XCTAssertTrue(fm.fileExists(atPath: original.path))
+        let restored = try String(contentsOf: marker, encoding: .utf8)
+        XCTAssertEqual(restored, "hello")
+    }
+
+    func testLeaveOrphanedCaskOnlyUninstalls() async throws {
+        var uninstalled: [String] = []
+        let leaver = CaskLeaveHomebrew(
+            applicationSearchPaths: ["/tmp/nonexistent-pare-apps"],
+            fileManager: .default,
+            uninstall: { token in uninstalled.append(token) },
+            runningAppPaths: { [] }
+        )
+        let cask = BrewCask(
+            token: "missing-app",
+            version: "1.0",
+            autoUpdates: false,
+            installedAppNames: ["Missing.app"],
+            installDate: nil,
+            isOrphaned: true
+        )
+        let result = try await leaver.leave(cask: cask)
+        XCTAssertEqual(uninstalled, ["missing-app"])
+        XCTAssertTrue(result.preservedAppPaths.isEmpty)
+        XCTAssertEqual(result.token, "missing-app")
+    }
+
+    func testLeavePreservesAppAndUninstallsCask() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("LeaveFull-\(UUID().uuidString)")
+        let appsDir = root.appendingPathComponent("Applications")
+        let original = appsDir.appendingPathComponent("DemoApp.app")
+        let marker = original.appendingPathComponent("Contents").appendingPathComponent("ok.txt")
+        try fm.createDirectory(at: marker.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "keep-me".write(to: marker, atomically: true, encoding: .utf8)
+        defer { try? fm.removeItem(at: root) }
+
+        var uninstalled: [String] = []
+        let leaver = CaskLeaveHomebrew(
+            applicationSearchPaths: [appsDir.path],
+            fileManager: fm,
+            uninstall: { token in
+                uninstalled.append(token)
+                // Mimic brew uninstall removing the app from Applications.
+                try? fm.removeItem(at: original)
+            },
+            runningAppPaths: { [] }
+        )
+        let cask = BrewCask(
+            token: "demo-app",
+            version: "2.0",
+            autoUpdates: true,
+            installedAppNames: ["DemoApp.app"],
+            installDate: nil
+        )
+        let result = try await leaver.leave(cask: cask)
+        XCTAssertEqual(uninstalled, ["demo-app"])
+        XCTAssertEqual(result.preservedAppPaths, [original.path])
+        XCTAssertTrue(fm.fileExists(atPath: original.path))
+        XCTAssertEqual(try String(contentsOf: marker, encoding: .utf8), "keep-me")
+    }
+
+    func testLeaveRefusesWhenAppRunning() async {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("LeaveRunning-\(UUID().uuidString)")
+        let appsDir = root.appendingPathComponent("Applications")
+        let original = appsDir.appendingPathComponent("Busy.app")
+        try? fm.createDirectory(at: original, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        var uninstallCalled = false
+        let leaver = CaskLeaveHomebrew(
+            applicationSearchPaths: [appsDir.path],
+            fileManager: fm,
+            uninstall: { _ in uninstallCalled = true },
+            runningAppPaths: { [original.path] }
+        )
+        let cask = BrewCask(
+            token: "busy",
+            version: "1.0",
+            autoUpdates: true,
+            installedAppNames: ["Busy.app"],
+            installDate: nil
+        )
+        do {
+            _ = try await leaver.leave(cask: cask, forceQuitRunning: false)
+            XCTFail("Expected appsRunning error")
+        } catch let error as CaskLeaveError {
+            guard case .appsRunning = error else {
+                return XCTFail("Wrong error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertFalse(uninstallCalled)
+        XCTAssertTrue(fm.fileExists(atPath: original.path))
+    }
+
+    func testLeaveRestoresOnUninstallFailure() async {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("LeaveFail-\(UUID().uuidString)")
+        let appsDir = root.appendingPathComponent("Applications")
+        let original = appsDir.appendingPathComponent("Keep.app")
+        let marker = original.appendingPathComponent("Contents").appendingPathComponent("x.txt")
+        try? fm.createDirectory(at: marker.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? "data".write(to: marker, atomically: true, encoding: .utf8)
+        defer { try? fm.removeItem(at: root) }
+
+        let leaver = CaskLeaveHomebrew(
+            applicationSearchPaths: [appsDir.path],
+            fileManager: fm,
+            uninstall: { _ in
+                try? fm.removeItem(at: original)
+                throw BrewError.failed(exitCode: 1, stderr: "boom")
+            },
+            runningAppPaths: { [] }
+        )
+        let cask = BrewCask(
+            token: "keep",
+            version: "1.0",
+            autoUpdates: false,
+            installedAppNames: ["Keep.app"],
+            installDate: nil
+        )
+        do {
+            _ = try await leaver.leave(cask: cask)
+            XCTFail("Expected uninstall failure")
+        } catch let error as CaskLeaveError {
+            guard case .uninstallFailed = error else {
+                return XCTFail("Wrong error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected: \(error)")
+        }
+        // Staged copy should have been restored after failed uninstall.
+        XCTAssertTrue(fm.fileExists(atPath: original.path))
+    }
+
+    func testCaskLeaveErrorDescriptions() {
+        let running = CaskLeaveError.appsRunning(["Chrome.app"])
+        XCTAssertTrue(running.localizedDescription.contains("Chrome.app"))
+        let uninstall = CaskLeaveError.uninstallFailed(message: "nope")
+        XCTAssertTrue(uninstall.localizedDescription.contains("nope"))
+    }
 }
 
 // MARK: - Test helpers

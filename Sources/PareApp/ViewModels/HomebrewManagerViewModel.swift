@@ -57,9 +57,25 @@ final class HomebrewManagerViewModel: ObservableObject {
     @Published var operationLog: [String] = []
     @Published var showOperationSheet = false
 
+    /// Cask pending confirmation for Leave Homebrew.
+    @Published var leaveConfirmCask: BrewCask?
+    @Published var leaveForceQuit = false
+    @Published var showGreedyUpgradeConfirm = false
+
     // MARK: - Computed
 
     var isInstalled: Bool { BrewRunner.shared.isInstalled }
+
+    /// Outdated packages that `brew upgrade` (non-greedy) will touch.
+    /// Self-updating casks are excluded — they update themselves.
+    var brewManagedOutdated: [BrewOutdatedPackage] {
+        outdated.filter { $0.isFormula || !$0.isAutoUpdate }
+    }
+
+    /// Self-updating casks visible via greedy outdated discovery.
+    var autoUpdateOutdated: [BrewOutdatedPackage] {
+        outdated.filter { !$0.isFormula && $0.isAutoUpdate }
+    }
 
     var filteredFormulae: [BrewFormula] {
         var result = formulae
@@ -174,15 +190,35 @@ final class HomebrewManagerViewModel: ObservableObject {
         }
     }
 
+    /// Upgrade formulae + non-auto casks only (`brew upgrade`, no `--greedy`).
     func upgradeAll() {
-        runOperation(label: "Upgrading all packages…", args: ["upgrade", "--greedy"])
+        let count = brewManagedOutdated.count
+        let label = count == 0
+            ? "Upgrading packages…"
+            : "Upgrading \(count) package(s)…"
+        runOperation(label: label, args: ["upgrade"])
+    }
+
+    /// Explicit greedy upgrade — includes self-updating casks (Chrome, VS Code, …).
+    /// Prefer confirming via `showGreedyUpgradeConfirm` before calling.
+    func upgradeAllIncludingAutoUpdates() {
+        runOperation(
+            label: "Upgrading all packages (including self-updating casks)…",
+            args: ["upgrade", "--greedy"]
+        )
     }
 
     func upgrade(package: BrewOutdatedPackage) {
         let args: [String] = package.isFormula
             ? ["upgrade", package.name]
             : ["upgrade", "--cask", package.name]
-        runOperation(label: "Upgrading \(package.name)…", args: args)
+        let label: String
+        if package.isAutoUpdate {
+            label = "Upgrading \(package.name) (self-updating — may require restart)…"
+        } else {
+            label = "Upgrading \(package.name)…"
+        }
+        runOperation(label: label, args: args)
     }
 
     func uninstall(formula: BrewFormula) {
@@ -191,6 +227,51 @@ final class HomebrewManagerViewModel: ObservableObject {
 
     func uninstall(cask: BrewCask) {
         runOperation(label: "Uninstalling \(cask.token)…", args: ["uninstall", "--cask", cask.token])
+    }
+
+    /// Begin Leave Homebrew flow — shows confirmation sheet.
+    func requestLeaveHomebrew(cask: BrewCask) {
+        leaveForceQuit = false
+        leaveConfirmCask = cask
+    }
+
+    func cancelLeaveHomebrew() {
+        leaveConfirmCask = nil
+        leaveForceQuit = false
+    }
+
+    /// Detach cask from Homebrew while keeping the app on disk (no zap).
+    func confirmLeaveHomebrew() {
+        guard let cask = leaveConfirmCask else { return }
+        let forceQuit = leaveForceQuit
+        leaveConfirmCask = nil
+        leaveForceQuit = false
+
+        operationLog = []
+        operationState = .running(label: "Leaving Homebrew: \(cask.token)…")
+        showOperationSheet = true
+
+        Task {
+            let leaver = CaskLeaveHomebrew()
+            do {
+                let result = try await leaver.leave(
+                    cask: cask,
+                    forceQuitRunning: forceQuit
+                ) { [weak self] line in
+                    Task { @MainActor in
+                        self?.operationLog.append(line)
+                    }
+                }
+                self.casks.removeAll { $0.token == result.token }
+                self.operationState = .succeeded
+            } catch let error as CaskLeaveError {
+                self.operationLog.append(error.localizedDescription)
+                self.operationState = .failed(error.localizedDescription)
+            } catch {
+                self.operationLog.append(error.localizedDescription)
+                self.operationState = .failed(error.localizedDescription)
+            }
+        }
     }
 
     func migrate(candidate: MigrationCandidate) {

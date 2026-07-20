@@ -44,6 +44,26 @@ struct HomebrewManagerView: View {
         .sheet(isPresented: $viewModel.showOperationSheet) {
             BrewOperationSheet(viewModel: viewModel)
         }
+        .sheet(item: $viewModel.leaveConfirmCask) { cask in
+            LeaveHomebrewConfirmSheet(
+                cask: cask,
+                forceQuit: $viewModel.leaveForceQuit,
+                onCancel: { viewModel.cancelLeaveHomebrew() },
+                onConfirm: { viewModel.confirmLeaveHomebrew() }
+            )
+        }
+        .confirmationDialog(
+            "Upgrade self-updating apps too?",
+            isPresented: $viewModel.showGreedyUpgradeConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Upgrade including self-updating casks", role: .destructive) {
+                viewModel.upgradeAllIncludingAutoUpdates()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This runs brew upgrade --greedy and may replace apps that are open (Chrome, VS Code, Slack, …). Quit those apps first or expect to relaunch them.")
+        }
         .onAppear {
             if viewModel.loadState == .idle { viewModel.load() }
         }
@@ -97,14 +117,23 @@ struct HomebrewManagerView: View {
                     style: .compact
                 ) { viewModel.load() }
 
-                if viewModel.loadState == .loaded && !viewModel.outdated.isEmpty {
+                if viewModel.loadState == .loaded && !viewModel.brewManagedOutdated.isEmpty {
                     PrimaryActionButton(
-                        title: "Upgrade All (\(viewModel.outdated.count))",
+                        title: "Upgrade All (\(viewModel.brewManagedOutdated.count))",
                         systemImage: "arrow.up.circle",
                         isLoading: false,
                         style: .compact,
                         tint: .warning
                     ) { viewModel.upgradeAll() }
+                }
+                if viewModel.loadState == .loaded && !viewModel.autoUpdateOutdated.isEmpty {
+                    PrimaryActionButton(
+                        title: "Self-updating (\(viewModel.autoUpdateOutdated.count))",
+                        systemImage: "exclamationmark.arrow.circlepath",
+                        isLoading: false,
+                        style: .compact,
+                        tint: .review
+                    ) { viewModel.showGreedyUpgradeConfirm = true }
                 }
                 Spacer(minLength: 0)
             }
@@ -313,9 +342,15 @@ struct HomebrewManagerView: View {
                     casksHeader
                 } content: {
                     ForEach(viewModel.filteredCasks) { cask in
-                        CaskRow(cask: cask) {
-                            viewModel.uninstall(cask: cask)
-                        }
+                        CaskRow(
+                            cask: cask,
+                            onLeaveHomebrew: {
+                                viewModel.requestLeaveHomebrew(cask: cask)
+                            },
+                            onUninstall: {
+                                viewModel.uninstall(cask: cask)
+                            }
+                        )
                     }
                 }
             }
@@ -331,7 +366,7 @@ struct HomebrewManagerView: View {
                 Text("App").frame(width: scale.scaled(160), alignment: .leading)
                 Text("Installed").frame(width: scale.colDate, alignment: .trailing)
             }
-            Spacer().frame(width: scale.scaled(50))
+            Spacer().frame(width: scale.scaled(100))
         }
         .font(scale.tableHeader)
         .foregroundStyle(AppTheme.textSecondary)
@@ -347,18 +382,38 @@ struct HomebrewManagerView: View {
             if viewModel.filteredOutdated.isEmpty {
                 emptyPrompt(icon: "checkmark.seal", text: "All packages are up to date")
             } else {
-                StableListContainer(resetToken: listResetToken) {
-                    outdatedHeader
-                } content: {
-                    ForEach(viewModel.filteredOutdated) { pkg in
-                        OutdatedRow(package: pkg) {
-                            viewModel.upgrade(package: pkg)
+                VStack(spacing: 0) {
+                    if !viewModel.autoUpdateOutdated.isEmpty {
+                        outdatedAutoUpdateExplainer
+                    }
+                    StableListContainer(resetToken: listResetToken) {
+                        outdatedHeader
+                    } content: {
+                        ForEach(viewModel.filteredOutdated) { pkg in
+                            OutdatedRow(package: pkg) {
+                                viewModel.upgrade(package: pkg)
+                            }
                         }
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var outdatedAutoUpdateExplainer: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(AppTheme.accent)
+            Text("Self-updating casks (auto badge) update themselves. Upgrade All skips them. Prefer Leave Homebrew for browsers/IDEs if you run brew upgrade --greedy in Terminal.")
+                .font(scale.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.04))
     }
 
     private var outdatedHeader: some View {
@@ -559,6 +614,7 @@ private struct FormulaRow: View {
 
 private struct CaskRow: View {
     let cask: BrewCask
+    let onLeaveHomebrew: () -> Void
     let onUninstall: () -> Void
     @Environment(\.displayScale) private var scale
     @State private var isHovered = false
@@ -586,6 +642,11 @@ private struct CaskRow: View {
                     Text("App not found — removed without brew uninstall")
                         .font(scale.font(10, weight: .regular))
                         .foregroundStyle(AppTheme.warning.opacity(0.8))
+                } else if cask.autoUpdates {
+                    Text("Updates itself — Leave Homebrew if brew upgrade breaks sessions")
+                        .font(scale.font(10, weight: .regular))
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.75))
+                        .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -609,21 +670,32 @@ private struct CaskRow: View {
                     .frame(width: scale.colDate, alignment: .trailing)
             }
 
-            Button(action: onUninstall) {
-                HStack(spacing: 4) {
-                    Image(systemName: cask.isOrphaned ? "trash.fill" : "trash")
-                    if cask.isOrphaned {
-                        Text("Clean up")
-                            .font(scale.micro)
+            HStack(spacing: 10) {
+                if !cask.isOrphaned {
+                    Button(action: onLeaveHomebrew) {
+                        Image(systemName: "link.badge.minus")
+                            .foregroundStyle(AppTheme.accent)
                     }
+                    .buttonStyle(.borderless)
+                    .help("Leave Homebrew — keep \(cask.token) app, stop Brew upgrades")
                 }
-                .foregroundStyle(AppTheme.warning)
+
+                Button(action: onUninstall) {
+                    HStack(spacing: 4) {
+                        Image(systemName: cask.isOrphaned ? "trash.fill" : "trash")
+                        if cask.isOrphaned {
+                            Text("Clean up")
+                                .font(scale.micro)
+                        }
+                    }
+                    .foregroundStyle(AppTheme.warning)
+                }
+                .buttonStyle(.borderless)
+                .help(cask.isOrphaned
+                      ? "Remove \(cask.token) from Homebrew records (app already deleted)"
+                      : "Uninstall \(cask.token) (removes the app)")
             }
-            .buttonStyle(.borderless)
-            .help(cask.isOrphaned
-                  ? "Remove \(cask.token) from Homebrew records (app already deleted)"
-                  : "Uninstall \(cask.token)")
-            .frame(width: cask.isOrphaned ? scale.scaled(90) : scale.scaled(50), alignment: .trailing)
+            .frame(width: cask.isOrphaned ? scale.scaled(90) : scale.scaled(100), alignment: .trailing)
             .opacity(isHovered ? 1 : (cask.isOrphaned ? 0.8 : 0.5))
         }
         .padding(.horizontal, 16)
@@ -649,6 +721,69 @@ private struct CaskRow: View {
     }
 }
 
+// MARK: - Leave Homebrew confirmation
+
+private struct LeaveHomebrewConfirmSheet: View {
+    let cask: BrewCask
+    @Binding var forceQuit: Bool
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(systemName: "link.badge.minus")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(AppTheme.accent)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Leave Homebrew")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text(cask.token)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                bullet("Keeps the app in Applications — does not delete it")
+                bullet("Removes Homebrew ownership so brew upgrade will not replace it")
+                bullet("Does not wipe preferences or caches (no --zap)")
+                if cask.autoUpdates {
+                    bullet("This app updates itself — recommended if brew upgrade breaks open sessions")
+                }
+                bullet("You can re-adopt later from the Migrate tab")
+            }
+
+            Toggle("Force quit the app if it is running", isOn: $forceQuit)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 13))
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Leave Homebrew", action: onConfirm)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+        .background(.regularMaterial)
+    }
+
+    private func bullet(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("•")
+                .foregroundStyle(AppTheme.accent)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 // MARK: - OutdatedRow
 
 private struct OutdatedRow: View {
@@ -665,7 +800,7 @@ private struct OutdatedRow: View {
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
                 if package.pinned { badge("pinned", color: AppTheme.accent) }
-                if package.isAutoUpdate { badge("auto", color: AppTheme.textSecondary) }
+                if package.isAutoUpdate { badge("auto", color: AppTheme.accent) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -693,13 +828,17 @@ private struct OutdatedRow: View {
                     Button(action: onUpgrade) {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.up.circle.fill")
-                            Text("Upgrade")
+                            Text(package.isAutoUpdate ? "Force" : "Upgrade")
                         }
                         .font(scale.micro)
-                        .foregroundStyle(AppTheme.success)
+                        .foregroundStyle(package.isAutoUpdate ? AppTheme.warning : AppTheme.success)
                     }
                     .buttonStyle(.borderless)
-                    .help("Upgrade \(package.name) to \(package.currentVersion)")
+                    .help(
+                        package.isAutoUpdate
+                            ? "Force Brew upgrade of self-updating \(package.name) — quit the app first; may break a running session"
+                            : "Upgrade \(package.name) to \(package.currentVersion)"
+                    )
                 } else {
                     Text("Pinned")
                         .font(scale.rowMeta)
