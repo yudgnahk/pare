@@ -97,3 +97,5 @@ See `docs/user-stories.md` for full scope, acceptance criteria, and session prom
 - [x] **US-2** Scan Performance — incremental cache, benchmarks, reliability
 - [x] **US-3** In-App Cleanup Management — exclusion list UI + cleanup history with restore
 - [ ] **US-4** Distribution Readiness — code signing, notarization, diagnostics export
+- [x] **US-5** Leave Homebrew — detach cask, keep app (escape hatch for Chrome/VS Code)
+- [x] **US-6** Safer Upgrade All — non-greedy default; optional greedy with confirm

@@ -115,9 +115,15 @@ Response fields per outdated entry:
 try await runBrew(["upgrade", name])                    // formula
 try await runBrew(["upgrade", "--cask", token])          // cask
 
-// Upgrade all outdated (offer as batch action)
+// Upgrade All (default) — formulae + non-auto casks only
+// Does NOT pass --greedy, so auto_updates casks (Chrome, VS Code, …) are skipped.
 try await runBrew(["upgrade"])
+
+// Optional “self-updating too” (confirm first) — may break open app sessions
+try await runBrew(["upgrade", "--greedy"])
 ```
+
+Outdated discovery still uses `brew outdated --json=v2 --greedy` so self-updating casks remain visible and labeled `auto`. Upgrade All counts only packages Brew will actually touch without `--greedy`.
 
 Show live output in a streaming log sheet (pipe to a `@Published var log: String`).
 
@@ -136,6 +142,20 @@ try await runBrew(["uninstall", "--cask", "--zap", token])
 
 Always ask before `--zap`. Show a confirmation sheet listing what the zap stanza will remove (fetch from `brew info --cask --json=v2 <token>`, parse `artifacts[].zap`).
 
+### Leave Homebrew (detach, keep app)
+
+Inverse of Migrate / `--adopt`. Stops Brew from managing a cask without deleting the application — so terminal `brew upgrade --greedy` cannot replace the bundle.
+
+```swift
+// Implemented by CaskLeaveHomebrew:
+// 1. Resolve app paths under /Applications and ~/Applications
+// 2. Refuse if running (or force-quit when confirmed)
+// 3. Stage .app copy aside
+// 4. brew uninstall --cask <token>   // never --zap
+// 5. Restore .app to original path
+```
+
+Orphaned casks (receipt, no app): only step 4. UI: per-cask **Leave Homebrew** with confirmation.
 ### Hide dependencies
 
 By default show only user-requested formulae (`installed_on_request: true`). Provide a toggle to show all (including dependencies).
