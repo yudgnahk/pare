@@ -12,8 +12,9 @@ public struct UserCachesRule: ScanRule {
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.95
 
-    /// Top-level Library/Caches names (or path markers) owned by other rules.
-    private static let excludedTopLevelNames: Set<String> = [
+    /// Top-level Library/Caches names (or path markers) owned by other rules
+    /// or never-clean search-index stores (Spotlight / Help).
+    private static let excludedTopLevelNames: Set<String> = Set([
         "google",           // Chrome — BrowserCachesRule
         "com.apple.safari",
         "firefox",
@@ -25,7 +26,7 @@ public struct UserCachesRule: ScanRule {
         "homebrew",
         "go-build",
         "com.microsoft.vscode.shipit",
-    ]
+    ]).union(ScanPolicy.searchIndexSensitiveCacheFolderNames)
 
     public init() {}
 
@@ -40,10 +41,10 @@ public struct UserCachesRule: ScanRule {
         findings += scanTopLevelCacheFolders(in: cachesRoot)
 
         // Container app caches commonly reclaimable (parity with common cleaners).
+        // Intentionally omit mediaanalysisd and Library/Suggestions — deleting them
+        // forces Photos/visual search and Siri Suggestions re-indexing (see ScanPolicy).
         let containerCaches: [String] = [
-            "Library/Containers/com.apple.mediaanalysisd/Data/Library/Caches",
             "Library/Containers/com.apple.wallpaper.agent/Data/Library/Caches/com.apple.wallpaper.caches",
-            "Library/Suggestions",
         ]
         for relative in containerCaches {
             findings += PackageManagerCachesRule.directoryFindings(

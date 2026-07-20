@@ -28,12 +28,51 @@ public enum ScanPolicy {
         "/.bun/install/cache",
         // UserCachesRule reports whole Library/Caches/* folders.
         "/library/caches/",
-        "/library/suggestions",
-        "/library/containers/com.apple.mediaanalysisd/data/library/caches",
+        // Wallpaper agent cache only — search-index paths are never reconstructible-clean targets.
         "/library/containers/com.apple.wallpaper.agent/data/library/caches",
     ]
 
+    // MARK: - Search-index sensitive paths (never clean)
+
+    /// Paths whose deletion forces Spotlight / Core Spotlight / Help / media analysis
+    /// to rebuild indexes (high CPU, can take a long time). Never report or trash these.
+    public static let searchIndexSensitivePathMarkers: [String] = [
+        "/library/caches/com.apple.spotlight",
+        "/library/caches/com.apple.metadata",
+        "/library/caches/metadata",
+        "/library/caches/com.apple.helpd",
+        "/library/suggestions",
+        "/library/containers/com.apple.mediaanalysisd/",
+        "/library/metadata/",
+        "/.spotlight-v100",
+        "/.spotlight-v200",
+    ]
+
+    /// Top-level `~/Library/Caches` folder names that must never be offered for cleanup.
+    public static let searchIndexSensitiveCacheFolderNames: Set<String> = [
+        "com.apple.spotlight",
+        "com.apple.metadata",
+        "metadata",
+        "com.apple.helpd",
+    ]
+
+    public static func isSearchIndexSensitivePath(_ url: URL) -> Bool {
+        let path = url.path.lowercased()
+        return searchIndexSensitivePathMarkers.contains { path.contains($0) }
+    }
+
+    /// Large cleans cause heavy incremental Spotlight work (FSEvents), even without
+    /// touching search-index caches. Thresholds for a user-facing heads-up.
+    public static let largeCleanSpotlightWarningItemThreshold = 100
+    public static let largeCleanSpotlightWarningBytesThreshold: Int64 = 1 * 1024 * 1024 * 1024 // 1 GB
+
+    public static func shouldWarnAboutSpotlightIndexing(itemCount: Int, totalBytes: Int64) -> Bool {
+        itemCount >= largeCleanSpotlightWarningItemThreshold
+            || totalBytes >= largeCleanSpotlightWarningBytesThreshold
+    }
+
     public static func isReconstructibleCachePath(_ url: URL) -> Bool {
+        if isSearchIndexSensitivePath(url) { return false }
         let path = url.path.lowercased()
         return reconstructibleCachePathMarkers.contains { path.contains($0) }
     }
@@ -505,6 +544,9 @@ public enum ScanPolicy {
     }
 
     public static func isLowImpactPath(_ url: URL) -> Bool {
+        // Spotlight / Help / media-analysis indexes are never "low impact" to delete.
+        if isSearchIndexSensitivePath(url) { return false }
+
         let path = url.path.lowercased()
 
         let isProtected = protectedPathMarkers.contains { path.contains($0) }

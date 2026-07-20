@@ -1016,6 +1016,16 @@ private struct CategoryFolderRowView: View, Equatable {
     }
 }
 
+// MARK: - Clean confirmation copy
+
+/// Shared heads-up when a clean is large enough that Spotlight may busy-update
+/// (incremental FSEvents work — not a full index wipe).
+private enum CleanConfirmationSpotlightWarning {
+    static let message =
+        "Large clean: macOS Spotlight may be busy updating search indexes for a while. " +
+        "This is normal incremental work, not a full reindex. Pare never deletes Spotlight’s own store."
+}
+
 // MARK: - SelectedCleanConfirmationSheet
 
 private struct SelectedCleanConfirmationSheet: View {
@@ -1057,6 +1067,13 @@ private struct SelectedCleanConfirmationSheet: View {
                             icon: "exclamationmark.triangle",
                             color: AppTheme.warning,
                             text: "\(viewModel.selectedReviewCount) REVIEW item(s) — may include browser Local Storage or similar site data."
+                        )
+                    }
+                    if viewModel.selectedCleanMayTriggerSpotlightWork {
+                        infoRow(
+                            icon: "magnifyingglass",
+                            color: AppTheme.warning,
+                            text: CleanConfirmationSpotlightWarning.message
                         )
                     }
                     infoRow(
@@ -1141,6 +1158,10 @@ private struct QuickCleanConfirmationSheet: View {
                             text: "\(viewModel.quickCleanCandidatesCount) safe-risk file\(viewModel.quickCleanCandidatesCount == 1 ? "" : "s") will be moved to Trash.")
                     infoRow(icon: "exclamationmark.triangle", color: AppTheme.warning,
                             text: "Review and Advanced findings are never touched.")
+                    if viewModel.quickCleanMayTriggerSpotlightWork {
+                        infoRow(icon: "magnifyingglass", color: AppTheme.warning,
+                                text: CleanConfirmationSpotlightWarning.message)
+                    }
                     infoRow(icon: "arrow.uturn.backward", color: AppTheme.accent,
                             text: "You can undo immediately after cleanup via the Undo button.")
                     infoRow(icon: "externaldrive", color: AppTheme.textSecondary,
@@ -1235,6 +1256,10 @@ private struct DeepCleanConfirmationSheet: View {
                             text: "\(viewModel.deepCleanCandidatesCount) file\(viewModel.deepCleanCandidatesCount == 1 ? "" : "s") will be moved to Trash (\(viewModel.reviewRiskCandidatesCount) review-risk).")
                     infoRow(icon: "exclamationmark.shield", color: AppTheme.warning,
                             text: "ADVANCED findings (e.g. Docker VM data) are never touched.")
+                    if viewModel.deepCleanMayTriggerSpotlightWork {
+                        infoRow(icon: "magnifyingglass", color: AppTheme.warning,
+                                text: CleanConfirmationSpotlightWarning.message)
+                    }
                     infoRow(icon: "arrow.uturn.backward", color: AppTheme.accent,
                             text: "You can undo immediately after cleanup via the Undo button.")
                     infoRow(icon: "externaldrive", color: AppTheme.textSecondary,
