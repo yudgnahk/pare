@@ -277,7 +277,8 @@ public struct CaskLeaveHomebrew {
         do {
             try Self.restoreApps(pairs: pairs, fileManager: fileManager)
         } catch let error as CaskLeaveError {
-            try? fileManager.removeItem(at: stagingRoot)
+            // Keep stagingRoot — it may be the only remaining copy of the app.
+            onProgress("Restore failed. Staged copy kept at: \(stagingRoot.path)")
             throw error
         }
 
