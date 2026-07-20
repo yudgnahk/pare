@@ -52,7 +52,7 @@ Ordered by **user impact × strategic fit × effort**. Implement top-down unless
 | **Acceptance** | Fresh Mac: open DMG → app runs without right-click bypass; diagnostics JSON exports without full paths |
 | **Refs** | `docs/user-stories.md` US-4, `scripts/release.sh`, `docs/roadmap.md` Phase 9 |
 
-### 2. First-run trust: Full Disk Access + empty-scan coaching
+### 2. First-run trust: Full Disk Access + empty-scan coaching — **done (2026-07-20)**
 
 | | |
 |--|--|
@@ -61,6 +61,7 @@ Ordered by **user impact × strategic fit × effort**. Implement top-down unless
 | **Effort** | Small–medium |
 | **Acceptance** | New user without FDA sees clear fix path; with FDA, card dismisses |
 | **Not** | Fake progress or inventing findings |
+| **Shipped** | `FullDiskAccessChecker` · hero/results banners · Settings status · empty-scan coaching |
 
 ### 3. “Safe Care” one-pass journey (orchestrated care, Pare-shaped)
 
@@ -82,7 +83,7 @@ Ordered by **user impact × strategic fit × effort**. Implement top-down unless
 | **Acceptance** | During a full `RuleCatalog.all` scan, UI always shows which rule is running; cancel remains reliable |
 | **Note** | Do **not** re-attempt nested `withTaskGroup` parallel rules without a careful design (prior revert) |
 
-### 5. Quality bar + supportability (pre-release hardening)
+### 5. Quality bar + supportability (pre-release hardening) — **partial (2026-07-20)**
 
 | | |
 |--|--|
@@ -90,6 +91,8 @@ Ordered by **user impact × strategic fit × effort**. Implement top-down unless
 | **Scope** | Fix pre-existing failing tests (e.g. HomebrewCacheRule age/folder expectations post reconstructible-cache changes) · Align CLAUDE/CHANGELOG rule counts · Rename legacy app entry source file → `PareApp.swift` · DiagnosticsExporter if not done in #1 · Manual matrix notes for Maintenance on current macOS |
 | **Effort** | Small–medium |
 | **Acceptance** | `make test` green on clean checkout; docs match `RuleCatalog.all` count (~36 unique) |
+| **Done** | AI/Homebrew whole-folder tests updated · FDA unit tests · rule-count assert (36) · CLAUDE/CHANGELOG/checklist counts |
+| **Still open** | DiagnosticsExporter · Maintenance multi-OS matrix notes |
 
 ---
 

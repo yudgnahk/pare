@@ -54,6 +54,14 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "orphaned-launch-agents" }))
     }
 
+    func testUnifiedCatalogRuleCount() {
+        let all = RuleCatalog.all
+        let ids = all.map(\.id)
+        XCTAssertEqual(ids.count, Set(ids).count, "RuleCatalog.all must be unique by id")
+        // Keep in sync with RuleCatalog constructors (developer ∪ designer ∪ videoBuilder).
+        XCTAssertEqual(all.count, 36, "Update this when adding/removing rules from RuleCatalog")
+    }
+
     func testBrowserRuleSkipsSensitiveFiles() {
         let rule = BrowserCachesRule()
         let values = URLResourceValues()
@@ -185,7 +193,8 @@ final class ScanRunnerTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(
+        // Installed extensions are live installs — not review-state paths (duplicates handled elsewhere).
+        XCTAssertFalse(
             rule.include(
                 fileURL: URL(fileURLWithPath: "/Users/test/.vscode/extensions/ms-python.python-2026.1.0/extension.vsixmanifest"),
                 resourceValues: oldValues

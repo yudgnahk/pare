@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// App-B-style calm home: SF Symbol hero + ring Scan CTA + 3-step progress.
@@ -82,6 +83,17 @@ struct HeroScanView: View {
                         }
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }
+
+                    if viewModel.showFullDiskAccessBanner, !viewModel.isScanning {
+                        FullDiskAccessCard(
+                            style: .fullDiskAccess,
+                            onOpenSettings: { viewModel.openFullDiskAccessSettings() },
+                            onDismiss: { viewModel.dismissFullDiskAccessBanner() }
+                        )
+                        .frame(maxWidth: 480)
+                        .padding(.top, 4)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    }
                 }
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 16)
@@ -107,9 +119,13 @@ struct HeroScanView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             appeared = true
+            viewModel.refreshPermissionCoaching()
             withAnimation(AppTheme.Motion.ringPulse) {
                 floatOffset = -6
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            viewModel.refreshPermissionCoaching()
         }
     }
 

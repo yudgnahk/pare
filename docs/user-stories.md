@@ -57,7 +57,7 @@ Run swift test. Launch the app (make run-app), switch to Developer profile, run 
 
 ## Unified Scan (app architecture change) ✅
 
-**Profile picker removed.** The SwiftUI app now always runs `RuleCatalog.all` — the union of all 19 rules across every former profile (baseline + developer + designer + video-builder), deduplicated by rule ID. Results are organised by `ScanCategory` (Category Overview, By Tool, Large Files by Category). The CLI retains profile-based scanning for targeted diagnostic use.
+**Profile picker removed.** The SwiftUI app now always runs `RuleCatalog.all` — the union of all **36 unique rules** across every former profile (baseline + developer + designer + video-builder), deduplicated by rule ID. Results are organised by `ScanCategory` (Category Overview, By Tool, Large Files by Category). The CLI retains profile-based scanning for targeted diagnostic use.
 
 ---
 

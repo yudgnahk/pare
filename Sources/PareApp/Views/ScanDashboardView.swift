@@ -66,6 +66,7 @@ struct ScanDashboardView: View {
             // and measure every expanded folder row up front (main-thread scroll lag).
             LazyVStack(spacing: AppTheme.Spacing.xl, pinnedViews: []) {
                 resultsHeader
+                permissionCoachingSection
                 selectionBar
                 cleanupStatusBanner
                 metrics
@@ -77,6 +78,25 @@ struct ScanDashboardView: View {
             .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
             .padding(.vertical, AppTheme.Spacing.pageVertical)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var permissionCoachingSection: some View {
+        if viewModel.showFullDiskAccessBanner {
+            FullDiskAccessCard(
+                style: .fullDiskAccess,
+                onOpenSettings: { viewModel.openFullDiskAccessSettings() },
+                onDismiss: { viewModel.dismissFullDiskAccessBanner() }
+            )
+        } else if viewModel.showEmptyScanCoaching {
+            FullDiskAccessCard(
+                style: .emptyScan(
+                    fullDiskAccessLikelyMissing: viewModel.fullDiskAccessStatus == .denied
+                ),
+                onOpenSettings: { viewModel.openFullDiskAccessSettings() },
+                onRescan: { viewModel.runScan(forceRescan: true) }
+            )
         }
     }
 

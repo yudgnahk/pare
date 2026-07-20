@@ -2,153 +2,88 @@ import XCTest
 @testable import PareCore
 
 // MARK: - AIToolCachesRuleTests
+// Rule uses customScan + whole-folder findings (no per-file include / targetDirectories).
 
 final class AIToolCachesRuleTests: XCTestCase {
     let rule = AIToolCachesRule()
-    let home = "/Users/test"
-
-    private func oldValues() -> URLResourceValues {
-        var v = URLResourceValues()
-        v.contentModificationDate = Date().addingTimeInterval(-4 * 24 * 60 * 60)
-        return v
-    }
-
-    private func newValues() -> URLResourceValues {
-        var v = URLResourceValues()
-        v.contentModificationDate = Date()
-        return v
-    }
-
-    // MARK: Category and risk
 
     func testCategoryAndRisk() {
         XCTAssertEqual(rule.category, .aiToolCaches)
         XCTAssertEqual(rule.riskLevel, .safe)
     }
 
-    // MARK: Cursor (Application Support)
-
-    func testCursorCacheIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/Cursor/Cache/data"),
-            resourceValues: oldValues()
-        ))
-    }
-
-    func testCursorCachedDataIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/Cursor/CachedData/bundle.js"),
-            resourceValues: oldValues()
-        ))
-    }
-
-    func testCursorCodeCacheIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/Cursor/Code Cache/v8.data"),
-            resourceValues: oldValues()
-        ))
-    }
-
-    func testCursorCacheExcludedWhenTooNew() {
+    func testTraversalHooksAreInactive() {
+        let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test"))
+        XCTAssertTrue(rule.targetDirectories(environment: env).isEmpty)
         XCTAssertFalse(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/Cursor/Cache/data"),
-            resourceValues: newValues()
+            fileURL: URL(fileURLWithPath: "/Users/test/Library/Application Support/Cursor/Cache/data"),
+            resourceValues: URLResourceValues()
         ))
     }
 
-    // MARK: Claude desktop (Application Support)
-
-    func testClaudeCacheIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/Claude/Cache/response.bin"),
-            resourceValues: oldValues()
-        ))
+    func testReturnsEmptyWhenNoAIPathsExist() async {
+        let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/tmp/nonexistent_\(UUID().uuidString)"))
+        let findings = await rule.customScan(environment: env)
+        XCTAssertNotNil(findings)
+        XCTAssertTrue(findings!.isEmpty)
     }
 
-    func testClaudeCachedDataIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/Claude/CachedData/bundle.js"),
-            resourceValues: oldValues()
-        ))
+    func testDetectsCursorCacheFolder() async throws {
+        let tmp = makePhase1TempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let cursorCache = tmp.appending(path: "Library/Application Support/Cursor/Cache")
+        try createPhase1DirWithContent(at: cursorCache)
+
+        let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
+        XCTAssertTrue(findings.contains { $0.path.hasSuffix("Cursor/Cache") })
+        XCTAssertEqual(findings.first { $0.path.hasSuffix("Cursor/Cache") }?.riskLevel, .safe)
+        XCTAssertEqual(findings.first { $0.path.hasSuffix("Cursor/Cache") }?.category, .aiToolCaches)
     }
 
-    // MARK: Windsurf (Application Support)
+    func testDetectsContinueAndTabnineHomeCaches() async throws {
+        let tmp = makePhase1TempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
 
-    func testWindsurfCacheIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/Windsurf/Cache/data"),
-            resourceValues: oldValues()
-        ))
+        try createPhase1DirWithContent(at: tmp.appending(path: ".continue/cache"))
+        try createPhase1DirWithContent(at: tmp.appending(path: ".tabnine"))
+
+        let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
+        XCTAssertTrue(findings.contains { $0.path.hasSuffix("/.continue/cache") })
+        XCTAssertTrue(findings.contains { $0.path.hasSuffix("/.tabnine") })
     }
 
-    // MARK: Copilot for Xcode (Library/Caches)
+    func testDoesNotFlagEmptyDirectories() async throws {
+        let tmp = makePhase1TempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
 
-    func testCopilotXcodeCacheIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Caches/com.github.copilot-for-xcode/cache.db"),
-            resourceValues: oldValues()
-        ))
+        let empty = tmp.appending(path: "Library/Application Support/Claude/Cache")
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+
+        let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
+        XCTAssertTrue(findings.isEmpty, "Empty AI cache directories should not emit findings")
     }
 
-    // MARK: Continue.dev dotfile caches
+    func testDoesNotFlagUnrelatedAppSupport() async throws {
+        let tmp = makePhase1TempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
 
-    func testContinueCacheIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/.continue/cache/response.json"),
-            resourceValues: oldValues()
-        ))
+        try createPhase1DirWithContent(at: tmp.appending(path: "Library/Application Support/SomeOtherApp/Cache"))
+
+        let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
+        XCTAssertFalse(findings.contains { $0.path.contains("SomeOtherApp") })
     }
 
-    func testContinueIndexIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/.continue/.index/embeddings.bin"),
-            resourceValues: oldValues()
-        ))
-    }
-
-    // MARK: Tabnine
-
-    func testTabnineCacheIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/.tabnine/model.bin"),
-            resourceValues: oldValues()
-        ))
-    }
-
-    // MARK: Non-target paths excluded
-
-    func testCursorUserSettingsExcluded() {
-        // User settings are in Application Support/Cursor/User — not a cache subdir
-        XCTAssertFalse(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/Cursor/User/settings.json"),
-            resourceValues: oldValues()
-        ))
-    }
-
-    func testUnrelatedAppSupportExcluded() {
-        XCTAssertFalse(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/SomeOtherApp/cache.db"),
-            resourceValues: oldValues()
-        ))
-    }
-
-    // MARK: Target directories (catalog-driven)
-
-    func testTargetDirectoriesContainsExpectedTools() {
-        let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: home))
-        let paths = rule.targetDirectories(environment: env).map { $0.path }
-        // Electron-based editors — Application Support cache subdirs
-        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("Cursor/Cache") }))
-        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("Claude/Cache") }))
-        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("Windsurf/Cache") }))
-        // Copilot — Library/Caches
-        XCTAssertTrue(paths.contains(where: { $0.contains("com.github.copilot-for-xcode") }))
-        // Dotfile tools
-        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("/.tabnine") }))
-        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("/.continue/cache") }))
-        XCTAssertTrue(paths.contains(where: { $0.hasSuffix("/.copilot/logs") }))
-        // Catalog is the source of truth — count must be > 0
-        XCTAssertGreaterThan(paths.count, 0)
+    func testCatalogDrivesExpectedAITools() {
+        let entries = AppCatalog.shared.entries(forCategory: "ai")
+        XCTAssertGreaterThan(entries.count, 0)
+        let ids = Set(entries.map(\.id))
+        XCTAssertTrue(ids.contains("cursor"))
+        XCTAssertTrue(ids.contains("claude-desktop"))
+        XCTAssertTrue(ids.contains("windsurf"))
+        XCTAssertTrue(ids.contains("tabnine"))
+        XCTAssertTrue(ids.contains("continue-dev"))
+        XCTAssertTrue(ids.contains("github-copilot-cli"))
     }
 }
 
@@ -190,56 +125,70 @@ final class AppCatalogTests: XCTestCase {
 }
 
 // MARK: - HomebrewCacheRuleTests
+// Whole-folder reconstructible cache under ~/Library/Caches/Homebrew (customScan).
 
 final class HomebrewCacheRuleTests: XCTestCase {
     let rule = HomebrewCacheRule()
-    let home = "/Users/test"
-
-    private func oldValues() -> URLResourceValues {
-        var v = URLResourceValues()
-        v.contentModificationDate = Date().addingTimeInterval(-2 * 24 * 60 * 60)
-        return v
-    }
-
-    private func freshValues() -> URLResourceValues {
-        var v = URLResourceValues()
-        v.contentModificationDate = Date().addingTimeInterval(-1800) // 30 min ago
-        return v
-    }
 
     func testCategoryAndRisk() {
         XCTAssertEqual(rule.category, .developerPackageCaches)
         XCTAssertEqual(rule.riskLevel, .safe)
     }
 
-    func testOldBottleIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Caches/Homebrew/downloads/abc--git-2.43.0.bottle.tar.gz"),
-            resourceValues: oldValues()
-        ))
-    }
-
-    func testFreshDownloadExcluded() {
-        // File downloaded 30 min ago — could still be in progress; skip it
+    func testTraversalHooksAreInactive() {
+        let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test"))
+        XCTAssertTrue(rule.targetDirectories(environment: env).isEmpty)
         XCTAssertFalse(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Caches/Homebrew/downloads/def--node-21.0.0.bottle.tar.gz"),
-            resourceValues: freshValues()
+            fileURL: URL(fileURLWithPath: "/Users/test/Library/Caches/Homebrew/downloads/bottle.tar.gz"),
+            resourceValues: URLResourceValues()
         ))
     }
 
-    func testNonCachePathExcluded() {
-        XCTAssertFalse(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Application Support/Homebrew/settings.json"),
-            resourceValues: oldValues()
-        ))
+    func testReturnsEmptyWhenHomebrewCacheMissing() async {
+        let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/tmp/nonexistent_\(UUID().uuidString)"))
+        let findings = await rule.customScan(environment: env)
+        XCTAssertNotNil(findings)
+        XCTAssertTrue(findings!.isEmpty)
     }
 
-    func testTargetDirectory() {
-        let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: home))
-        let dirs = rule.targetDirectories(environment: env)
-        XCTAssertEqual(dirs.count, 1)
-        XCTAssertTrue(dirs[0].path.hasSuffix("Library/Caches/Homebrew/downloads"))
+    func testDetectsHomebrewCacheFolder() async throws {
+        let tmp = makePhase1TempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let brew = tmp.appending(path: "Library/Caches/Homebrew")
+        try createPhase1DirWithContent(at: brew.appending(path: "downloads"), size: 4096)
+
+        let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
+        XCTAssertEqual(findings.count, 1)
+        XCTAssertTrue(findings[0].path.hasSuffix("Library/Caches/Homebrew"))
+        XCTAssertEqual(findings[0].riskLevel, .safe)
+        XCTAssertGreaterThan(findings[0].sizeBytes, 0)
     }
+
+    func testEmptyHomebrewCacheEmitsNothing() async throws {
+        let tmp = makePhase1TempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let brew = tmp.appending(path: "Library/Caches/Homebrew")
+        try FileManager.default.createDirectory(at: brew, withIntermediateDirectories: true)
+
+        let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
+        XCTAssertTrue(findings.isEmpty)
+    }
+}
+
+// MARK: - Phase 1 helpers
+
+private func makePhase1TempDir() -> URL {
+    let dir = FileManager.default.temporaryDirectory.appending(path: "pare_phase1_\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
+private func createPhase1DirWithContent(at url: URL, size: Int = 1024) throws {
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    let data = Data(repeating: 0xAB, count: size)
+    try data.write(to: url.appending(path: "content.bin"))
 }
 
 // MARK: - InstallerFileRuleTests

@@ -174,8 +174,15 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var scanStepTitle: String = ""
     @Published private(set) var scanRulesCompleted: Int = 0
     @Published private(set) var scanRulesTotal: Int = 0
+    /// Heuristic Full Disk Access status for coaching banners.
+    @Published private(set) var fullDiskAccessStatus: FullDiskAccessStatus = .unknown
+    /// Show FDA coaching when access looks missing and the user has not dismissed the card.
+    @Published private(set) var showFullDiskAccessBanner: Bool = false
+    /// After a successful scan with ~0 reclaimable bytes, coach the user on next steps.
+    @Published private(set) var showEmptyScanCoaching: Bool = false
     /// Most recent transaction, used to offer undo.
     private var lastTransaction: CleanupTransaction?
+    private static let fdaBannerDismissedKey = "pare.fdaCoaching.dismissed"
     /// Raw findings kept after scan so cleanup can reference them.
     private var latestFindings: [ScanFinding] = []
     /// O(1) path → finding lookup (not published).
@@ -710,12 +717,47 @@ final class ScanDashboardViewModel: ObservableObject {
         scanRulesTotal = 0
         scanStepTitle = ""
         scanStep = 1
+        showEmptyScanCoaching = false
+        refreshPermissionCoaching()
+    }
+
+    /// Re-probe Full Disk Access and update coaching banners.
+    func refreshPermissionCoaching() {
+        let status = FullDiskAccessChecker.status()
+        fullDiskAccessStatus = status
+
+        if status == .granted {
+            UserDefaults.standard.removeObject(forKey: Self.fdaBannerDismissedKey)
+            showFullDiskAccessBanner = false
+        } else if status == .denied {
+            let dismissed = UserDefaults.standard.bool(forKey: Self.fdaBannerDismissedKey)
+            showFullDiskAccessBanner = !dismissed
+        } else {
+            showFullDiskAccessBanner = false
+        }
+
+        showEmptyScanCoaching = state == .success && totalReclaimableBytes == 0
+    }
+
+    func dismissFullDiskAccessBanner() {
+        UserDefaults.standard.set(true, forKey: Self.fdaBannerDismissedKey)
+        showFullDiskAccessBanner = false
+    }
+
+    /// Opens System Settings → Privacy & Security → Full Disk Access (best-effort).
+    func openFullDiskAccessSettings() {
+        for url in FullDiskAccessChecker.systemSettingsURLs {
+            if NSWorkspace.shared.open(url) {
+                return
+            }
+        }
     }
 
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
         state = .scanning
+        showEmptyScanCoaching = false
         scanStep = 1
         scanStepTitle = "Scanning system & app caches…"
         scanRulesCompleted = 0
@@ -798,6 +840,7 @@ final class ScanDashboardViewModel: ObservableObject {
                 scanStepTitle = "Scan complete"
                 state = .success
                 resultsVisible = true
+                refreshPermissionCoaching()
             }
         }
     }

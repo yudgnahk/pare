@@ -8,7 +8,7 @@ All notable changes to Pare are documented here.
 
 Initial public release.
 
-### Scan Rules (22 rules across 14 categories)
+### Scan Rules (36 unique rules in `RuleCatalog.all`)
 
 **Baseline — runs for every user**
 - User Caches — `~/Library/Caches/` (3-day age gate)
@@ -41,9 +41,10 @@ Initial public release.
 
 ### App Features
 
-- **Scan dashboard** — unified scan across all categories; Quick Clean (safe-only), Deep Clean (safe + review with confirmation); real-time progress; force-rescan
+- **Scan dashboard** — unified scan across all categories; Quick Clean (safe-only), Deep Clean (safe + review with confirmation); per-rule progress (title + index/count); force-rescan
+- **Full Disk Access coaching** — detects likely missing FDA; Settings status + empty-scan guidance with System Settings deep link
 - **Metrics** — total reclaimable space, per-category summary cards, large file breakdown (≥ 50 MB), by-tool attribution with top 10 files per app
-- **Project Roots card** — auto-discovers project roots via Spotlight; per-root opt-out checkboxes; manual addition
+- **Project scan paths** — manual project roots for artifact purge; Spotlight discovery for Project Artifacts v2 (managed via Settings / discovery store)
 - **Device Backups card** — shows each stale backup with device name, iOS version, size, and date
 - **App Manager** — full app inventory with size/install date/last-used; update detection (Sparkle + MAS); uninstaller with leftover scan; Homebrew cask detection
 - **Homebrew Manager** — formulae, casks, outdated packages with streaming upgrade log; Migrate tab matches installed apps to Homebrew casks
