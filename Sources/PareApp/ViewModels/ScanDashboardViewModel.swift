@@ -236,6 +236,28 @@ final class ScanDashboardViewModel: ObservableObject {
         latestFindings.filter { $0.riskLevel == .review }.count
     }
 
+    /// True when a quick clean is large enough that Spotlight may busy-update for a while.
+    var quickCleanMayTriggerSpotlightWork: Bool {
+        ScanPolicy.shouldWarnAboutSpotlightIndexing(
+            itemCount: quickCleanCandidatesCount,
+            totalBytes: quickCleanCandidatesBytes
+        )
+    }
+
+    var deepCleanMayTriggerSpotlightWork: Bool {
+        ScanPolicy.shouldWarnAboutSpotlightIndexing(
+            itemCount: deepCleanCandidatesCount,
+            totalBytes: deepCleanCandidatesBytes
+        )
+    }
+
+    var selectedCleanMayTriggerSpotlightWork: Bool {
+        ScanPolicy.shouldWarnAboutSpotlightIndexing(
+            itemCount: selectedCandidatesCount,
+            totalBytes: selectedCandidatesBytes
+        )
+    }
+
     func isSelected(path: String) -> Bool {
         if selectedPaths.contains(path) { return true }
         if let folderId = folderIdByPath[path], selectedFolderIds.contains(folderId) {

@@ -40,21 +40,7 @@ struct SidebarView: View {
 
     private var brandHeader: some View {
         HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [AppTheme.accent, AppTheme.accentDeep],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 34, height: 34)
-                    .shadow(color: AppTheme.accent.opacity(0.35), radius: 8, y: 2)
-                Image(systemName: "leaf.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
+            PareBrandLogo(size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Pare")
                     .font(scale.font(16, weight: .bold, design: .rounded))
