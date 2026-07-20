@@ -196,7 +196,7 @@ Run swift test. Launch the app (make run-app) and manually verify exclude and re
 
 - **Code signing**: add entitlements file (`PareApp.entitlements`) with `com.apple.security.files.user-selected.read-write` and hardened runtime enabled in `Package.swift` or Xcode project settings
 - **Notarization workflow**: document or automate the `xcrun notarytool` steps (can be a `make notarize` target with instructions)
-- **Diagnostics export**: `DiagnosticsExporter` in core that produces a JSON bundle containing: app version, macOS version, last scan report summary, rule catalog for the active profile, and anonymised path prefixes. Exposed as "Export Diagnostics…" menu item in the app.
+- [x] **Diagnostics export**: `DiagnosticsExporter` in core that produces a JSON bundle containing: app version, macOS version, last scan report summary, rule catalog for the active profile, and anonymised path prefixes. Exposed as "Export Diagnostics…" menu item in the app.
 - **Distribution decision** (pending from Phase 0): document whether direct distribution or App Store is chosen and what entitlements that requires
 
 ### Out of scope
@@ -208,7 +208,7 @@ Run swift test. Launch the app (make run-app) and manually verify exclude and re
 
 - App builds with hardened runtime and a valid signing identity
 - `make notarize` (or documented steps) successfully submits to Apple notarization
-- "Export Diagnostics…" produces a readable JSON file the user can attach to a GitHub issue
+- [x] "Export Diagnostics…" produces a readable JSON file the user can attach to a GitHub issue
 - All existing tests pass on a signed build
 
 ### Key files
