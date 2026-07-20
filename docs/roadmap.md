@@ -17,7 +17,7 @@ New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.
 
 ---
 
-## Phase 1 — Quick Wins (copy from App A, small effort)
+## Phase 1 — Quick Wins (small-effort scan rules)
 
 ### AI Tool Cache Rules
 - [~] `AIToolCachesRule` — target dirs and what each produces:
@@ -255,8 +255,10 @@ Spec: `docs/features/phase-8-productivity-system.md`
 
 ## Competitive analysis (living)
 
-- [x] App A comparison refreshed — `docs/features/comparison-app-a.md` (2026-07-20)
-- [x] App B comparison — `docs/features/cleanmymac-comparison.md`
+Aliases (no third-party product names): **App A** = CLI-first cleaner · **App B** = commercial care suite.
+
+- [x] App A comparison — `docs/features/comparison-app-a.md` (2026-07-20)
+- [x] App B comparison — `docs/features/comparison-app-b.md`
 - [x] Ranked next-5 backlog — `docs/reviews/2026-07-20-competitive-gaps.md`
 
 ---
