@@ -1,3 +1,5 @@
+import AppKit
+import PareCore
 import SwiftUI
 
 struct SettingsView: View {
@@ -6,6 +8,7 @@ struct SettingsView: View {
     @StateObject private var exclusionVM = ExclusionListViewModel()
     @State private var showExclusions = false
     @State private var showProjectPaths = false
+    @State private var fullDiskAccessStatus: FullDiskAccessStatus = .unknown
 
     var body: some View {
         ModuleChrome(
@@ -15,6 +18,8 @@ struct SettingsView: View {
         ) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    fullDiskAccessCard
+
                     settingsCard(
                         title: "Scan exclusions",
                         detail: "Paths Pare should never flag or clean.",
@@ -95,6 +100,65 @@ struct SettingsView: View {
         .sheet(isPresented: $showProjectPaths) {
             ProjectScanPathsView()
         }
+        .onAppear { refreshFullDiskAccessStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshFullDiskAccessStatus()
+        }
+    }
+
+    private var fullDiskAccessCard: some View {
+        GlassCard {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(fdaAccent.opacity(0.14))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "lock.shield")
+                        .foregroundStyle(fdaAccent)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Full Disk Access")
+                        .font(scale.font(14, weight: .semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text(fdaDetail)
+                        .font(scale.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                SecondaryActionButton(
+                    title: "Open Settings",
+                    role: .accent
+                ) {
+                    for url in FullDiskAccessChecker.systemSettingsURLs {
+                        if NSWorkspace.shared.open(url) { return }
+                    }
+                }
+            }
+        }
+    }
+
+    private var fdaAccent: Color {
+        switch fullDiskAccessStatus {
+        case .granted: return AppTheme.success
+        case .denied: return AppTheme.warning
+        case .unknown: return AppTheme.accent
+        }
+    }
+
+    private var fdaDetail: String {
+        switch fullDiskAccessStatus {
+        case .granted:
+            return "Granted — Pare can read protected caches and developer folders."
+        case .denied:
+            return "Not detected. Grant Full Disk Access, then return here and rescan."
+        case .unknown:
+            return "Status unclear on this Mac. If scans look empty, grant Full Disk Access."
+        }
+    }
+
+    private func refreshFullDiskAccessStatus() {
+        fullDiskAccessStatus = FullDiskAccessChecker.status()
     }
 
     private func settingsCard(

@@ -11,6 +11,16 @@ final class ScanDashboardViewModel: ObservableObject {
         case success
     }
 
+    /// How to present empty-scan coaching when reclaimable bytes are ~0.
+    enum EmptyScanCoachingStyle: Equatable {
+        /// Live probe still says FDA is denied.
+        case likelyMissingFDA
+        /// Last scan ran without FDA; access is now granted — user must rescan.
+        case permissionsUpdatedNeedsRescan
+        /// Scan had access (or unknown); nothing reclaimable matched.
+        case genuinelyEmpty
+    }
+
     struct SummaryItem: Identifiable, Sendable {
         let id: String
         let category: ScanCategory
@@ -187,8 +197,19 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var scanStepTitle: String = ""
     @Published private(set) var scanRulesCompleted: Int = 0
     @Published private(set) var scanRulesTotal: Int = 0
+    /// Heuristic Full Disk Access status for coaching banners (live probe).
+    @Published private(set) var fullDiskAccessStatus: FullDiskAccessStatus = .unknown
+    /// Show FDA coaching when access looks missing and the user has not dismissed the card.
+    @Published private(set) var showFullDiskAccessBanner: Bool = false
+    /// After a successful scan with ~0 reclaimable bytes, coach the user on next steps.
+    @Published private(set) var showEmptyScanCoaching: Bool = false
+    /// Empty-scan card presentation when `showEmptyScanCoaching` is true.
+    @Published private(set) var emptyScanCoachingStyle: EmptyScanCoachingStyle = .genuinelyEmpty
     /// Most recent transaction, used to offer undo.
     private var lastTransaction: CleanupTransaction?
+    private static let fdaBannerDismissedKey = "pare.fdaCoaching.dismissed"
+    /// FDA status observed when the last successful scan finished (not live).
+    private var fullDiskAccessStatusAtLastScan: FullDiskAccessStatus = .unknown
     /// Raw findings kept after scan so cleanup can reference them.
     private var latestFindings: [ScanFinding] = []
     /// O(1) path → finding lookup (not published).
@@ -715,12 +736,79 @@ final class ScanDashboardViewModel: ObservableObject {
         scanRulesTotal = 0
         scanStepTitle = ""
         scanStep = 1
+        showEmptyScanCoaching = false
+        emptyScanCoachingStyle = .genuinelyEmpty
+        refreshPermissionCoaching()
+    }
+
+    /// Re-probe Full Disk Access and update coaching banners.
+    /// Safe to call from any Smart Scan surface (hero or results) on activation/appear.
+    func refreshPermissionCoaching() {
+        let status = FullDiskAccessChecker.status()
+        fullDiskAccessStatus = status
+
+        if status == .granted {
+            UserDefaults.standard.removeObject(forKey: Self.fdaBannerDismissedKey)
+            showFullDiskAccessBanner = false
+        } else if status == .denied {
+            let dismissed = UserDefaults.standard.bool(forKey: Self.fdaBannerDismissedKey)
+            showFullDiskAccessBanner = !dismissed
+        } else {
+            showFullDiskAccessBanner = false
+        }
+
+        updateEmptyScanCoaching()
+    }
+
+    func dismissFullDiskAccessBanner() {
+        UserDefaults.standard.set(true, forKey: Self.fdaBannerDismissedKey)
+        showFullDiskAccessBanner = false
+        // Empty-scan coaching may still apply once the primary banner is dismissed.
+        updateEmptyScanCoaching()
+    }
+
+    /// Opens System Settings → Privacy & Security → Full Disk Access (best-effort).
+    /// Clears the dismiss flag so coaching can reappear if the user returns without granting.
+    func openFullDiskAccessSettings() {
+        UserDefaults.standard.removeObject(forKey: Self.fdaBannerDismissedKey)
+        for url in FullDiskAccessChecker.systemSettingsURLs {
+            if NSWorkspace.shared.open(url) {
+                return
+            }
+        }
+    }
+
+    /// Derive empty-scan coaching from live FDA status vs. the status at last scan finish.
+    private func updateEmptyScanCoaching() {
+        guard state == .success, totalReclaimableBytes == 0 else {
+            showEmptyScanCoaching = false
+            emptyScanCoachingStyle = .genuinelyEmpty
+            return
+        }
+
+        // Primary FDA banner takes precedence while still visible.
+        if showFullDiskAccessBanner {
+            showEmptyScanCoaching = false
+            return
+        }
+
+        showEmptyScanCoaching = true
+        if fullDiskAccessStatus == .denied {
+            emptyScanCoachingStyle = .likelyMissingFDA
+        } else if fullDiskAccessStatusAtLastScan == .denied, fullDiskAccessStatus == .granted {
+            // Permissions flipped after a zero-byte pre-FDA scan — do not claim disk is clean.
+            emptyScanCoachingStyle = .permissionsUpdatedNeedsRescan
+        } else {
+            emptyScanCoachingStyle = .genuinelyEmpty
+        }
     }
 
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
         state = .scanning
+        showEmptyScanCoaching = false
+        emptyScanCoachingStyle = .genuinelyEmpty
         scanStep = 1
         scanStepTitle = "Scanning system & app caches…"
         scanRulesCompleted = 0
@@ -829,6 +917,10 @@ final class ScanDashboardViewModel: ObservableObject {
         scanStepTitle = "Scan complete"
         state = .success
         resultsVisible = true
+        // Snapshot FDA at scan finish so later grants can show "rescan needed"
+        // instead of a misleading clean-disk empty state.
+        fullDiskAccessStatusAtLastScan = FullDiskAccessChecker.status()
+        refreshPermissionCoaching()
     }
 
     func revealInFinder(path: String) {
