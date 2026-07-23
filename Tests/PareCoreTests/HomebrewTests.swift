@@ -111,6 +111,20 @@ final class HomebrewTests: XCTestCase {
         XCTAssertTrue(cask.isOrphaned)
     }
 
+    func testBrewCaskRetainsLastUsedMetadata() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let cask = BrewCask(
+            token: "firefox",
+            version: "125.0",
+            autoUpdates: false,
+            installedAppNames: ["Firefox.app"],
+            installDate: nil,
+            lastUsed: date
+        )
+        XCTAssertEqual(cask.lastUsed, date)
+        XCTAssertFalse(cask.isOrphaned)
+    }
+
     // MARK: - Orphaned detection logic
 
     func testOrphanedDetectionNoAppNames() {

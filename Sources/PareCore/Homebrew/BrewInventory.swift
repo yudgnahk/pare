@@ -107,7 +107,8 @@ public actor BrewInventory {
                 installDate = Date(timeIntervalSince1970: timestamp)
             }
 
-            let orphaned = Self.isOrphaned(appNames: appNames, searchDirs: appSearchDirs)
+            let matchedAppURL = Self.matchingAppURL(appNames: appNames, searchDirs: appSearchDirs)
+            let orphaned = !appNames.isEmpty && matchedAppURL == nil
 
             return BrewCask(
                 token: token,
@@ -115,6 +116,7 @@ public actor BrewInventory {
                 autoUpdates: autoUpdates,
                 installedAppNames: appNames,
                 installDate: installDate,
+                lastUsed: matchedAppURL.flatMap(Self.lastUsedDate(for:)),
                 isOrphaned: orphaned
             )
         }
@@ -129,12 +131,20 @@ public actor BrewInventory {
     /// A cask is orphaned when it has at least one .app artifact listed but
     /// none of those apps can be found in any standard application directory.
     /// Casks with no .app artifacts (CLI tools, fonts, etc.) are not flagged.
-    private static func isOrphaned(appNames: [String], searchDirs: [String]) -> Bool {
-        guard !appNames.isEmpty else { return false }
-        return !appNames.contains { appName in
-            searchDirs.contains { dir in
-                FileManager.default.fileExists(atPath: "\(dir)/\(appName)")
+    private static func matchingAppURL(appNames: [String], searchDirs: [String]) -> URL? {
+        for appName in appNames {
+            for directory in searchDirs {
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(appName)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    return url
+                }
             }
         }
+        return nil
+    }
+
+    private static func lastUsedDate(for url: URL) -> Date? {
+        let item = NSMetadataItem(url: url)
+        return item?.value(forAttribute: kMDItemLastUsedDate as String) as? Date
     }
 }

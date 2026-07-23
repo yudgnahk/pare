@@ -142,6 +142,22 @@ try await runBrew(["uninstall", "--cask", "--zap", token])
 
 Always ask before `--zap`. Show a confirmation sheet listing what the zap stanza will remove (fetch from `brew info --cask --json=v2 <token>`, parse `artifacts[].zap`).
 
+### Review before mutations and bulk actions
+
+Formulae, Casks, Outdated, and Migrate support checkbox selection. Selection is retained while
+filtering/searching and is cleared only when the corresponding inventory is refreshed. Each tab
+offers Select All Visible, Clear Selection, and only the operation valid for that tab.
+
+Every mutating operation, including a single row, opens a review sheet before invoking Homebrew.
+The sheet identifies the operation, affected packages, the command, and the self-updating-cask
+restart/session warning when relevant. Confirmed bulk operations run deterministically one item at
+a time and retain a success/failure summary in the operation log.
+
+The Casks table reports **Last Used** from Spotlight's `kMDItemLastUsedDate` for the matched app
+bundle. Missing Spotlight activity is shown as **Never**; a cask without a matched app is shown as
+**Orphaned**. Formulae intentionally have no Last Used column: Homebrew does not provide reliable
+command-execution history, and Pare does not infer it from shell history or file dates.
+
 ### Leave Homebrew (detach, keep app)
 
 Inverse of Migrate / `--adopt`. Stops Brew from managing a cask without deleting the application — so terminal `brew upgrade --greedy` cannot replace the bundle.
