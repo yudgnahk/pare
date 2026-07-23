@@ -11,7 +11,7 @@ final class ScanDashboardViewModel: ObservableObject {
         case success
     }
 
-    struct SummaryItem: Identifiable {
+    struct SummaryItem: Identifiable, Sendable {
         let id: String
         let category: ScanCategory
         let reclaimableBytes: Int64
@@ -28,7 +28,7 @@ final class ScanDashboardViewModel: ObservableObject {
         }
     }
 
-    struct FindingItem: Identifiable {
+    struct FindingItem: Identifiable, Sendable {
         let id: String
         let path: String
         let sizeBytes: Int64
@@ -50,7 +50,7 @@ final class ScanDashboardViewModel: ObservableObject {
         }
     }
 
-    struct CategoryLargeFiles: Identifiable {
+    struct CategoryLargeFiles: Identifiable, Sendable {
         let id: String
         let category: ScanCategory
         let totalBytes: Int64
@@ -59,7 +59,7 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Lightweight folder row for the category browser.
     /// **No path lists** — underlying file paths stay private so SwiftUI never holds 10k+ strings per row.
-    struct CategoryFolderRow: Identifiable, Equatable {
+    struct CategoryFolderRow: Identifiable, Equatable, Sendable {
         let id: String
         /// Path used for Finder reveal (the rolled-up folder).
         let folderPath: String
@@ -78,7 +78,7 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     /// Intermediate browser level: category → **tool** (JetBrains, Package Managers, …) → folders.
-    struct CategoryToolGroup: Identifiable, Equatable {
+    struct CategoryToolGroup: Identifiable, Equatable, Sendable {
         let id: String
         let category: ScanCategory
         let toolName: String
@@ -94,7 +94,7 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     /// Precomputed size/count for a folder id (selection metrics without expanding paths).
-    private struct FolderMeta {
+    private struct FolderMeta: Sendable {
         let itemCount: Int
         let bytes: Int64
         let reviewCount: Int
@@ -102,7 +102,7 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     /// Result of rolling findings into folder rows + private path maps.
-    private struct FolderAggregate {
+    private struct FolderAggregate: Sendable {
         var rowsByCategory: [ScanCategory: [CategoryFolderRow]] = [:]
         var toolGroupsByCategory: [ScanCategory: [CategoryToolGroup]] = [:]
         /// Private: folder id → finding paths (only used at clean time).
@@ -113,7 +113,20 @@ final class ScanDashboardViewModel: ObservableObject {
         var safeFolderIdsByCategory: [ScanCategory: Set<String>] = [:]
     }
 
-    struct ToolRollupItem: Identifiable {
+    /// Fully prepared scan UI payload. Built off the main actor so large scans
+    /// do not freeze the app at finalize (macOS “Not Responding”).
+    private struct PreparedScanResults: Sendable {
+        let findings: [ScanFinding]
+        let findingsByPath: [String: ScanFinding]
+        let aggregate: FolderAggregate
+        let summaries: [SummaryItem]
+        let sortedTopFindings: [FindingItem]
+        let largeFilesByCategory: [CategoryLargeFiles]
+        let toolRollups: [ToolRollupItem]
+        let totalReclaimableBytes: Int64
+    }
+
+    struct ToolRollupItem: Identifiable, Sendable {
         let id: String
         let app: String
         let totalBytes: Int64
@@ -193,7 +206,7 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Hard cap on folder rows rendered per category (largest first).
     /// Higher than before so monorepos (many per-project `.next`/`target`) list as folders, not one root.
-    static let maxFolderRowsPerCategory = 120
+    nonisolated static let maxFolderRowsPerCategory = 120
 
     var isScanning: Bool {
         state == .scanning
@@ -466,7 +479,7 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Largest reclaimable findings by size, then ordered SAFE group → REVIEW group
     /// (each group still size-sorted) so both risk tiers appear when they make the cut.
-    static func largestItemsSorted(from findings: [ScanFinding], limit: Int) -> [FindingItem] {
+    nonisolated static func largestItemsSorted(from findings: [ScanFinding], limit: Int) -> [FindingItem] {
         let reclaimable = findings.filter { $0.riskLevel != .advanced }
         let top = reclaimable.sorted { $0.sizeBytes > $1.sizeBytes }.prefix(limit)
         let safe = top.filter { $0.riskLevel == .safe }
@@ -478,7 +491,7 @@ final class ScanDashboardViewModel: ObservableObject {
         Self.abbreviatePath(path)
     }
 
-    private static func abbreviatePath(_ path: String) -> String {
+    nonisolated private static func abbreviatePath(_ path: String) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         if path.hasPrefix(home) {
             return "~" + path.dropFirst(home.count)
@@ -492,7 +505,7 @@ final class ScanDashboardViewModel: ObservableObject {
     /// `/Users/…/Projects/…/akzonobel` is **not** reclaimable as a whole just because
     /// a few child apps have `.next` / `target` / `.cache`. Those claimable folders
     /// must stay separate rows with their full paths — never merge into the monorepo root.
-    static func rollupFolderPath(for path: String) -> String {
+    nonisolated static func rollupFolderPath(for path: String) -> String {
         let parts = URL(fileURLWithPath: path).pathComponents.filter { $0 != "/" }
         guard !parts.isEmpty else { return path }
 
@@ -576,7 +589,7 @@ final class ScanDashboardViewModel: ObservableObject {
         return "/" + parts.joined(separator: "/")
     }
 
-    private static func buildFolderAggregate(from findings: [ScanFinding]) -> FolderAggregate {
+    nonisolated private static func buildFolderAggregate(from findings: [ScanFinding]) -> FolderAggregate {
         struct Acc {
             var bytes: Int64 = 0
             var count: Int = 0
@@ -632,8 +645,10 @@ final class ScanDashboardViewModel: ObservableObject {
                     aggregate.safeFolderIds.insert(id)
                     aggregate.safeFolderIdsByCategory[category, default: []].insert(id)
                 }
-                // Majority tool among paths (same as donut chart attribution).
-                let toolName = Self.dominantToolName(for: acc.paths)
+                // Attribute once from the rolled-up folder path (same chart labels).
+                // Majority-vote over every file path was O(files × pattern checks) and
+                // dominated finalize time on large developer caches.
+                let toolName = ScanReportAnnotator.sourceApp(forPath: folderPath)
                 if index < maxFolderRowsPerCategory {
                     rows.append(
                         CategoryFolderRow(
@@ -658,17 +673,7 @@ final class ScanDashboardViewModel: ObservableObject {
         return aggregate
     }
 
-    private static func dominantToolName(for paths: [String]) -> String {
-        guard !paths.isEmpty else { return "Other" }
-        var counts: [String: Int] = [:]
-        for path in paths {
-            let tool = ScanReportAnnotator.sourceApp(forPath: path)
-            counts[tool, default: 0] += 1
-        }
-        return counts.max(by: { $0.value < $1.value })?.key ?? "Other"
-    }
-
-    private static func makeToolGroups(
+    nonisolated private static func makeToolGroups(
         category: ScanCategory,
         rows: [CategoryFolderRow]
     ) -> [CategoryToolGroup] {
@@ -754,52 +759,76 @@ final class ScanDashboardViewModel: ObservableObject {
             // If the task was cancelled, don't update UI with partial results.
             guard !Task.isCancelled else { return }
 
-            // Heavy aggregation off the main actor so the UI doesn't freeze after scan.
-            let findings = report.findings
-            // Largest items: SAFE group then REVIEW group, each sorted by size.
-            let sortedTopFindings = ScanDashboardViewModel.largestItemsSorted(from: findings, limit: 40)
-            let largeFilesByCategory = Self.makeLargeFileGroups(from: findings)
-            let toolRollups = Self.makeToolRollups(from: findings)
-            let aggregate = Self.buildFolderAggregate(from: findings)
-            let pathIndex = Dictionary(findings.map { ($0.path, $0) }, uniquingKeysWith: { _, last in last })
-            let summaries: [SummaryItem] = report.summaries.map { summary in
-                SummaryItem(
-                    summary: summary,
-                    folderCount: aggregate.rowsByCategory[summary.category]?.count ?? 0
-                )
-            }
+            // `Task { }` on this @MainActor type inherits MainActor isolation.
+            // Aggregation over large finding sets (path index, folder rollups, tool
+            // attribution) must run in a detached task or the app beachballs with
+            // “Not Responding” while still completing correctly afterward.
             let finishedAt = Date()
+            let prepared = await Task.detached(priority: .userInitiated) {
+                Self.prepareScanResults(from: report)
+            }.value
 
-            await MainActor.run {
-                scanTask = nil
-                latestFindings = findings
-                findingsByPath = pathIndex
-                pathsByFolderId = aggregate.pathsByFolderId
-                folderIdByPath = aggregate.folderIdByPath
-                folderMetaById = aggregate.metaByFolderId
-                safeFolderIds = aggregate.safeFolderIds
-                safeFolderIdsByCategory = aggregate.safeFolderIdsByCategory
-                categoryFolderRows = aggregate.rowsByCategory
-                categoryToolGroups = aggregate.toolGroupsByCategory
-                totalReclaimableBytes = report.totalReclaimableBytes
-                self.summaries = summaries
-                topFindings = sortedTopFindings
-                self.largeFilesByCategory = largeFilesByCategory
-                self.perToolRollups = toolRollups
-                // Default: all SAFE *folders* (dozens of ids) — never 25k file paths.
-                selectedFolderIds = aggregate.safeFolderIds
-                selectedPaths = []
-                recomputeSelectionMetrics()
-                lastScanDate = finishedAt
-                lastScanDuration = finishedAt.timeIntervalSince(startedAt)
-                revealFeedback = nil
-                cleanupState = .idle
-                scanStep = 3
-                scanStepTitle = "Scan complete"
-                state = .success
-                resultsVisible = true
-            }
+            guard !Task.isCancelled else { return }
+
+            applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
         }
+    }
+
+    /// Pure post-scan aggregation — safe to call from a background task.
+    nonisolated private static func prepareScanResults(from report: ScanReport) -> PreparedScanResults {
+        let findings = report.findings
+        let aggregate = buildFolderAggregate(from: findings)
+        let pathIndex = Dictionary(findings.map { ($0.path, $0) }, uniquingKeysWith: { _, last in last })
+        let summaries: [SummaryItem] = report.summaries.map { summary in
+            SummaryItem(
+                summary: summary,
+                folderCount: aggregate.rowsByCategory[summary.category]?.count ?? 0
+            )
+        }
+        return PreparedScanResults(
+            findings: findings,
+            findingsByPath: pathIndex,
+            aggregate: aggregate,
+            summaries: summaries,
+            sortedTopFindings: largestItemsSorted(from: findings, limit: 40),
+            largeFilesByCategory: makeLargeFileGroups(from: findings),
+            toolRollups: makeToolRollups(from: findings),
+            totalReclaimableBytes: report.totalReclaimableBytes
+        )
+    }
+
+    private func applyPreparedScanResults(
+        _ prepared: PreparedScanResults,
+        startedAt: Date,
+        finishedAt: Date
+    ) {
+        scanTask = nil
+        latestFindings = prepared.findings
+        findingsByPath = prepared.findingsByPath
+        pathsByFolderId = prepared.aggregate.pathsByFolderId
+        folderIdByPath = prepared.aggregate.folderIdByPath
+        folderMetaById = prepared.aggregate.metaByFolderId
+        safeFolderIds = prepared.aggregate.safeFolderIds
+        safeFolderIdsByCategory = prepared.aggregate.safeFolderIdsByCategory
+        categoryFolderRows = prepared.aggregate.rowsByCategory
+        categoryToolGroups = prepared.aggregate.toolGroupsByCategory
+        totalReclaimableBytes = prepared.totalReclaimableBytes
+        summaries = prepared.summaries
+        topFindings = prepared.sortedTopFindings
+        largeFilesByCategory = prepared.largeFilesByCategory
+        perToolRollups = prepared.toolRollups
+        // Default: all SAFE *folders* (dozens of ids) — never 25k file paths.
+        selectedFolderIds = prepared.aggregate.safeFolderIds
+        selectedPaths = []
+        recomputeSelectionMetrics()
+        lastScanDate = finishedAt
+        lastScanDuration = finishedAt.timeIntervalSince(startedAt)
+        revealFeedback = nil
+        cleanupState = .idle
+        scanStep = 3
+        scanStepTitle = "Scan complete"
+        state = .success
+        resultsVisible = true
     }
 
     func revealInFinder(path: String) {
@@ -1014,7 +1043,7 @@ final class ScanDashboardViewModel: ObservableObject {
         return Double(bytes) / Double(totalReclaimableBytes)
     }
 
-    static func makeToolRollups(from findings: [ScanFinding]) -> [ToolRollupItem] {
+    nonisolated static func makeToolRollups(from findings: [ScanFinding]) -> [ToolRollupItem] {
         // Chart is about reclaimable space — exclude advanced (e.g. Docker.raw attribution noise).
         let reclaimable = findings.filter { $0.riskLevel != .advanced }
         let rollups = ScanReportAnnotator.appRollups(from: reclaimable)
@@ -1022,7 +1051,7 @@ final class ScanDashboardViewModel: ObservableObject {
         return rollups.map { ToolRollupItem(rollup: $0, total: total) }
     }
 
-    private static func makeLargeFileGroups(from findings: [ScanFinding]) -> [CategoryLargeFiles] {
+    nonisolated private static func makeLargeFileGroups(from findings: [ScanFinding]) -> [CategoryLargeFiles] {
         let filtered = findings.filter { ScanPolicy.isLargeFile($0.sizeBytes) }
         let grouped = Dictionary(grouping: filtered, by: \.category)
 
