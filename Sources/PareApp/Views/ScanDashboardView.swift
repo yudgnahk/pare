@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 import PareCore
@@ -58,6 +59,13 @@ struct ScanDashboardView: View {
         .sheet(isPresented: $showProjectPaths) {
             ProjectScanPathsView()
         }
+        // Stay mounted for both hero and results so FDA re-probes after System Settings.
+        .onAppear {
+            viewModel.refreshPermissionCoaching()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            viewModel.refreshPermissionCoaching()
+        }
     }
 
     private var resultsScroll: some View {
@@ -87,16 +95,26 @@ struct ScanDashboardView: View {
             FullDiskAccessCard(
                 style: .fullDiskAccess,
                 onOpenSettings: { viewModel.openFullDiskAccessSettings() },
-                onDismiss: { viewModel.dismissFullDiskAccessBanner() }
+                onDismiss: { viewModel.dismissFullDiskAccessBanner() },
+                onRescan: { viewModel.runScan(forceRescan: true) }
             )
         } else if viewModel.showEmptyScanCoaching {
             FullDiskAccessCard(
-                style: .emptyScan(
-                    fullDiskAccessLikelyMissing: viewModel.fullDiskAccessStatus == .denied
-                ),
+                style: emptyScanCardStyle,
                 onOpenSettings: { viewModel.openFullDiskAccessSettings() },
                 onRescan: { viewModel.runScan(forceRescan: true) }
             )
+        }
+    }
+
+    private var emptyScanCardStyle: FullDiskAccessCard.Style {
+        switch viewModel.emptyScanCoachingStyle {
+        case .likelyMissingFDA:
+            return .emptyScan(fullDiskAccessLikelyMissing: true)
+        case .permissionsUpdatedNeedsRescan:
+            return .permissionsUpdatedNeedsRescan
+        case .genuinelyEmpty:
+            return .emptyScan(fullDiskAccessLikelyMissing: false)
         }
     }
 

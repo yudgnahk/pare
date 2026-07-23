@@ -4,12 +4,16 @@ import XCTest
 final class FullDiskAccessCheckerTests: XCTestCase {
     private let home = URL(fileURLWithPath: "/Users/test")
 
+    private var notFound: NSError {
+        NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT), userInfo: nil)
+    }
+
     func testUnknownWhenNoProbePathsExist() {
         let status = FullDiskAccessChecker.status(
             homeDirectory: home,
             relativePaths: ["Library/Safari", "Library/Mail"],
             fileExists: { _ in false },
-            listDirectory: { _ in [] }
+            listDirectory: { _ in throw self.notFound }
         )
         XCTAssertEqual(status, .unknown)
     }
@@ -20,6 +24,9 @@ final class FullDiskAccessCheckerTests: XCTestCase {
             relativePaths: ["Library/Safari", "Library/Missing"],
             fileExists: { $0.path.hasSuffix("Library/Safari") },
             listDirectory: { url in
+                if url.path.hasSuffix("Library/Missing") {
+                    throw self.notFound
+                }
                 XCTAssertTrue(url.path.hasSuffix("Library/Safari"))
                 return ["History.db"]
             }
@@ -62,8 +69,44 @@ final class FullDiskAccessCheckerTests: XCTestCase {
         XCTAssertEqual(status, .denied)
     }
 
+    func testDeniedOnUnderlyingPOSIXPermissionError() {
+        let posix = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(EPERM),
+            userInfo: nil
+        )
+        let wrapped = NSError(
+            domain: NSCocoaErrorDomain,
+            code: NSFileReadUnknownError,
+            userInfo: [NSUnderlyingErrorKey: posix]
+        )
+        let status = FullDiskAccessChecker.status(
+            homeDirectory: home,
+            relativePaths: ["Library/Safari"],
+            fileExists: { _ in true },
+            listDirectory: { _ in throw wrapped }
+        )
+        XCTAssertEqual(status, .denied)
+    }
+
+    func testDeniedWhenListFailsWithPermissionEvenIfFileExistsFalse() {
+        // TCC can mask protected paths as non-existent while list still returns EPERM.
+        let denied = NSError(
+            domain: NSPOSIXErrorDomain,
+            code: Int(EPERM),
+            userInfo: nil
+        )
+        let status = FullDiskAccessChecker.status(
+            homeDirectory: home,
+            relativePaths: ["Library/Safari"],
+            fileExists: { _ in false },
+            listDirectory: { _ in throw denied }
+        )
+        XCTAssertEqual(status, .denied)
+    }
+
     func testNonPermissionErrorDoesNotForceDenied() {
-        let other = NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT), userInfo: nil)
+        let other = NSError(domain: NSPOSIXErrorDomain, code: Int(EIO), userInfo: nil)
         let status = FullDiskAccessChecker.status(
             homeDirectory: home,
             relativePaths: ["Library/Safari"],

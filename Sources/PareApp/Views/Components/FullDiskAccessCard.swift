@@ -7,6 +7,8 @@ struct FullDiskAccessCard: View {
         case fullDiskAccess
         /// Scan finished with nothing reclaimable (may still mention FDA).
         case emptyScan(fullDiskAccessLikelyMissing: Bool)
+        /// User granted FDA after a scan that ran without it — need a fresh scan.
+        case permissionsUpdatedNeedsRescan
     }
 
     let style: Style
@@ -47,7 +49,7 @@ struct FullDiskAccessCard: View {
                                 action: onOpenSettings
                             )
                         }
-                        if let onRescan, case .emptyScan = style {
+                        if let onRescan, showsRescan {
                             SecondaryActionButton(title: "Rescan", systemImage: "arrow.clockwise") {
                                 onRescan()
                             }
@@ -68,6 +70,8 @@ struct FullDiskAccessCard: View {
             return "Full Disk Access recommended"
         case .emptyScan(let missing):
             return missing ? "Scan looks empty — check permissions" : "Nothing reclaimable right now"
+        case .permissionsUpdatedNeedsRescan:
+            return "Permissions updated — rescan"
         }
     }
 
@@ -80,6 +84,8 @@ struct FullDiskAccessCard: View {
                 return "Reclaimable space is ~0. That often means Full Disk Access is missing, not that your disk is already clean. Open Privacy settings, enable Pare, then rescan."
             }
             return "No safe reclaimable items matched this scan. Try adding project paths in Settings, or Force Rescan after large installs finish."
+        case .permissionsUpdatedNeedsRescan:
+            return "Full Disk Access looks granted, but this scan finished without it. Rescan to measure reclaimable space with full library access."
         }
     }
 
@@ -89,6 +95,15 @@ struct FullDiskAccessCard: View {
             return true
         case .emptyScan(let missing):
             return missing
+        case .permissionsUpdatedNeedsRescan:
+            return false
+        }
+    }
+
+    private var showsRescan: Bool {
+        switch style {
+        case .fullDiskAccess, .emptyScan, .permissionsUpdatedNeedsRescan:
+            return true
         }
     }
 
@@ -98,12 +113,14 @@ struct FullDiskAccessCard: View {
             return "lock.shield"
         case .emptyScan(let missing):
             return missing ? "exclamationmark.shield" : "checkmark.circle"
+        case .permissionsUpdatedNeedsRescan:
+            return "arrow.clockwise.circle"
         }
     }
 
     private var iconColor: Color {
         switch style {
-        case .fullDiskAccess, .emptyScan(true):
+        case .fullDiskAccess, .emptyScan(true), .permissionsUpdatedNeedsRescan:
             return AppTheme.warning
         case .emptyScan(false):
             return AppTheme.success

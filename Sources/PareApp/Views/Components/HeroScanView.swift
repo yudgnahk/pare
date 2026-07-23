@@ -88,7 +88,8 @@ struct HeroScanView: View {
                         FullDiskAccessCard(
                             style: .fullDiskAccess,
                             onOpenSettings: { viewModel.openFullDiskAccessSettings() },
-                            onDismiss: { viewModel.dismissFullDiskAccessBanner() }
+                            onDismiss: { viewModel.dismissFullDiskAccessBanner() },
+                            onRescan: { viewModel.runScan(forceRescan: true) }
                         )
                         .frame(maxWidth: 480)
                         .padding(.top, 4)
@@ -119,13 +120,10 @@ struct HeroScanView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             appeared = true
-            viewModel.refreshPermissionCoaching()
+            // FDA re-probe lives on ScanDashboardView (survives hero → results).
             withAnimation(AppTheme.Motion.ringPulse) {
                 floatOffset = -6
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            viewModel.refreshPermissionCoaching()
         }
     }
 
