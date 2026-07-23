@@ -20,48 +20,70 @@ struct FullDiskAccessCard: View {
 
     var body: some View {
         GlassCard(padding: 16) {
-            HStack(alignment: .top, spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(iconBackground)
-                        .frame(width: 40, height: 40)
-                    Image(systemName: iconName)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(iconColor)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(title)
-                        .font(scale.font(14, weight: .semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-
-                    Text(detail)
-                        .font(scale.caption)
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
-                        if showsOpenSettings, let onOpenSettings {
-                            SecondaryActionButton(
-                                title: "Open Full Disk Access",
-                                systemImage: "lock.shield",
-                                role: .accent,
-                                action: onOpenSettings
-                            )
-                        }
-                        if let onRescan, showsRescan {
-                            SecondaryActionButton(title: "Rescan", systemImage: "arrow.clockwise") {
-                                onRescan()
-                            }
-                        }
-                        if let onDismiss {
-                            SecondaryActionButton(title: "Dismiss", action: onDismiss)
-                        }
+            // Icon + copy on the first row; actions use the *full* card width below so
+            // three secondary buttons fit on one line (they wrap when squeezed beside the icon).
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(iconBackground)
+                            .frame(width: 40, height: 40)
+                        Image(systemName: iconName)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(iconColor)
                     }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(title)
+                            .font(scale.font(14, weight: .semibold))
+                            .foregroundStyle(AppTheme.textPrimary)
+
+                        Text(detail)
+                            .font(scale.caption)
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+
+                actionButtons
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        // Prefer a single row; only wrap if the window is truly narrow.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                actionButtonViews
+            }
+            FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
+                actionButtonViews
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actionButtonViews: some View {
+        if showsOpenSettings, let onOpenSettings {
+            SecondaryActionButton(
+                title: "Open Settings",
+                systemImage: "lock.shield",
+                role: .accent,
+                action: onOpenSettings
+            )
+        }
+        if let onRescan, showsRescan {
+            SecondaryActionButton(title: "Rescan", systemImage: "arrow.clockwise") {
+                onRescan()
+            }
+        }
+        if let onDismiss {
+            SecondaryActionButton(title: "Dismiss", action: onDismiss)
+        }
     }
 
     private var title: String {

@@ -91,7 +91,9 @@ struct HeroScanView: View {
                             onDismiss: { viewModel.dismissFullDiskAccessBanner() },
                             onRescan: { viewModel.runScan(forceRescan: true) }
                         )
-                        .frame(maxWidth: 480)
+                        // Wider than the headline (440) so Open Settings + Rescan + Dismiss
+                        // fit on one row and the card uses less empty side margin.
+                        .frame(maxWidth: 560)
                         .padding(.top, 4)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                     }

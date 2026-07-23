@@ -26,6 +26,7 @@ struct PareApp: App {
         .defaultSize(width: AppTheme.Window.defaultWidth, height: AppTheme.Window.defaultHeight)
         .commands {
             TextZoomCommands(zoom: textZoom)
+            DiagnosticsExportCommands(scanViewModel: scanViewModel)
         }
     }
 }
