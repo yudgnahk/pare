@@ -99,6 +99,9 @@ See `docs/user-stories.md` for full scope, acceptance criteria, and session prom
 - [ ] **US-4** Distribution Readiness — code signing, notarization, diagnostics export
 - [x] **US-5** Leave Homebrew — detach cask, keep app (escape hatch for Chrome/VS Code)
 - [x] **US-6** Safer Upgrade All — non-greedy default; optional greedy with confirm
+- [ ] **US-7** Homebrew Bulk Actions, Explicit Confirmation, and Last Used
+- [ ] **US-8** Safer App Manager Defaults and Bulk Actions
+- [ ] **US-9** Maintenance Tab Layout and Action-State Polish
 
 ## Competitive next steps (2026-07-20)
 
