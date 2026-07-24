@@ -317,6 +317,7 @@ struct HomebrewManagerView: View {
 
     private var formulaeHeader: some View {
         HStack {
+            selectionColumnSpacer
             Text("Name").frame(maxWidth: .infinity, alignment: .leading)
             Text("Version").frame(width: scale.scaled(100), alignment: .leading)
             Text("Size").frame(width: scale.colSize, alignment: .trailing)
@@ -364,6 +365,7 @@ struct HomebrewManagerView: View {
 
     private var casksHeader: some View {
         HStack {
+            selectionColumnSpacer
             Text("Token").frame(maxWidth: .infinity, alignment: .leading)
             Text("Version").frame(width: scale.scaled(120), alignment: .leading)
             if scale.sizeClass != .compact {
@@ -398,6 +400,7 @@ struct HomebrewManagerView: View {
                             OutdatedRow(
                                 package: pkg,
                                 isSelected: viewModel.isSelected(pkg.id),
+                                selectionEnabled: !pkg.pinned,
                                 onToggleSelection: { viewModel.toggleSelection(id: pkg.id) }
                             ) {
                                 viewModel.upgrade(package: pkg)
@@ -427,6 +430,7 @@ struct HomebrewManagerView: View {
 
     private var outdatedHeader: some View {
         HStack {
+            selectionColumnSpacer
             Text("Package").frame(maxWidth: .infinity, alignment: .leading)
             Text("Installed").frame(width: scale.scaled(120), alignment: .leading)
             Text("Available").frame(width: scale.scaled(120), alignment: .leading)
@@ -477,7 +481,7 @@ struct HomebrewManagerView: View {
 
     private var bulkActionBar: some View {
         HStack(spacing: 10) {
-            Text("\(viewModel.selectedCount) selected")
+            Text(selectionSummaryLabel)
                 .font(scale.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.textPrimary)
             Button("Select All Visible") { viewModel.selectAllVisible() }
@@ -491,11 +495,25 @@ struct HomebrewManagerView: View {
             Button(bulkActionTitle) { viewModel.requestBulkAction() }
                 .buttonStyle(.borderedProminent)
                 .tint(bulkActionTint)
-                .disabled(viewModel.selectedCount == 0 || viewModel.isOperationRunning)
+                .disabled(viewModel.actionableSelectedCount == 0 || viewModel.isOperationRunning)
         }
         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
         .padding(.vertical, 8)
         .background(Color.white.opacity(0.07))
+    }
+
+    private var selectionSummaryLabel: String {
+        let selected = viewModel.selectedCount
+        let actionable = viewModel.actionableSelectedCount
+        if viewModel.selectedTab == .outdated, selected > actionable {
+            return "\(selected) selected (\(actionable) upgradeable)"
+        }
+        return "\(selected) selected"
+    }
+
+    /// Matches `SelectionControl` width so header titles align with row content.
+    private var selectionColumnSpacer: some View {
+        Spacer().frame(width: 28)
     }
 
     private var bulkActionTitle: String {
@@ -580,15 +598,25 @@ struct HomebrewManagerView: View {
 
 private struct SelectionControl: View {
     let isSelected: Bool
+    var isEnabled: Bool = true
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-                .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.textSecondary.opacity(0.65))
+                .foregroundStyle(
+                    !isEnabled
+                        ? AppTheme.textSecondary.opacity(0.3)
+                        : (isSelected ? AppTheme.accent : AppTheme.textSecondary.opacity(0.65))
+                )
         }
         .buttonStyle(.borderless)
-        .help(isSelected ? "Deselect" : "Select")
+        .disabled(!isEnabled)
+        .help(
+            !isEnabled
+                ? "Pinned packages cannot be selected for upgrade"
+                : (isSelected ? "Deselect" : "Select")
+        )
     }
 }
 
@@ -597,18 +625,30 @@ private struct HomebrewConfirmationSheet: View {
     let onCancel: () -> Void
     let onConfirm: () -> Void
 
+    private var isDestructive: Bool {
+        pending.action == .uninstallFormulae || pending.action == .uninstallCasks
+    }
+
     private var namesPreview: String {
         let preview = pending.names.prefix(5).joined(separator: ", ")
         let remainder = pending.names.count - min(pending.names.count, 5)
         return remainder > 0 ? "\(preview), and \(remainder) more" : preview
     }
 
+    private var commandLines: [String] {
+        BrewBulkPlanning.commandPreviewLines(commands: pending.commands, maxVisible: 5)
+    }
+
+    private var patternSummary: String? {
+        BrewBulkPlanning.commandPatternSummary(commands: pending.commands)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
-                Image(systemName: pending.action == .uninstallFormulae || pending.action == .uninstallCasks ? "exclamationmark.triangle.fill" : "checkmark.shield.fill")
+                Image(systemName: isDestructive ? "exclamationmark.triangle.fill" : "checkmark.shield.fill")
                     .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(pending.action == .uninstallFormulae || pending.action == .uninstallCasks ? AppTheme.warning : AppTheme.accent)
+                    .foregroundStyle(isDestructive ? AppTheme.warning : AppTheme.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(pending.action.title)
                         .font(.system(size: 18, weight: .semibold))
@@ -631,12 +671,21 @@ private struct HomebrewConfirmationSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Homebrew command")
+                Text(pending.commands.count > 1 ? "Homebrew commands" : "Homebrew command")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                Text("brew \(pending.commands.first?.joined(separator: " ") ?? "")")
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
+                if let patternSummary {
+                    Text(patternSummary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(commandLines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.system(size: 12, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                }
                 if pending.commands.count > 1 {
                     Text("Runs once per item, in the order shown.")
                         .font(.system(size: 11))
@@ -655,9 +704,15 @@ private struct HomebrewConfirmationSheet: View {
                 Spacer()
                 Button("Cancel", action: onCancel)
                     .keyboardShortcut(.cancelAction)
-                Button(pending.action.title, action: onConfirm)
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                if isDestructive {
+                    Button(pending.action.title, role: .destructive, action: onConfirm)
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.warning)
+                } else {
+                    Button(pending.action.title, action: onConfirm)
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
+                }
             }
         }
         .padding(24)
@@ -942,6 +997,7 @@ private struct LeaveHomebrewConfirmSheet: View {
 private struct OutdatedRow: View {
     let package: BrewOutdatedPackage
     let isSelected: Bool
+    var selectionEnabled: Bool = true
     let onToggleSelection: () -> Void
     let onUpgrade: () -> Void
     @Environment(\.displayScale) private var scale
@@ -949,7 +1005,11 @@ private struct OutdatedRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SelectionControl(isSelected: isSelected, action: onToggleSelection)
+            SelectionControl(
+                isSelected: isSelected,
+                isEnabled: selectionEnabled,
+                action: onToggleSelection
+            )
                 .frame(width: 28, alignment: .leading)
             HStack(spacing: 6) {
                 Text(package.name)
@@ -1118,6 +1178,10 @@ struct BrewOperationSheet: View {
                 case .succeeded:
                     Text("Operation Completed")
                         .font(.system(size: 17, weight: .semibold))
+                case .partiallySucceeded:
+                    Text("Completed with Errors")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(AppTheme.warning)
                 case .failed:
                     Text("Operation Failed")
                         .font(.system(size: 17, weight: .semibold))
@@ -1148,6 +1212,10 @@ struct BrewOperationSheet: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 28))
                 .foregroundStyle(.green)
+        case .partiallySucceeded:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(AppTheme.warning)
         case .failed:
             Image(systemName: "xmark.circle.fill")
                 .font(.system(size: 28))
@@ -1201,6 +1269,12 @@ struct BrewOperationSheet: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.red)
                     .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if case .partiallySucceeded = viewModel.operationState,
+                      let summary = viewModel.operationSummary {
+                Text(summary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppTheme.warning)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if let summary = viewModel.operationSummary {
                 Text(summary)

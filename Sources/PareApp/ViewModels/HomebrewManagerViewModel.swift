@@ -37,6 +37,8 @@ final class HomebrewManagerViewModel: ObservableObject {
         case idle
         case running(label: String)
         case succeeded
+        /// Some items succeeded and some failed in a multi-item batch.
+        case partiallySucceeded
         case failed(String)
     }
 
@@ -185,6 +187,18 @@ final class HomebrewManagerViewModel: ObservableObject {
         }
     }
 
+    /// Count of selected items that can actually run the current tab's bulk action.
+    /// On Outdated, pinned packages are excluded (they cannot be upgraded).
+    var actionableSelectedCount: Int {
+        switch selectedTab {
+        case .formulae: return selectedFormulaIDs.count
+        case .casks: return selectedCaskIDs.count
+        case .outdated:
+            return outdated.filter { selectedOutdatedIDs.contains($0.id) && !$0.pinned }.count
+        case .migrate: return selectedMigrationIDs.count
+        }
+    }
+
     var isOperationRunning: Bool {
         if case .running = operationState { return true }
         return false
@@ -264,13 +278,11 @@ final class HomebrewManagerViewModel: ObservableObject {
     }
 
     func upgrade(package: BrewOutdatedPackage) {
-        let args: [String] = package.isFormula
-            ? ["upgrade", package.name]
-            : ["upgrade", "--cask", package.name]
+        guard !package.pinned else { return }
         requestConfirmation(
             action: .upgradePackages,
             names: [package.name],
-            commands: [args],
+            commands: [BrewBulkPlanning.upgradeArgs(for: package)],
             warnsAboutAutoUpdates: package.isAutoUpdate
         )
     }
@@ -279,7 +291,7 @@ final class HomebrewManagerViewModel: ObservableObject {
         requestConfirmation(
             action: .uninstallFormulae,
             names: [formula.name],
-            commands: [["uninstall", formula.name]],
+            commands: [BrewBulkPlanning.uninstallFormulaArgs(name: formula.name)],
             warnsAboutAutoUpdates: false
         )
     }
@@ -288,7 +300,7 @@ final class HomebrewManagerViewModel: ObservableObject {
         requestConfirmation(
             action: .uninstallCasks,
             names: [cask.token],
-            commands: [["uninstall", "--cask", cask.token]],
+            commands: [BrewBulkPlanning.uninstallCaskArgs(token: cask.token)],
             warnsAboutAutoUpdates: false
         )
     }
@@ -312,6 +324,7 @@ final class HomebrewManagerViewModel: ObservableObject {
         leaveForceQuit = false
 
         operationLog = []
+        operationSummary = nil
         operationState = .running(label: "Leaving Homebrew: \(cask.token)…")
         showOperationSheet = true
 
@@ -342,7 +355,7 @@ final class HomebrewManagerViewModel: ObservableObject {
         requestConfirmation(
             action: .adoptApps,
             names: [candidate.appName],
-            commands: [["install", "--cask", "--adopt", candidate.caskToken]],
+            commands: [BrewBulkPlanning.adoptArgs(caskToken: candidate.caskToken)],
             warnsAboutAutoUpdates: false
         )
     }
@@ -351,7 +364,12 @@ final class HomebrewManagerViewModel: ObservableObject {
         switch selectedTab {
         case .formulae: toggle(id, in: &selectedFormulaIDs)
         case .casks: toggle(id, in: &selectedCaskIDs)
-        case .outdated: toggle(id, in: &selectedOutdatedIDs)
+        case .outdated:
+            // Pinned packages cannot be upgraded — keep selection aligned with action.
+            if let pkg = outdated.first(where: { $0.id == id }), pkg.pinned {
+                return
+            }
+            toggle(id, in: &selectedOutdatedIDs)
         case .migrate: toggle(id, in: &selectedMigrationIDs)
         }
     }
@@ -369,7 +387,10 @@ final class HomebrewManagerViewModel: ObservableObject {
         switch selectedTab {
         case .formulae: selectedFormulaIDs.formUnion(filteredFormulae.map(\.id))
         case .casks: selectedCaskIDs.formUnion(filteredCasks.map(\.id))
-        case .outdated: selectedOutdatedIDs.formUnion(filteredOutdated.map(\.id))
+        case .outdated:
+            selectedOutdatedIDs.formUnion(
+                BrewBulkPlanning.selectableOutdatedIDs(from: filteredOutdated)
+            )
         case .migrate: selectedMigrationIDs.formUnion(filteredMigrationCandidates.map(\.id))
         }
     }
@@ -387,16 +408,45 @@ final class HomebrewManagerViewModel: ObservableObject {
         switch selectedTab {
         case .formulae:
             let values = formulae.filter { selectedFormulaIDs.contains($0.id) }
-            requestConfirmation(action: .uninstallFormulae, names: values.map(\.name), commands: values.map { ["uninstall", $0.name] }, warnsAboutAutoUpdates: false)
+            requestConfirmation(
+                action: .uninstallFormulae,
+                names: values.map(\.name),
+                commands: values.map { BrewBulkPlanning.uninstallFormulaArgs(name: $0.name) },
+                warnsAboutAutoUpdates: false
+            )
         case .casks:
             let values = casks.filter { selectedCaskIDs.contains($0.id) }
-            requestConfirmation(action: .uninstallCasks, names: values.map(\.token), commands: values.map { ["uninstall", "--cask", $0.token] }, warnsAboutAutoUpdates: false)
+            requestConfirmation(
+                action: .uninstallCasks,
+                names: values.map(\.token),
+                commands: values.map { BrewBulkPlanning.uninstallCaskArgs(token: $0.token) },
+                warnsAboutAutoUpdates: false
+            )
         case .outdated:
-            let values = outdated.filter { selectedOutdatedIDs.contains($0.id) && !$0.pinned }
-            requestConfirmation(action: .upgradePackages, names: values.map(\.name), commands: values.map { $0.isFormula ? ["upgrade", $0.name] : ["upgrade", "--cask", $0.name] }, warnsAboutAutoUpdates: values.contains(where: \.isAutoUpdate))
+            let selected = outdated.filter { selectedOutdatedIDs.contains($0.id) }
+            let values = BrewBulkPlanning.upgradeablePackages(from: selected)
+            if values.isEmpty {
+                presentSelectionBlocked(
+                    message: selected.isEmpty
+                        ? "Nothing selected."
+                        : "No upgradeable packages in selection (all pinned)."
+                )
+                return
+            }
+            requestConfirmation(
+                action: .upgradePackages,
+                names: values.map(\.name),
+                commands: values.map(BrewBulkPlanning.upgradeArgs(for:)),
+                warnsAboutAutoUpdates: values.contains(where: \.isAutoUpdate)
+            )
         case .migrate:
             let values = migrationCandidates.filter { selectedMigrationIDs.contains($0.id) }
-            requestConfirmation(action: .adoptApps, names: values.map(\.appName), commands: values.map { ["install", "--cask", "--adopt", $0.caskToken] }, warnsAboutAutoUpdates: false)
+            requestConfirmation(
+                action: .adoptApps,
+                names: values.map(\.appName),
+                commands: values.map { BrewBulkPlanning.adoptArgs(caskToken: $0.caskToken) },
+                warnsAboutAutoUpdates: false
+            )
         }
     }
 
@@ -410,11 +460,10 @@ final class HomebrewManagerViewModel: ObservableObject {
 
     func dismissOperation() {
         let shouldReload: Bool
-        if case .succeeded = operationState {
+        switch operationState {
+        case .succeeded, .partiallySucceeded, .failed:
             shouldReload = true
-        } else if case .failed = operationState {
-            shouldReload = true
-        } else {
+        case .idle, .running:
             shouldReload = false
         }
 
@@ -431,29 +480,11 @@ final class HomebrewManagerViewModel: ObservableObject {
 
     // MARK: - Private
 
-    private func runOperation(
-        label: String,
-        args: [String],
-        onSuccess: (() -> Void)? = nil
-    ) {
+    private func presentSelectionBlocked(message: String) {
         operationLog = []
-        operationSummary = nil
-        operationState = .running(label: label)
+        operationSummary = message
+        operationState = .failed(message)
         showOperationSheet = true
-
-        Task {
-            do {
-                for try await line in BrewRunner.shared.stream(args) {
-                    self.operationLog.append(line)
-                }
-                self.operationState = .succeeded
-                onSuccess?()
-            } catch let error as BrewError {
-                self.operationState = .failed(error.localizedDescription)
-            } catch {
-                self.operationState = .failed(error.localizedDescription)
-            }
-        }
     }
 
     private func requestConfirmation(action: ConfirmationAction, names: [String], commands: [[String]], warnsAboutAutoUpdates: Bool) {
@@ -486,10 +517,16 @@ final class HomebrewManagerViewModel: ObservableObject {
                     operationLog.append("Failed \(name): \(error.localizedDescription)")
                 }
             }
-            operationSummary = failures == 0
-                ? "Completed \(successes) item(s)."
-                : "Completed \(successes) item(s); \(failures) failed."
-            operationState = .succeeded
+            let result = BrewBulkPlanning.batchResult(successes: successes, failures: failures)
+            operationSummary = result.summary
+            switch result.outcome {
+            case .succeeded:
+                operationState = .succeeded
+            case .partiallySucceeded:
+                operationState = .partiallySucceeded
+            case .failed:
+                operationState = .failed(result.summary)
+            }
             clearSelection(for: pending.action)
         }
     }
