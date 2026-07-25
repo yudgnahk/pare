@@ -229,13 +229,20 @@ final class HomebrewTests: XCTestCase {
     }
 
     func testMostRecentLastUsedDatePicksMax() {
-        // Without Spotlight metadata, lastUsedDate returns nil — max of empty is nil.
-        // Still verify the helper prefers the later date when fed known dates via
-        // a local max over optional dates (same algorithm as production).
+        let u1 = URL(fileURLWithPath: "/Applications/App1.app")
+        let u2 = URL(fileURLWithPath: "/Applications/App2.app")
+        let u3 = URL(fileURLWithPath: "/Applications/App3.app")
         let earlier = Date(timeIntervalSince1970: 1_000)
         let later = Date(timeIntervalSince1970: 2_000)
-        let dates: [Date?] = [earlier, nil, later]
-        XCTAssertEqual(dates.compactMap { $0 }.max(), later)
+
+        let result = BrewInventory.mostRecentLastUsedDate(among: [u1, u2, u3]) { url in
+            switch url {
+            case u1: return earlier
+            case u2: return later
+            default: return nil
+            }
+        }
+        XCTAssertEqual(result, later)
         XCTAssertNil(BrewInventory.mostRecentLastUsedDate(among: []))
     }
 

@@ -149,8 +149,11 @@ public actor BrewInventory {
     }
 
     /// Most recent Spotlight last-used date among app bundles.
-    static func mostRecentLastUsedDate(among urls: [URL]) -> Date? {
-        urls.compactMap(lastUsedDate(for:)).max()
+    static func mostRecentLastUsedDate(
+        among urls: [URL],
+        dateProvider: (URL) -> Date? = lastUsedDate(for:)
+    ) -> Date? {
+        urls.compactMap(dateProvider).max()
     }
 
     private static func lastUsedDate(for url: URL) -> Date? {

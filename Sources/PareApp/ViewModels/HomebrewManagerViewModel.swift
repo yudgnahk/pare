@@ -65,11 +65,29 @@ final class HomebrewManagerViewModel: ObservableObject {
     }
 
     struct PendingConfirmation: Identifiable {
+        enum Mode {
+            case aggregate(names: [String], command: [String])
+            case perItem([(name: String, command: [String])])
+        }
+
         let id = UUID()
         let action: ConfirmationAction
-        let names: [String]
-        let commands: [[String]]
+        let mode: Mode
         let warnsAboutAutoUpdates: Bool
+
+        var names: [String] {
+            switch mode {
+            case .aggregate(let names, _): return names
+            case .perItem(let items): return items.map(\.name)
+            }
+        }
+
+        var commands: [[String]] {
+            switch mode {
+            case .aggregate(_, let command): return [command]
+            case .perItem(let items): return items.map(\.command)
+            }
+        }
     }
 
     // MARK: - Published
@@ -261,8 +279,7 @@ final class HomebrewManagerViewModel: ObservableObject {
         guard !brewManagedOutdated.isEmpty else { return }
         requestConfirmation(
             action: .upgradePackages,
-            names: brewManagedOutdated.map(\.name),
-            commands: [["upgrade"]],
+            mode: .aggregate(names: brewManagedOutdated.map(\.name), command: ["upgrade"]),
             warnsAboutAutoUpdates: false
         )
     }
@@ -271,8 +288,7 @@ final class HomebrewManagerViewModel: ObservableObject {
         guard !outdated.isEmpty else { return }
         requestConfirmation(
             action: .upgradePackages,
-            names: outdated.map(\.name),
-            commands: [["upgrade", "--greedy"]],
+            mode: .aggregate(names: outdated.map(\.name), command: ["upgrade", "--greedy"]),
             warnsAboutAutoUpdates: !autoUpdateOutdated.isEmpty
         )
     }
@@ -281,8 +297,7 @@ final class HomebrewManagerViewModel: ObservableObject {
         guard !package.pinned else { return }
         requestConfirmation(
             action: .upgradePackages,
-            names: [package.name],
-            commands: [BrewBulkPlanning.upgradeArgs(for: package)],
+            mode: .perItem([(name: package.name, command: BrewBulkPlanning.upgradeArgs(for: package))]),
             warnsAboutAutoUpdates: package.isAutoUpdate
         )
     }
@@ -290,8 +305,7 @@ final class HomebrewManagerViewModel: ObservableObject {
     func uninstall(formula: BrewFormula) {
         requestConfirmation(
             action: .uninstallFormulae,
-            names: [formula.name],
-            commands: [BrewBulkPlanning.uninstallFormulaArgs(name: formula.name)],
+            mode: .perItem([(name: formula.name, command: BrewBulkPlanning.uninstallFormulaArgs(name: formula.name))]),
             warnsAboutAutoUpdates: false
         )
     }
@@ -299,8 +313,7 @@ final class HomebrewManagerViewModel: ObservableObject {
     func uninstall(cask: BrewCask) {
         requestConfirmation(
             action: .uninstallCasks,
-            names: [cask.token],
-            commands: [BrewBulkPlanning.uninstallCaskArgs(token: cask.token)],
+            mode: .perItem([(name: cask.token, command: BrewBulkPlanning.uninstallCaskArgs(token: cask.token))]),
             warnsAboutAutoUpdates: false
         )
     }
@@ -354,8 +367,7 @@ final class HomebrewManagerViewModel: ObservableObject {
     func migrate(candidate: MigrationCandidate) {
         requestConfirmation(
             action: .adoptApps,
-            names: [candidate.appName],
-            commands: [BrewBulkPlanning.adoptArgs(caskToken: candidate.caskToken)],
+            mode: .perItem([(name: candidate.appName, command: BrewBulkPlanning.adoptArgs(caskToken: candidate.caskToken))]),
             warnsAboutAutoUpdates: false
         )
     }
@@ -408,43 +420,36 @@ final class HomebrewManagerViewModel: ObservableObject {
         switch selectedTab {
         case .formulae:
             let values = formulae.filter { selectedFormulaIDs.contains($0.id) }
+            let items = values.map { (name: $0.name, command: BrewBulkPlanning.uninstallFormulaArgs(name: $0.name)) }
             requestConfirmation(
                 action: .uninstallFormulae,
-                names: values.map(\.name),
-                commands: values.map { BrewBulkPlanning.uninstallFormulaArgs(name: $0.name) },
+                mode: .perItem(items),
                 warnsAboutAutoUpdates: false
             )
         case .casks:
             let values = casks.filter { selectedCaskIDs.contains($0.id) }
+            let items = values.map { (name: $0.token, command: BrewBulkPlanning.uninstallCaskArgs(token: $0.token)) }
             requestConfirmation(
                 action: .uninstallCasks,
-                names: values.map(\.token),
-                commands: values.map { BrewBulkPlanning.uninstallCaskArgs(token: $0.token) },
+                mode: .perItem(items),
                 warnsAboutAutoUpdates: false
             )
         case .outdated:
             let selected = outdated.filter { selectedOutdatedIDs.contains($0.id) }
             let values = BrewBulkPlanning.upgradeablePackages(from: selected)
-            if values.isEmpty {
-                presentSelectionBlocked(
-                    message: selected.isEmpty
-                        ? "Nothing selected."
-                        : "No upgradeable packages in selection (all pinned)."
-                )
-                return
-            }
+            guard !values.isEmpty else { return }
+            let items = values.map { (name: $0.name, command: BrewBulkPlanning.upgradeArgs(for: $0)) }
             requestConfirmation(
                 action: .upgradePackages,
-                names: values.map(\.name),
-                commands: values.map(BrewBulkPlanning.upgradeArgs(for:)),
+                mode: .perItem(items),
                 warnsAboutAutoUpdates: values.contains(where: \.isAutoUpdate)
             )
         case .migrate:
             let values = migrationCandidates.filter { selectedMigrationIDs.contains($0.id) }
+            let items = values.map { (name: $0.appName, command: BrewBulkPlanning.adoptArgs(caskToken: $0.caskToken)) }
             requestConfirmation(
                 action: .adoptApps,
-                names: values.map(\.appName),
-                commands: values.map { BrewBulkPlanning.adoptArgs(caskToken: $0.caskToken) },
+                mode: .perItem(items),
                 warnsAboutAutoUpdates: false
             )
         }
@@ -455,7 +460,9 @@ final class HomebrewManagerViewModel: ObservableObject {
     func confirmPendingOperation() {
         guard let pending = pendingConfirmation else { return }
         pendingConfirmation = nil
-        runBatch(pending)
+        Task { @MainActor in
+            self.runBatch(pending)
+        }
     }
 
     func dismissOperation() {
@@ -480,16 +487,23 @@ final class HomebrewManagerViewModel: ObservableObject {
 
     // MARK: - Private
 
-    private func presentSelectionBlocked(message: String) {
-        operationLog = []
-        operationSummary = message
-        operationState = .failed(message)
-        showOperationSheet = true
-    }
-
-    private func requestConfirmation(action: ConfirmationAction, names: [String], commands: [[String]], warnsAboutAutoUpdates: Bool) {
-        guard !names.isEmpty, !commands.isEmpty, !isOperationRunning else { return }
-        pendingConfirmation = PendingConfirmation(action: action, names: names, commands: commands, warnsAboutAutoUpdates: warnsAboutAutoUpdates)
+    private func requestConfirmation(
+        action: ConfirmationAction,
+        mode: PendingConfirmation.Mode,
+        warnsAboutAutoUpdates: Bool
+    ) {
+        guard !isOperationRunning else { return }
+        switch mode {
+        case .aggregate(let names, let command):
+            guard !names.isEmpty, !command.isEmpty else { return }
+        case .perItem(let items):
+            guard !items.isEmpty else { return }
+        }
+        pendingConfirmation = PendingConfirmation(
+            action: action,
+            mode: mode,
+            warnsAboutAutoUpdates: warnsAboutAutoUpdates
+        )
     }
 
     private func runBatch(_ pending: PendingConfirmation) {
@@ -501,19 +515,20 @@ final class HomebrewManagerViewModel: ObservableObject {
         Task {
             var successes = 0
             var failures = 0
-            let operations: [(String, [String])]
-            if pending.commands.count == 1, let command = pending.commands.first {
-                operations = [(pending.names.joined(separator: ", "), command)]
-            } else {
-                operations = Array(zip(pending.names, pending.commands))
+            let operations: [(name: String, command: [String])]
+            switch pending.mode {
+            case .aggregate(let names, let command):
+                operations = [(name: names.joined(separator: ", "), command: command)]
+            case .perItem(let items):
+                operations = items
             }
             for (name, args) in operations {
                 operationLog.append("==> brew \(args.joined(separator: " "))")
                 do {
                     for try await line in BrewRunner.shared.stream(args) { operationLog.append(line) }
-                    successes += pending.commands.count == 1 ? pending.names.count : 1
+                    successes += 1
                 } catch {
-                    failures += pending.commands.count == 1 ? pending.names.count : 1
+                    failures += 1
                     operationLog.append("Failed \(name): \(error.localizedDescription)")
                 }
             }

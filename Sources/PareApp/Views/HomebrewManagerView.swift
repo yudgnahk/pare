@@ -285,8 +285,19 @@ struct HomebrewManagerView: View {
                 case .outdated: outdatedList
                 case .migrate: migrateList
                 }
-                bulkActionBar
+                if hasActiveTabItems {
+                    bulkActionBar
+                }
             }
+        }
+    }
+
+    private var hasActiveTabItems: Bool {
+        switch viewModel.selectedTab {
+        case .formulae: !viewModel.filteredFormulae.isEmpty
+        case .casks: !viewModel.filteredCasks.isEmpty
+        case .outdated: !viewModel.filteredOutdated.isEmpty
+        case .migrate: !viewModel.filteredMigrationCandidates.isEmpty
         }
     }
 
@@ -612,6 +623,9 @@ private struct SelectionControl: View {
         }
         .buttonStyle(.borderless)
         .disabled(!isEnabled)
+        .accessibilityLabel("Select row")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .help(
             !isEnabled
                 ? "Pinned packages cannot be selected for upgrade"
