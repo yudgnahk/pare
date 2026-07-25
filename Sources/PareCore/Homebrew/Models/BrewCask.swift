@@ -7,6 +7,9 @@ public struct BrewCask: Identifiable, Sendable {
     public let autoUpdates: Bool
     public let installedAppNames: [String]
     public let installDate: Date?
+    /// Spotlight's last-used metadata for a matching installed app bundle.
+    /// `nil` means no matching application (or Spotlight has no activity data).
+    public let lastUsed: Date?
     /// True when Homebrew records the cask as installed but none of its .app
     /// bundles are found in the standard application directories.  This happens
     /// when the app was removed manually (Trash / third-party uninstaller)
@@ -19,6 +22,7 @@ public struct BrewCask: Identifiable, Sendable {
         autoUpdates: Bool,
         installedAppNames: [String],
         installDate: Date?,
+        lastUsed: Date? = nil,
         isOrphaned: Bool = false
     ) {
         self.id = token
@@ -27,6 +31,7 @@ public struct BrewCask: Identifiable, Sendable {
         self.autoUpdates = autoUpdates
         self.installedAppNames = installedAppNames
         self.installDate = installDate
+        self.lastUsed = lastUsed
         self.isOrphaned = isOrphaned
     }
 }

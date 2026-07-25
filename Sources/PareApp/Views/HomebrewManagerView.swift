@@ -52,17 +52,12 @@ struct HomebrewManagerView: View {
                 onConfirm: { viewModel.confirmLeaveHomebrew() }
             )
         }
-        .confirmationDialog(
-            "Upgrade self-updating apps too?",
-            isPresented: $viewModel.showGreedyUpgradeConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Upgrade including self-updating casks", role: .destructive) {
-                viewModel.upgradeAllIncludingAutoUpdates()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This runs brew upgrade --greedy and may replace apps that are open (Chrome, VS Code, Slack, …). Quit those apps first or expect to relaunch them.")
+        .sheet(item: $viewModel.pendingConfirmation) { pending in
+            HomebrewConfirmationSheet(
+                pending: pending,
+                onCancel: { viewModel.cancelConfirmation() },
+                onConfirm: { viewModel.confirmPendingOperation() }
+            )
         }
         .onAppear {
             if viewModel.loadState == .idle { viewModel.load() }
@@ -124,7 +119,7 @@ struct HomebrewManagerView: View {
                         isLoading: false,
                         style: .compact,
                         tint: .warning
-                    ) { viewModel.upgradeAll() }
+                    ) { viewModel.requestUpgradeAll() }
                 }
                 if viewModel.loadState == .loaded && !viewModel.autoUpdateOutdated.isEmpty {
                     PrimaryActionButton(
@@ -133,7 +128,7 @@ struct HomebrewManagerView: View {
                         isLoading: false,
                         style: .compact,
                         tint: .review
-                    ) { viewModel.showGreedyUpgradeConfirm = true }
+                    ) { viewModel.requestGreedyUpgradeAll() }
                 }
                 Spacer(minLength: 0)
             }
@@ -283,12 +278,26 @@ struct HomebrewManagerView: View {
         case .error(let msg):
             emptyPrompt(icon: "exclamationmark.triangle", text: msg)
         case .loaded:
-            switch viewModel.selectedTab {
-            case .formulae: formulaeList
-            case .casks: casksList
-            case .outdated: outdatedList
-            case .migrate: migrateList
+            VStack(spacing: 0) {
+                switch viewModel.selectedTab {
+                case .formulae: formulaeList
+                case .casks: casksList
+                case .outdated: outdatedList
+                case .migrate: migrateList
+                }
+                if hasActiveTabItems {
+                    bulkActionBar
+                }
             }
+        }
+    }
+
+    private var hasActiveTabItems: Bool {
+        switch viewModel.selectedTab {
+        case .formulae: !viewModel.filteredFormulae.isEmpty
+        case .casks: !viewModel.filteredCasks.isEmpty
+        case .outdated: !viewModel.filteredOutdated.isEmpty
+        case .migrate: !viewModel.filteredMigrationCandidates.isEmpty
         }
     }
 
@@ -303,7 +312,11 @@ struct HomebrewManagerView: View {
                     formulaeHeader
                 } content: {
                     ForEach(viewModel.filteredFormulae) { formula in
-                        FormulaRow(formula: formula) {
+                        FormulaRow(
+                            formula: formula,
+                            isSelected: viewModel.isSelected(formula.id),
+                            onToggleSelection: { viewModel.toggleSelection(id: formula.id) }
+                        ) {
                             viewModel.uninstall(formula: formula)
                         }
                     }
@@ -315,6 +328,7 @@ struct HomebrewManagerView: View {
 
     private var formulaeHeader: some View {
         HStack {
+            selectionColumnSpacer
             Text("Name").frame(maxWidth: .infinity, alignment: .leading)
             Text("Version").frame(width: scale.scaled(100), alignment: .leading)
             Text("Size").frame(width: scale.colSize, alignment: .trailing)
@@ -344,6 +358,8 @@ struct HomebrewManagerView: View {
                     ForEach(viewModel.filteredCasks) { cask in
                         CaskRow(
                             cask: cask,
+                            isSelected: viewModel.isSelected(cask.id),
+                            onToggleSelection: { viewModel.toggleSelection(id: cask.id) },
                             onLeaveHomebrew: {
                                 viewModel.requestLeaveHomebrew(cask: cask)
                             },
@@ -360,11 +376,13 @@ struct HomebrewManagerView: View {
 
     private var casksHeader: some View {
         HStack {
+            selectionColumnSpacer
             Text("Token").frame(maxWidth: .infinity, alignment: .leading)
             Text("Version").frame(width: scale.scaled(120), alignment: .leading)
             if scale.sizeClass != .compact {
                 Text("App").frame(width: scale.scaled(160), alignment: .leading)
                 Text("Installed").frame(width: scale.colDate, alignment: .trailing)
+                Text("Last Used").frame(width: scale.colDate, alignment: .trailing)
             }
             Spacer().frame(width: scale.scaled(100))
         }
@@ -390,7 +408,12 @@ struct HomebrewManagerView: View {
                         outdatedHeader
                     } content: {
                         ForEach(viewModel.filteredOutdated) { pkg in
-                            OutdatedRow(package: pkg) {
+                            OutdatedRow(
+                                package: pkg,
+                                isSelected: viewModel.isSelected(pkg.id),
+                                selectionEnabled: !pkg.pinned,
+                                onToggleSelection: { viewModel.toggleSelection(id: pkg.id) }
+                            ) {
                                 viewModel.upgrade(package: pkg)
                             }
                         }
@@ -418,6 +441,7 @@ struct HomebrewManagerView: View {
 
     private var outdatedHeader: some View {
         HStack {
+            selectionColumnSpacer
             Text("Package").frame(maxWidth: .infinity, alignment: .leading)
             Text("Installed").frame(width: scale.scaled(120), alignment: .leading)
             Text("Available").frame(width: scale.scaled(120), alignment: .leading)
@@ -451,7 +475,11 @@ struct HomebrewManagerView: View {
                         EmptyView()
                     } content: {
                         ForEach(viewModel.filteredMigrationCandidates) { candidate in
-                            MigrateCandidateRow(candidate: candidate) {
+                            MigrateCandidateRow(
+                                candidate: candidate,
+                                isSelected: viewModel.isSelected(candidate.id),
+                                onToggleSelection: { viewModel.toggleSelection(id: candidate.id) }
+                            ) {
                                 viewModel.migrate(candidate: candidate)
                             }
                         }
@@ -460,6 +488,59 @@ struct HomebrewManagerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var bulkActionBar: some View {
+        HStack(spacing: 10) {
+            Text(selectionSummaryLabel)
+                .font(scale.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.textPrimary)
+            Button("Select All Visible") { viewModel.selectAllVisible() }
+                .buttonStyle(.borderless)
+                .font(scale.caption)
+            Button("Clear Selection") { viewModel.clearSelection() }
+                .buttonStyle(.borderless)
+                .font(scale.caption)
+                .disabled(viewModel.selectedCount == 0)
+            Spacer()
+            Button(bulkActionTitle) { viewModel.requestBulkAction() }
+                .buttonStyle(.borderedProminent)
+                .tint(bulkActionTint)
+                .disabled(viewModel.actionableSelectedCount == 0 || viewModel.isOperationRunning)
+        }
+        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.07))
+    }
+
+    private var selectionSummaryLabel: String {
+        let selected = viewModel.selectedCount
+        let actionable = viewModel.actionableSelectedCount
+        if viewModel.selectedTab == .outdated, selected > actionable {
+            return "\(selected) selected (\(actionable) upgradeable)"
+        }
+        return "\(selected) selected"
+    }
+
+    /// Matches `SelectionControl` width so header titles align with row content.
+    private var selectionColumnSpacer: some View {
+        Spacer().frame(width: 28)
+    }
+
+    private var bulkActionTitle: String {
+        switch viewModel.selectedTab {
+        case .formulae, .casks: return "Uninstall Selected"
+        case .outdated: return "Upgrade Selected"
+        case .migrate: return "Adopt Selected"
+        }
+    }
+
+    private var bulkActionTint: Color {
+        switch viewModel.selectedTab {
+        case .formulae, .casks: return AppTheme.warning
+        case .outdated: return AppTheme.success
+        case .migrate: return AppTheme.success
+        }
     }
 
     private var migrateExplainer: some View {
@@ -526,10 +607,140 @@ struct HomebrewManagerView: View {
     }
 }
 
+private struct SelectionControl: View {
+    let isSelected: Bool
+    var isEnabled: Bool = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                .foregroundStyle(
+                    !isEnabled
+                        ? AppTheme.textSecondary.opacity(0.3)
+                        : (isSelected ? AppTheme.accent : AppTheme.textSecondary.opacity(0.65))
+                )
+        }
+        .buttonStyle(.borderless)
+        .disabled(!isEnabled)
+        .accessibilityLabel("Select row")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .help(
+            !isEnabled
+                ? "Pinned packages cannot be selected for upgrade"
+                : (isSelected ? "Deselect" : "Select")
+        )
+    }
+}
+
+private struct HomebrewConfirmationSheet: View {
+    let pending: HomebrewManagerViewModel.PendingConfirmation
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    private var isDestructive: Bool {
+        pending.action == .uninstallFormulae || pending.action == .uninstallCasks
+    }
+
+    private var namesPreview: String {
+        let preview = pending.names.prefix(5).joined(separator: ", ")
+        let remainder = pending.names.count - min(pending.names.count, 5)
+        return remainder > 0 ? "\(preview), and \(remainder) more" : preview
+    }
+
+    private var commandLines: [String] {
+        BrewBulkPlanning.commandPreviewLines(commands: pending.commands, maxVisible: 5)
+    }
+
+    private var patternSummary: String? {
+        BrewBulkPlanning.commandPatternSummary(commands: pending.commands)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(systemName: isDestructive ? "exclamationmark.triangle.fill" : "checkmark.shield.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(isDestructive ? AppTheme.warning : AppTheme.accent)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(pending.action.title)
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("\(pending.names.count) selected")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text(pending.action.operationDescription)
+                .font(.system(size: 13))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Affected")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(namesPreview)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(pending.commands.count > 1 ? "Homebrew commands" : "Homebrew command")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                if let patternSummary {
+                    Text(patternSummary)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(commandLines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.system(size: 12, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                }
+                if pending.commands.count > 1 {
+                    Text("Runs once per item, in the order shown.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if pending.warnsAboutAutoUpdates {
+                Label("One or more selected casks update themselves. Homebrew may replace an open app; save work and expect to relaunch it.", systemImage: "exclamationmark.arrow.circlepath")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppTheme.warning)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                if isDestructive {
+                    Button(pending.action.title, role: .destructive, action: onConfirm)
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.warning)
+                } else {
+                    Button(pending.action.title, action: onConfirm)
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 500)
+        .background(.regularMaterial)
+    }
+}
+
 // MARK: - FormulaRow
 
 private struct FormulaRow: View {
     let formula: BrewFormula
+    let isSelected: Bool
+    let onToggleSelection: () -> Void
     let onUninstall: () -> Void
     @Environment(\.displayScale) private var scale
     @State private var isHovered = false
@@ -540,6 +751,8 @@ private struct FormulaRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            SelectionControl(isSelected: isSelected, action: onToggleSelection)
+                .frame(width: 28, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(formula.name)
@@ -614,6 +827,8 @@ private struct FormulaRow: View {
 
 private struct CaskRow: View {
     let cask: BrewCask
+    let isSelected: Bool
+    let onToggleSelection: () -> Void
     let onLeaveHomebrew: () -> Void
     let onUninstall: () -> Void
     @Environment(\.displayScale) private var scale
@@ -625,6 +840,8 @@ private struct CaskRow: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            SelectionControl(isSelected: isSelected, action: onToggleSelection)
+                .frame(width: 28, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(cask.token)
@@ -667,6 +884,11 @@ private struct CaskRow: View {
                 Text(cask.installDate.map { Self.dateFormatter.string(from: $0) } ?? "—")
                     .font(scale.rowMeta)
                     .foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: scale.colDate, alignment: .trailing)
+
+                Text(cask.isOrphaned ? "Orphaned" : (cask.lastUsed.map { Self.dateFormatter.string(from: $0) } ?? "Never"))
+                    .font(scale.rowMeta)
+                    .foregroundStyle(cask.isOrphaned ? AppTheme.warning : (cask.lastUsed == nil ? AppTheme.textSecondary.opacity(0.5) : AppTheme.textSecondary))
                     .frame(width: scale.colDate, alignment: .trailing)
             }
 
@@ -788,12 +1010,21 @@ private struct LeaveHomebrewConfirmSheet: View {
 
 private struct OutdatedRow: View {
     let package: BrewOutdatedPackage
+    let isSelected: Bool
+    var selectionEnabled: Bool = true
+    let onToggleSelection: () -> Void
     let onUpgrade: () -> Void
     @Environment(\.displayScale) private var scale
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 0) {
+            SelectionControl(
+                isSelected: isSelected,
+                isEnabled: selectionEnabled,
+                action: onToggleSelection
+            )
+                .frame(width: 28, alignment: .leading)
             HStack(spacing: 6) {
                 Text(package.name)
                     .font(scale.rowTitle)
@@ -871,12 +1102,16 @@ private struct OutdatedRow: View {
 
 private struct MigrateCandidateRow: View {
     let candidate: MigrationCandidate
+    let isSelected: Bool
+    let onToggleSelection: () -> Void
     let onMigrate: () -> Void
     @Environment(\.displayScale) private var scale
     @State private var isHovered = false
 
     var body: some View {
         HStack(spacing: 0) {
+            SelectionControl(isSelected: isSelected, action: onToggleSelection)
+                .frame(width: 28, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.appName)
                     .font(scale.rowTitle)
@@ -957,6 +1192,10 @@ struct BrewOperationSheet: View {
                 case .succeeded:
                     Text("Operation Completed")
                         .font(.system(size: 17, weight: .semibold))
+                case .partiallySucceeded:
+                    Text("Completed with Errors")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(AppTheme.warning)
                 case .failed:
                     Text("Operation Failed")
                         .font(.system(size: 17, weight: .semibold))
@@ -987,6 +1226,10 @@ struct BrewOperationSheet: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 28))
                 .foregroundStyle(.green)
+        case .partiallySucceeded:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(AppTheme.warning)
         case .failed:
             Image(systemName: "xmark.circle.fill")
                 .font(.system(size: 28))
@@ -1040,6 +1283,17 @@ struct BrewOperationSheet: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.red)
                     .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if case .partiallySucceeded = viewModel.operationState,
+                      let summary = viewModel.operationSummary {
+                Text(summary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppTheme.warning)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let summary = viewModel.operationSummary {
+                Text(summary)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(summary.contains("failed") ? AppTheme.warning : AppTheme.success)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Spacer()

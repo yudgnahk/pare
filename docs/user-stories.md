@@ -333,3 +333,131 @@ Pare previously ran `brew upgrade --greedy` for Upgrade All, which upgrades `aut
 ```text
 Implement US-6 (Safer Upgrade All) from docs/user-stories.md together with US-5.
 ```
+
+---
+
+## US-7 — Homebrew Bulk Actions, Explicit Confirmation, and Last Used
+
+**As a Homebrew user, I want to select several visible packages and review the exact operation before it starts, so I can maintain packages efficiently without accidentally changing the wrong software.**
+
+### Problem
+
+The Formulae, Casks, Outdated, and Migrate tabs currently offer actions per row. Formula/cask uninstall, individual upgrade, and adopt run immediately; only Leave Homebrew and the optional greedy upgrade have a confirmation step. The Casks and Formulae tables show install date but not last-used activity.
+
+### What it covers
+
+- Add checkbox-based multi-selection to every Homebrew child tab. Selection is independent per tab and is cleared when its backing inventory is refreshed; filtering/searching must not silently deselect matching hidden rows.
+- Add a contextual bulk-action bar that states the selected count and offers only actions valid for the active tab:
+  - **Formulae:** uninstall selected formulae.
+  - **Casks:** uninstall selected casks. Keep bulk “Leave Homebrew” out of this story because it requires per-app running-state and force-quit decisions.
+  - **Outdated:** upgrade selected packages. Auto-updating casks must remain clearly marked; selecting any of them adds the existing restart/session warning.
+  - **Migrate:** adopt selected matching apps with `brew install --cask --adopt`.
+- Require a confirmation dialog/sheet for every mutating Homebrew action, including existing single-row uninstall, upgrade, and adopt actions. It must list the affected names (or the first names plus an overflow count), the resulting command/operation, and a clear Cancel action. The destructive wording must distinguish “uninstall” from “remove Homebrew ownership while keeping the app.”
+- Add a **Last Used** column to Casks using the matched installed `.app` bundle's macOS metadata last-used date. Show “Never”/“—” when unavailable and an explicit “Orphaned” state for casks without an app.
+- Treat formula “last used” as unavailable in this release: Homebrew does not provide reliable command execution history. Do not show a fabricated date. Retain the existing Installed column and document this product limitation in the UI/help text or feature documentation.
+
+### Out of scope
+
+- Bulk Leave Homebrew (requires a separately designed force-quit/conflict flow)
+- Attempting to infer formula usage from file access time, shell history, or package-file modification dates
+- Parallel mutation execution; execute the confirmed batch deterministically and report per-item failure without hiding successful results
+
+### Acceptance criteria
+
+- A user can select multiple visible rows in Formulae, Casks, Outdated, and Migrate, then clear/select all visible rows.
+- Each tab exposes only valid bulk actions and disables them when selection is empty or an operation is running.
+- No Homebrew mutation begins until the user confirms; Cancel makes no change.
+- The confirmation identifies the action, selected count, affected packages, and auto-update/session warning where applicable.
+- A completed batch reports successes and failures and refreshes inventory without losing the outcome summary.
+- Casks show Last Used when a matching app supplies it; Formulae intentionally do not claim to have Last Used data.
+- Tests cover selection/filter behavior, cancellation, command construction, partial batch failure, and cask last-used mapping.
+
+### Key files
+
+- `Sources/PareApp/Views/HomebrewManagerView.swift`
+- `Sources/PareApp/ViewModels/HomebrewManagerViewModel.swift`
+- `Sources/PareCore/Homebrew/Models/BrewCask.swift`
+- `Sources/PareCore/Homebrew/BrewInventory.swift` (or the inventory-to-app metadata boundary)
+- `Tests/PareCoreTests/HomebrewTests.swift`
+
+---
+
+## US-8 — Safer App Manager Defaults and Bulk Actions
+
+**As a Mac user, I want App Manager to show only apps I can normally manage and let me act on a reviewed selection, so the list is focused and bulk work stays safe.**
+
+### Problem
+
+System apps are currently included by default behind an opt-in “Hide system apps” toggle. The Apps list already has a Last Used column and sort option, and single-app uninstall has a confirmation sheet, but updates start immediately and neither updates nor uninstalls support selecting several apps.
+
+### What it covers
+
+- Exclude system apps from the default Apps inventory presentation. Remove the primary “Hide system apps” control; if diagnostic visibility is retained, place an explicit “Show system apps” option in an advanced/overflow location and clearly mark those rows as protected and non-removable.
+- Add checkbox-based multiple selection and a contextual bulk-action bar for the filtered app list. Include Select All Visible and Clear Selection.
+- Support bulk uninstall and bulk update actions. The action bar must only enable an update for selected apps with a supported update route; unsupported items remain selected but are reported as skipped before confirmation.
+- Show one confirmation before a bulk operation. The dialog must show the selected/eligible/skipped counts, app names, side effects, and Cancel. Reuse the existing leftover review for each uninstall in a safe batch-oriented form; do not silently remove leftovers or group containers.
+- Require confirmation for a single app update as well. For Store/Sparkle updates, confirm that Pare will open the external update channel; for Homebrew casks, confirm the cask upgrade and restart/session risk.
+- Preserve the existing **Last Used** column and sorting. Verify unavailable Spotlight metadata renders consistently as “Never” and sorting has a deterministic tie-breaker.
+
+### Out of scope
+
+- Bypassing System Integrity Protection or uninstalling system apps
+- Fully automating third-party Store/Sparkle update downloads
+- Changing the definition of `lastUsed` or retaining per-user activity data outside the current app scan
+
+### Acceptance criteria
+
+- A standard Apps tab load contains no `isSystemApp` items.
+- A user can select multiple non-system apps across search/filter states and invoke the valid bulk action.
+- Single and bulk updates/uninstalls require confirmation; cancel leaves every selected app untouched.
+- The confirmation accurately identifies eligible and skipped apps and never presents system apps as removable.
+- The batch result summarizes succeeded, failed, and skipped items; app inventory refreshes afterwards.
+- Last Used remains visible on regular-width layouts, shows “Never” where metadata is missing, and sorts predictably.
+- Tests cover default filtering, selection persistence, cancellation, eligibility/skips, and batch-result aggregation.
+
+### Key files
+
+- `Sources/PareApp/Views/AppManagerView.swift`
+- `Sources/PareApp/ViewModels/AppManagerViewModel.swift`
+- `Sources/PareCore/AppManager/AppInventory.swift`
+- `Sources/PareCore/AppManager/AppUninstaller.swift`
+- `Tests/PareCoreTests/`
+
+---
+
+## US-9 — Maintenance Tab Layout and Action-State Polish
+
+**As a user running a maintenance task, I want a clear, stable layout that explains the action and shows its progress and result without card layout glitches, so I can run system repairs confidently.**
+
+### Problem
+
+The current Maintenance tab uses adaptive action cards, icon-only run controls, and expandable logs inside those cards. The requested UI repair needs an explicit responsive layout and interaction contract before implementation; the current request does not identify a single reproducible visual defect.
+
+### What it covers
+
+- Establish and implement a responsive layout contract for compact, regular, and wide windows: stable card widths, aligned card heights, no clipped title/description/action controls, and no horizontal overflow when a log expands.
+- Replace or supplement the icon-only Run affordance with a labelled action that remains discoverable and keyboard accessible; retain a clear rerun state after success/failure.
+- Keep action status, progress, error, and log output readable. Long-running output must not resize neighboring cards unpredictably; use a dedicated detail area/sheet if that produces the more stable layout.
+- Make the Docker-only actions visibly conditional, explain why they are unavailable when Docker is not running, and keep the safe “never volumes/Docker.raw” wording intact.
+- Add confirmation only for the maintenance actions that are destructive/reclaim storage (Docker prune variants); routine repair actions may run directly. Confirmation must state what is and is not removed.
+
+### Acceptance criteria
+
+- The tab is visually verified at the supported compact, regular, and wide window sizes with no clipped controls or overlapping/unstable cards.
+- Every action has a readable title, description, duration cue, status, and labelled run/rerun control.
+- Starting an action presents progress; completion/failure has an accessible result and log, without breaking the surrounding grid.
+- Docker actions are hidden or explained when unavailable and require a clear storage-impact confirmation when run.
+- Keyboard focus order and VoiceOver labels cover action buttons, status, and log disclosure.
+- View-model tests cover run-state transitions and mutual-exclusion rules; UI tests/snapshots cover the layout matrix.
+
+### Product decision needed
+
+Before implementation, attach a screenshot or describe the specific Maintenance-tab defect (for example: clipped cards, bad spacing, log overflow, or an action that is hard to find). That will turn the layout contract above into an exact visual acceptance baseline.
+
+### Key files
+
+- `Sources/PareApp/Views/MaintenanceView.swift`
+- `Sources/PareApp/ViewModels/MaintenanceViewModel.swift`
+- `Sources/PareCore/Maintenance/MaintenanceAction.swift`
+- `Sources/PareCore/Maintenance/MaintenanceRunner.swift`
+- `Tests/PareCoreTests/`

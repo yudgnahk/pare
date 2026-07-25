@@ -111,6 +111,141 @@ final class HomebrewTests: XCTestCase {
         XCTAssertTrue(cask.isOrphaned)
     }
 
+    func testBrewCaskRetainsLastUsedMetadata() {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let cask = BrewCask(
+            token: "firefox",
+            version: "125.0",
+            autoUpdates: false,
+            installedAppNames: ["Firefox.app"],
+            installDate: nil,
+            lastUsed: date
+        )
+        XCTAssertEqual(cask.lastUsed, date)
+        XCTAssertFalse(cask.isOrphaned)
+    }
+
+    // MARK: - BrewBulkPlanning (US-7 command construction & batch outcomes)
+
+    func testBulkPlanningUpgradeArgsFormulaAndCask() {
+        let formula = BrewOutdatedPackage(
+            name: "git",
+            installedVersions: ["2.44.0"],
+            currentVersion: "2.45.0",
+            pinned: false,
+            isAutoUpdate: false,
+            isFormula: true
+        )
+        let cask = BrewOutdatedPackage(
+            name: "firefox",
+            installedVersions: ["124.0"],
+            currentVersion: "125.0",
+            pinned: false,
+            isAutoUpdate: false,
+            isFormula: false
+        )
+        XCTAssertEqual(BrewBulkPlanning.upgradeArgs(for: formula), ["upgrade", "git"])
+        XCTAssertEqual(BrewBulkPlanning.upgradeArgs(for: cask), ["upgrade", "--cask", "firefox"])
+    }
+
+    func testBulkPlanningUninstallAndAdoptArgs() {
+        XCTAssertEqual(BrewBulkPlanning.uninstallFormulaArgs(name: "wget"), ["uninstall", "wget"])
+        XCTAssertEqual(BrewBulkPlanning.uninstallCaskArgs(token: "vlc"), ["uninstall", "--cask", "vlc"])
+        XCTAssertEqual(
+            BrewBulkPlanning.adoptArgs(caskToken: "firefox"),
+            ["install", "--cask", "--adopt", "firefox"]
+        )
+    }
+
+    func testBulkPlanningFiltersPinnedFromUpgradeable() {
+        let packages = [
+            BrewOutdatedPackage(
+                name: "git", installedVersions: ["1"], currentVersion: "2",
+                pinned: false, isAutoUpdate: false, isFormula: true
+            ),
+            BrewOutdatedPackage(
+                name: "openssl", installedVersions: ["1"], currentVersion: "2",
+                pinned: true, isAutoUpdate: false, isFormula: true
+            )
+        ]
+        let upgradeable = BrewBulkPlanning.upgradeablePackages(from: packages)
+        XCTAssertEqual(upgradeable.map(\.name), ["git"])
+        XCTAssertEqual(BrewBulkPlanning.selectableOutdatedIDs(from: packages), ["git"])
+    }
+
+    func testBulkPlanningBatchResultOutcomes() {
+        let allOk = BrewBulkPlanning.batchResult(successes: 3, failures: 0)
+        XCTAssertEqual(allOk.outcome, .succeeded)
+        XCTAssertEqual(allOk.summary, "Completed 3 item(s).")
+
+        let totalFail = BrewBulkPlanning.batchResult(successes: 0, failures: 2)
+        XCTAssertEqual(totalFail.outcome, .failed)
+        XCTAssertTrue(totalFail.summary.contains("0 item(s)"))
+        XCTAssertTrue(totalFail.summary.contains("2 failed"))
+
+        let partial = BrewBulkPlanning.batchResult(successes: 2, failures: 1)
+        XCTAssertEqual(partial.outcome, .partiallySucceeded)
+        XCTAssertTrue(partial.summary.contains("2 item(s)"))
+        XCTAssertTrue(partial.summary.contains("1 failed"))
+    }
+
+    func testBulkPlanningCommandPreviewAndPatternSummary() {
+        let commands = [
+            ["upgrade", "git"],
+            ["upgrade", "--cask", "firefox"],
+            ["upgrade", "wget"],
+            ["upgrade", "curl"],
+            ["upgrade", "jq"],
+            ["upgrade", "tree"]
+        ]
+        let lines = BrewBulkPlanning.commandPreviewLines(commands: commands, maxVisible: 3)
+        XCTAssertEqual(lines.count, 4) // 3 + remainder
+        XCTAssertEqual(lines[0], "brew upgrade git")
+        XCTAssertEqual(lines[1], "brew upgrade --cask firefox")
+        XCTAssertTrue(lines.last?.contains("and 3 more") == true)
+
+        let summary = BrewBulkPlanning.commandPatternSummary(commands: commands)
+        XCTAssertEqual(summary, "5× upgrade formula, 1× upgrade --cask")
+        XCTAssertNil(BrewBulkPlanning.commandPatternSummary(commands: [["upgrade", "git"]]))
+    }
+
+    // MARK: - Multi-app lastUsed / matching
+
+    func testMatchingAppURLsFindsAllArtifacts() {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MultiAppMatch-\(UUID().uuidString)")
+        let appsDir = tmp.appendingPathComponent("Applications")
+        let main = appsDir.appendingPathComponent("Main.app")
+        let helper = appsDir.appendingPathComponent("Helper.app")
+        try? FileManager.default.createDirectory(at: main, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: helper, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let urls = BrewInventory.matchingAppURLs(
+            appNames: ["Main.app", "Helper.app", "Missing.app"],
+            searchDirs: [appsDir.path]
+        )
+        XCTAssertEqual(urls.map(\.lastPathComponent), ["Main.app", "Helper.app"])
+    }
+
+    func testMostRecentLastUsedDatePicksMax() {
+        let u1 = URL(fileURLWithPath: "/Applications/App1.app")
+        let u2 = URL(fileURLWithPath: "/Applications/App2.app")
+        let u3 = URL(fileURLWithPath: "/Applications/App3.app")
+        let earlier = Date(timeIntervalSince1970: 1_000)
+        let later = Date(timeIntervalSince1970: 2_000)
+
+        let result = BrewInventory.mostRecentLastUsedDate(among: [u1, u2, u3]) { url in
+            switch url {
+            case u1: return earlier
+            case u2: return later
+            default: return nil
+            }
+        }
+        XCTAssertEqual(result, later)
+        XCTAssertNil(BrewInventory.mostRecentLastUsedDate(among: []))
+    }
+
     // MARK: - Orphaned detection logic
 
     func testOrphanedDetectionNoAppNames() {

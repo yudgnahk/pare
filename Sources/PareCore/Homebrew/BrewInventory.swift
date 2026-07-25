@@ -107,7 +107,8 @@ public actor BrewInventory {
                 installDate = Date(timeIntervalSince1970: timestamp)
             }
 
-            let orphaned = Self.isOrphaned(appNames: appNames, searchDirs: appSearchDirs)
+            let matchedAppURLs = Self.matchingAppURLs(appNames: appNames, searchDirs: appSearchDirs)
+            let orphaned = !appNames.isEmpty && matchedAppURLs.isEmpty
 
             return BrewCask(
                 token: token,
@@ -115,6 +116,7 @@ public actor BrewInventory {
                 autoUpdates: autoUpdates,
                 installedAppNames: appNames,
                 installDate: installDate,
+                lastUsed: Self.mostRecentLastUsedDate(among: matchedAppURLs),
                 isOrphaned: orphaned
             )
         }
@@ -129,12 +131,33 @@ public actor BrewInventory {
     /// A cask is orphaned when it has at least one .app artifact listed but
     /// none of those apps can be found in any standard application directory.
     /// Casks with no .app artifacts (CLI tools, fonts, etc.) are not flagged.
-    private static func isOrphaned(appNames: [String], searchDirs: [String]) -> Bool {
-        guard !appNames.isEmpty else { return false }
-        return !appNames.contains { appName in
-            searchDirs.contains { dir in
-                FileManager.default.fileExists(atPath: "\(dir)/\(appName)")
+    ///
+    /// Multi-app casks return every existing bundle (order follows Homebrew
+    /// artifact order, then search-dir order) so last-used can take the max.
+    static func matchingAppURLs(appNames: [String], searchDirs: [String]) -> [URL] {
+        var urls: [URL] = []
+        for appName in appNames {
+            for directory in searchDirs {
+                let url = URL(fileURLWithPath: directory).appendingPathComponent(appName)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    urls.append(url)
+                    break // first matching search dir for this artifact
+                }
             }
         }
+        return urls
+    }
+
+    /// Most recent Spotlight last-used date among app bundles.
+    static func mostRecentLastUsedDate(
+        among urls: [URL],
+        dateProvider: (URL) -> Date? = lastUsedDate(for:)
+    ) -> Date? {
+        urls.compactMap(dateProvider).max()
+    }
+
+    private static func lastUsedDate(for url: URL) -> Date? {
+        let item = NSMetadataItem(url: url)
+        return item?.value(forAttribute: kMDItemLastUsedDate as String) as? Date
     }
 }
