@@ -184,6 +184,10 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         XCTAssertEqual(result.succeeded.count, 0)
         XCTAssertEqual(result.skipped.count, 1)
         XCTAssertTrue(result.skipped[0].reason.contains("Excluded"), result.skipped[0].reason)
+        // R1.1: skip reasons are typed, not stringly.
+        if case .excludedByUser = result.skipped[0].error {} else {
+            XCTFail("expected .excludedByUser, got \(result.skipped[0].error)")
+        }
         XCTAssertTrue(FileManager.default.fileExists(atPath: dir.path))
     }
 

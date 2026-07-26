@@ -11,6 +11,14 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case advancedRiskBlocked(String)
     /// Docker VM disk / volume data — never delete as a filesystem path.
     case dockerNeverDelete(String)
+    /// The path is excluded by the user's exclusion list.
+    case excludedByUser(String)
+    /// Search-index-sensitive path — cleaning would force Spotlight/media reindexing.
+    case searchIndexProtected(String)
+    /// File attributes could not be read — age gates fail closed.
+    case attributesUnreadable(String)
+    /// The undo transaction record could not be persisted before trashing.
+    case undoRecordUnavailable(String)
     /// The file does not exist on disk when cleanup is attempted.
     case fileNotFound(String)
     /// The Trash move failed with an underlying system error.
@@ -21,13 +29,21 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .unsafePath(let path):
-            return "Unsafe path blocked: \(path)"
+            return "Path no longer passes safety policy: \(path)"
         case .tooNew(let path):
             return "File is too new to clean: \(path)"
         case .advancedRiskBlocked(let path):
             return "ADVANCED-risk file blocked from direct deletion: \(path). Use the app's native cleanup flow instead."
         case .dockerNeverDelete(let path):
             return "Docker VM disk/volume data blocked: \(path). Use docker system prune (never --volumes)."
+        case .excludedByUser(let path):
+            return "Excluded by user: \(path)"
+        case .searchIndexProtected(let path):
+            return "Search-index path protected — cleaning would force Spotlight/media reindexing: \(path)"
+        case .attributesUnreadable(let path):
+            return "File attributes unreadable — blocked for safety: \(path)"
+        case .undoRecordUnavailable(let detail):
+            return "Could not persist undo record — cleanup aborted (\(detail))"
         case .fileNotFound(let path):
             return "File not found: \(path)"
         case .trashFailed(let path, let error):
@@ -38,14 +54,28 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     }
 }
 
+/// One skipped cleanup item with its typed reason (R1.1).
+public struct CleanupSkippedItem: Sendable {
+    public let path: String
+    public let error: CleanupError
+
+    /// Human-readable reason — kept for presentation and log output.
+    public var reason: String { error.localizedDescription }
+
+    public init(path: String, error: CleanupError) {
+        self.path = path
+        self.error = error
+    }
+}
+
 // MARK: - CleanupResult
 
 /// Summary of a completed cleanup run.
 public struct CleanupResult: Sendable {
     /// Successfully moved items (or dry-run candidates).
     public let succeeded: [CleanupItem]
-    /// Items that were skipped because of a safety check failure, paired with the reason.
-    public let skipped: [(path: String, reason: String)]
+    /// Items that were skipped because of a safety check failure, with typed reasons.
+    public let skipped: [CleanupSkippedItem]
     /// The persisted transaction record (nil for dry-run that explicitly opts out of persistence).
     public let transaction: CleanupTransaction?
     /// Non-nil when the undo transaction could not be (fully) persisted to disk.
@@ -54,7 +84,7 @@ public struct CleanupResult: Sendable {
 
     init(
         succeeded: [CleanupItem],
-        skipped: [(path: String, reason: String)],
+        skipped: [CleanupSkippedItem],
         transaction: CleanupTransaction?,
         transactionSaveError: String? = nil
     ) {
@@ -156,7 +186,7 @@ public actor CleanupEngine {
         dryRun: Bool = false
     ) async throws -> CleanupResult {
         var succeeded: [CleanupItem] = []
-        var skipped: [(path: String, reason: String)] = []
+        var skipped: [CleanupSkippedItem] = []
 
         // Resolved once per run — project-artifact re-verification needs the registered roots,
         // and exclusions must be honored at cleanup time (not only at scan time).
@@ -185,12 +215,14 @@ public actor CleanupEngine {
             do {
                 try store.save(makeTransaction([]))
             } catch {
-                let reason = "Could not persist undo record — cleanup aborted"
+                let detail = error.localizedDescription
                 return CleanupResult(
                     succeeded: [],
-                    skipped: findings.map { ($0.path, reason) },
+                    skipped: findings.map {
+                        CleanupSkippedItem(path: $0.path, error: .undoRecordUnavailable(detail))
+                    },
                     transaction: nil,
-                    transactionSaveError: error.localizedDescription
+                    transactionSaveError: detail
                 )
             }
         }
@@ -200,33 +232,27 @@ public actor CleanupEngine {
 
             // User exclusions always win — even if the finding predates the exclusion.
             if exclusions.isExcluded(finding.path) {
-                skipped.append((finding.path, "Excluded by user"))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .excludedByUser(finding.path)))
                 continue
             }
 
             // Path-level ban: Docker VM disk / volume data — independent of risk label.
             // Mis-tagged findings must still never trash Docker.raw or the vms tree.
             if ScanPolicy.isDockerNeverDeletePath(url) {
-                skipped.append((
-                    finding.path,
-                    "Docker VM disk/volume data — never delete; use docker system prune without --volumes"
-                ))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .dockerNeverDelete(finding.path)))
                 continue
             }
 
             // Spotlight / Core Spotlight / Help / media analysis — deleting these
             // forces a costly reindex. Never trash even if a rule mis-reports them.
             if ScanPolicy.isSearchIndexSensitivePath(url) {
-                skipped.append((
-                    finding.path,
-                    "Search-index path protected — cleaning would force Spotlight/media reindexing"
-                ))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .searchIndexProtected(finding.path)))
                 continue
             }
 
             // ADVANCED findings must never be deleted directly.
             if finding.riskLevel == .advanced {
-                skipped.append((finding.path, "ADVANCED-risk finding — use app-native cleanup"))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .advancedRiskBlocked(finding.path)))
                 continue
             }
 
@@ -236,13 +262,13 @@ public actor CleanupEngine {
             guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
                     || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
                     || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
-                skipped.append((finding.path, "Path no longer passes safety policy"))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                 continue
             }
 
             // Verify the file still exists.
             guard FileManager.default.fileExists(atPath: finding.path) else {
-                skipped.append((finding.path, "File no longer exists"))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .fileNotFound(finding.path)))
                 continue
             }
 
@@ -255,7 +281,7 @@ public actor CleanupEngine {
                 if ScanPolicy.isReconstructibleCachePath(url) {
                     // Reconstructible caches have no multi-day age gate (minAge may be 0).
                     if minAge > 0, !ScanPolicy.passesUnusedAge(for: url, minimumAgeSeconds: minAge) {
-                        skipped.append((finding.path, "Cache too new"))
+                        skipped.append(CleanupSkippedItem(path: finding.path, error: .tooNew(finding.path)))
                         continue
                     }
                 } else {
@@ -263,11 +289,11 @@ public actor CleanupEngine {
                     // never assume the age gate is satisfied when age is unknowable.
                     let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
                     guard let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) else {
-                        skipped.append((finding.path, "File attributes unreadable — blocked for safety"))
+                        skipped.append(CleanupSkippedItem(path: finding.path, error: .attributesUnreadable(finding.path)))
                         continue
                     }
                     if Date().timeIntervalSince(date) < minAge {
-                        skipped.append((finding.path, "File is too new (age < \(Int(minAge / 86400)) days)"))
+                        skipped.append(CleanupSkippedItem(path: finding.path, error: .tooNew(finding.path)))
                         continue
                     }
                 }
@@ -302,7 +328,7 @@ public actor CleanupEngine {
                         }
                     }
                 } catch {
-                    skipped.append((finding.path, "Trash move failed: \(error.localizedDescription)"))
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .trashFailed(finding.path, error)))
                 }
             }
         }
