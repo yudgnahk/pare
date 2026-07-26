@@ -78,13 +78,38 @@ public struct ScanCategorySummary: Sendable {
     }
 }
 
+/// A rule whose scan threw — "rule failed" is not "rule found nothing" (R1.2).
+public struct ScanRuleFailure: Sendable {
+    public let ruleID: String
+    public let ruleTitle: String
+    public let message: String
+
+    public init(ruleID: String, ruleTitle: String, message: String) {
+        self.ruleID = ruleID
+        self.ruleTitle = ruleTitle
+        self.message = message
+    }
+}
+
 public struct ScanReport: Sendable {
     public let findings: [ScanFinding]
     public let summaries: [ScanCategorySummary]
+    /// Rules that failed during this scan (R1.2). Empty on a fully clean run.
+    public let ruleFailures: [ScanRuleFailure]
+    /// Distinct locations the traversal could not read — permission gaps,
+    /// typically missing Full Disk Access (R1.3). Sorted for stable display.
+    public let unreadableLocations: [String]
 
-    public init(findings: [ScanFinding], summaries: [ScanCategorySummary]) {
+    public init(
+        findings: [ScanFinding],
+        summaries: [ScanCategorySummary],
+        ruleFailures: [ScanRuleFailure] = [],
+        unreadableLocations: [String] = []
+    ) {
         self.findings = findings
         self.summaries = summaries
+        self.ruleFailures = ruleFailures
+        self.unreadableLocations = unreadableLocations
     }
 
     /// Sum of category reclaimable totals. Excludes `.advanced` findings (detect-only);

@@ -75,6 +75,7 @@ struct ScanDashboardView: View {
             LazyVStack(spacing: AppTheme.Spacing.xl, pinnedViews: []) {
                 resultsHeader
                 permissionCoachingSection
+                scanWarningsSection
                 selectionBar
                 cleanupStatusBanner
                 metrics
@@ -86,6 +87,29 @@ struct ScanDashboardView: View {
             .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
             .padding(.vertical, AppTheme.Spacing.pageVertical)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Scan warnings — rule failures and unreadable locations (R1.2/R1.3).
+    @ViewBuilder
+    private var scanWarningsSection: some View {
+        if !viewModel.scanWarnings.isEmpty {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(viewModel.scanWarnings, id: \.self) { warning in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(AppTheme.warning)
+                            Text(warning)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            }
         }
     }
 

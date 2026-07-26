@@ -473,4 +473,85 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertEqual(rule.riskLevel, .review)
     }
 
+    // MARK: - R1.2: per-rule error channel
+
+    private struct ThrowingRule: ScanRule {
+        struct Boom: LocalizedError {
+            var errorDescription: String? { "boom" }
+        }
+        let id = "throwing-rule"
+        let title = "Throwing Rule"
+        let reason = "Always fails"
+        let category: ScanCategory = .userCaches
+        let riskLevel: RiskLevel = .safe
+        let confidence = 1.0
+
+        func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
+        func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool { false }
+        func customScanThrowing(environment: ScanEnvironment) async throws -> [ScanFinding]? {
+            throw Boom()
+        }
+    }
+
+    func testRuleFailureIsReportedAndOtherRulesStillRun() async {
+        let cacheDir = URL(fileURLWithPath: "/tmp/cache")
+        let traversal = MockTraversal(filesByDirectory: [
+            cacheDir.path: [
+                ScannedFile(url: cacheDir.appendingPathComponent("a.cache"), sizeBytes: 100, lastModified: nil)
+            ]
+        ])
+        let runner = ScanRunner(
+            environment: ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test")),
+            traversal: traversal
+        )
+        let rules: [any ScanRule] = [
+            ThrowingRule(),
+            TestRule(id: "cache", title: "Cache", category: .userCaches, targets: [cacheDir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.ruleFailures.count, 1, "rule failed must be reported, not masked")
+        XCTAssertEqual(report.ruleFailures.first?.ruleID, "throwing-rule")
+        XCTAssertEqual(report.ruleFailures.first?.message, "boom")
+        XCTAssertEqual(report.findings.count, 1, "other rules must still contribute findings")
+    }
+
+    // MARK: - R1.3: unreadable locations surface on the report
+
+    func testTraversalReportsUnreadableDirectory() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appending(path: "pare_unreadable_\(UUID().uuidString)")
+        let locked = tmp.appending(path: "locked")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        try Data(repeating: 0x1, count: 16).write(to: locked.appending(path: "hidden-from-scan.bin"))
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+            try? FileManager.default.removeItem(at: tmp)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+
+        let result = await FileSystemTraversal().collectFilesReportingErrors(in: [tmp])
+
+        XCTAssertTrue(
+            result.unreadablePaths.contains { $0.hasSuffix("locked") },
+            "permission-denied directory must be reported, got: \(result.unreadablePaths)"
+        )
+    }
+
+    func testUnreadableRootDirectoryIsReported() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appending(path: "pare_unreadable_root_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmp.path)
+            try? FileManager.default.removeItem(at: tmp)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: tmp.path)
+
+        let result = await FileSystemTraversal().collectFilesReportingErrors(in: [tmp])
+
+        XCTAssertEqual(result.unreadablePaths, [tmp.path])
+        XCTAssertTrue(result.files.isEmpty)
+    }
 }
