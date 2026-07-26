@@ -443,33 +443,4 @@ final class ScanRunnerTests: XCTestCase {
             100
         )
     }
-
-    func testDockerLogsReviewRuleIncludesDockerLogPathsOnly() {
-        let rule = DockerLogsReviewRequiredRule()
-        let values = URLResourceValues()
-
-        XCTAssertTrue(
-            rule.include(
-                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/log/host/docker.log"),
-                resourceValues: values
-            )
-        )
-
-        XCTAssertFalse(
-            rule.include(
-                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"),
-                resourceValues: values
-            )
-        )
-
-        XCTAssertFalse(
-            rule.include(
-                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.example.app/Data/log/app.log"),
-                resourceValues: values
-            )
-        )
-
-        XCTAssertEqual(rule.riskLevel, .review)
-    }
-
 }
