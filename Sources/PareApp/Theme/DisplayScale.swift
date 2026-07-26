@@ -73,6 +73,10 @@ struct DisplayScale: Equatable {
     var heroTitle: Font { font(26, weight: .bold, design: .rounded) }
     /// Module screen titles (Apps, Homebrew, Settings, …).
     var pageTitle: Font { font(21, weight: .bold, design: .rounded) }
+    /// Confirmation / management sheet titles.
+    var sheetTitle: Font { font(22, weight: .bold, design: .rounded) }
+    /// Monospaced log output lines (brew / maintenance streams).
+    var logMono: Font { font(11, design: .monospaced) }
     /// Card / section headings inside a page.
     var sectionTitle: Font { font(16, weight: .semibold, design: .rounded) }
     /// Primary readable content.
