@@ -2,7 +2,7 @@ import SwiftUI
 import PareCore
 
 struct DiskAnalyzerView: View {
-    @StateObject private var viewModel = DiskAnalyzerViewModel()
+    @ObservedObject var viewModel: DiskAnalyzerViewModel
     @Environment(\.displayScale) private var scale
 
     var body: some View {

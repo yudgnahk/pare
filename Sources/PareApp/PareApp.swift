@@ -4,13 +4,12 @@ import SwiftUI
 @main
 struct PareApp: App {
     @NSApplicationDelegateAdaptor(PareAppDelegate.self) private var appDelegate
-    @StateObject private var scanViewModel = ScanDashboardViewModel()
-    @StateObject private var historyViewModel = HistoryViewModel()
+    @StateObject private var models = AppModelStore()
     @StateObject private var textZoom = TextZoomController()
 
     var body: some Scene {
         WindowGroup("Pare") {
-            ContentView(scanViewModel: scanViewModel, historyViewModel: historyViewModel)
+            ContentView(models: models)
                 .environmentObject(textZoom)
                 .modifier(TextZoomKeyMonitor(zoom: textZoom))
                 .frame(
@@ -26,7 +25,7 @@ struct PareApp: App {
         .defaultSize(width: AppTheme.Window.defaultWidth, height: AppTheme.Window.defaultHeight)
         .commands {
             TextZoomCommands(zoom: textZoom)
-            DiagnosticsExportCommands(scanViewModel: scanViewModel)
+            DiagnosticsExportCommands(scanViewModel: models.scan)
         }
     }
 }
@@ -40,18 +39,13 @@ private final class PareAppDelegate: NSObject, NSApplicationDelegate {
 
 
 struct ContentView: View {
-    @ObservedObject var scanViewModel: ScanDashboardViewModel
-    @ObservedObject var historyViewModel: HistoryViewModel
+    let models: AppModelStore
     @State private var selection: AppDestination = .smartScan
 
     var body: some View {
         DisplayScaleReader {
             // Environment (displayScale) is applied inside the reader.
-            MainShellView(
-                selection: $selection,
-                scanViewModel: scanViewModel,
-                historyViewModel: historyViewModel
-            )
+            MainShellView(selection: $selection, models: models)
         }
     }
 }
@@ -59,8 +53,7 @@ struct ContentView: View {
 /// Shell that reads `displayScale` from the environment (inside DisplayScaleReader).
 private struct MainShellView: View {
     @Binding var selection: AppDestination
-    @ObservedObject var scanViewModel: ScanDashboardViewModel
-    @ObservedObject var historyViewModel: HistoryViewModel
+    let models: AppModelStore
     @Environment(\.displayScale) private var scale
 
     var body: some View {
@@ -76,8 +69,10 @@ private struct MainShellView: View {
 
             ZStack {
                 AppBackgroundView()
+                // No `.id(selection)` here: stamping the pane with the selection
+                // destroyed every screen's state on tab switch (the switch below
+                // already gives each destination its own identity).
                 detailContent
-                    .id(selection)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -89,17 +84,17 @@ private struct MainShellView: View {
     private var detailContent: some View {
         switch selection {
         case .smartScan:
-            ScanDashboardView(viewModel: scanViewModel)
+            ScanDashboardView(viewModel: models.scan)
         case .apps:
-            AppManagerView()
+            AppManagerView(viewModel: models.apps)
         case .homebrew:
-            HomebrewManagerView()
+            HomebrewManagerView(viewModel: models.homebrew)
         case .disk:
-            DiskAnalyzerView()
+            DiskAnalyzerView(viewModel: models.disk)
         case .maintenance:
-            MaintenanceView()
+            MaintenanceView(viewModel: models.maintenance)
         case .history:
-            HistoryView(viewModel: historyViewModel)
+            HistoryView(viewModel: models.history)
         case .settings:
             SettingsView()
         }

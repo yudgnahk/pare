@@ -2,7 +2,7 @@ import SwiftUI
 import PareCore
 
 struct HomebrewManagerView: View {
-    @StateObject private var viewModel = HomebrewManagerViewModel()
+    @ObservedObject var viewModel: HomebrewManagerViewModel
     @Environment(\.displayScale) private var scale
 
     /// Resets list scroll when search, tab, or dependency toggle changes.
