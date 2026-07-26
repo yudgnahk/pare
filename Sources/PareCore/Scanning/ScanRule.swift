@@ -42,15 +42,29 @@ public struct ScanEnvironment: Sendable {
     /// `ScanRunner.run` swaps in a fresh index per run via `withFreshSizeIndex()`
     /// so sizes are never reused across scans.
     public let sizeIndex: DirectorySizeIndex
+    /// Machine-wide application directories scanned by app-level rules.
+    ///
+    /// Injectable because a hardcoded absolute `/Applications` escapes an injected
+    /// fake home and scans the real machine — which made integration tests depend on
+    /// whatever the host had installed (CI runners ship several Xcode versions, so
+    /// `StaleAppVersionRule` legitimately reported them and the suite failed there).
+    /// Rules must take system roots from here, never from a literal.
+    public let systemApplicationDirectories: [URL]
+
+    public static let defaultSystemApplicationDirectories: [URL] = [
+        URL(fileURLWithPath: "/Applications")
+    ]
 
     public init(
         homeDirectory: URL,
         tempDirectory: URL = FileManager.default.temporaryDirectory,
-        sizeIndex: DirectorySizeIndex = DirectorySizeIndex()
+        sizeIndex: DirectorySizeIndex = DirectorySizeIndex(),
+        systemApplicationDirectories: [URL] = ScanEnvironment.defaultSystemApplicationDirectories
     ) {
         self.homeDirectory = homeDirectory
         self.tempDirectory = tempDirectory
         self.sizeIndex = sizeIndex
+        self.systemApplicationDirectories = systemApplicationDirectories
     }
 
     public static func current() -> ScanEnvironment {
@@ -62,7 +76,8 @@ public struct ScanEnvironment: Sendable {
         ScanEnvironment(
             homeDirectory: homeDirectory,
             tempDirectory: tempDirectory,
-            sizeIndex: DirectorySizeIndex()
+            sizeIndex: DirectorySizeIndex(),
+            systemApplicationDirectories: systemApplicationDirectories
         )
     }
 }
