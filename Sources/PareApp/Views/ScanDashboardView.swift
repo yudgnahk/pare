@@ -131,7 +131,7 @@ struct ScanDashboardView: View {
     }
 
     private var selectionBar: some View {
-        GlassCard(padding: 14) {
+        GlassCard(padding: AppTheme.Spacing.cardCompact) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text("Review & Clean")
@@ -211,7 +211,7 @@ struct ScanDashboardView: View {
                         .foregroundStyle(AppTheme.textSecondary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(Color.white.opacity(0.08), in: Capsule(style: .continuous))
+                        .background(AppTheme.Fill.control, in: Capsule(style: .continuous))
                     }
 
                     Spacer(minLength: 8)
@@ -461,7 +461,7 @@ struct ScanDashboardView: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                .fill(Color.white.opacity(isExpanded ? 0.04 : 0.02))
+                .fill(isExpanded ? AppTheme.Hairline.faint : AppTheme.Hairline.faint.opacity(0.5))
         )
     }
 
@@ -786,7 +786,7 @@ private struct CategoryFolderRowView: View, Equatable {
         HStack(alignment: .center, spacing: 10) {
             Button(action: onToggle) {
                 Image(systemName: checkboxIcon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(scale.font(16, weight: .semibold))
                     .foregroundStyle(row.isSelectable ? AppTheme.accent : AppTheme.textTertiary)
                     .frame(width: 20)
             }
@@ -824,7 +824,7 @@ private struct CategoryFolderRowView: View, Equatable {
 
             Button(action: onReveal) {
                 Image(systemName: "folder")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                     .foregroundStyle(canReveal ? AppTheme.accent : AppTheme.textTertiary)
             }
             .buttonStyle(.plain)

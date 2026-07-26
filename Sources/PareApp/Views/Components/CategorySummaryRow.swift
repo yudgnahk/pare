@@ -32,7 +32,7 @@ struct CategorySummaryRow: View {
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.10))
+                        .fill(AppTheme.Fill.hover)
 
                     Capsule(style: .continuous)
                         .fill(

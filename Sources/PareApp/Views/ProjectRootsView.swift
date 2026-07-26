@@ -4,6 +4,7 @@ import PareCore
 /// Card shown in the Scan tab for managing auto-discovered project roots.
 /// Visible only when any roots have been discovered or the user has added one manually.
 struct ProjectRootsCard: View {
+    @Environment(\.pareDisplayScale) private var scale
     @ObservedObject var viewModel: ProjectRootsViewModel
     @State private var isExpanded = true
 
@@ -14,15 +15,15 @@ struct ProjectRootsCard: View {
                 Button(action: { withAnimation(.spring(duration: 0.25)) { isExpanded.toggle() } }) {
                     HStack(spacing: 10) {
                         Image(systemName: "folder.badge.gearshape")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(scale.font(15, weight: .semibold))
                             .foregroundStyle(AppTheme.accent)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Project Roots")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(scale.font(14, weight: .semibold))
                                 .foregroundStyle(AppTheme.textPrimary)
                             Text(subtitle)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(scale.font(11, weight: .medium))
                                 .foregroundStyle(AppTheme.textSecondary)
                         }
 
@@ -36,7 +37,7 @@ struct ProjectRootsCard: View {
                             } else {
                                 Button(action: viewModel.runDiscovery) {
                                     Label("Rescan", systemImage: "arrow.clockwise")
-                                        .font(.system(size: 11, weight: .semibold))
+                                        .font(scale.font(11, weight: .semibold))
                                 }
                                 .buttonStyle(.bordered)
                                 .controlSize(.mini)
@@ -44,7 +45,7 @@ struct ProjectRootsCard: View {
 
                             Button(action: viewModel.addManualPath) {
                                 Image(systemName: "folder.badge.plus")
-                                    .font(.system(size: 13, weight: .medium))
+                                    .font(scale.font(13, weight: .medium))
                             }
                             .buttonStyle(.borderless)
                             .foregroundStyle(AppTheme.accent)
@@ -52,7 +53,7 @@ struct ProjectRootsCard: View {
                         }
 
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(scale.font(10, weight: .semibold))
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                 }
@@ -68,7 +69,7 @@ struct ProjectRootsCard: View {
                     }
                 }
             }
-            .padding(16)
+            .padding(AppTheme.Spacing.lg)
         }
     }
 
@@ -83,10 +84,10 @@ struct ProjectRootsCard: View {
     private var emptyState: some View {
         VStack(spacing: 8) {
             Text("No project roots found")
-                .font(.system(size: 13, weight: .semibold))
+                .font(scale.font(13, weight: .semibold))
                 .foregroundStyle(AppTheme.textPrimary)
             Text("Run Rescan to discover project roots automatically via Spotlight,\nor add a folder manually.")
-                .font(.system(size: 11, weight: .medium))
+                .font(scale.font(11, weight: .medium))
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -120,7 +121,7 @@ struct ProjectRootsCard: View {
             .disabled(isManual)
 
             Image(systemName: isManual ? "folder.badge.person.crop" : "folder.fill")
-                .font(.system(size: 12, weight: .medium))
+                .font(scale.font(12, weight: .medium))
                 .foregroundStyle(confirmed ? AppTheme.accent : AppTheme.textSecondary.opacity(0.5))
                 .frame(width: 16)
 
@@ -128,7 +129,7 @@ struct ProjectRootsCard: View {
                 of: FileManager.default.homeDirectoryForCurrentUser.path,
                 with: "~"
             ))
-            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .font(scale.font(11, weight: .medium, design: .monospaced))
             .foregroundStyle(confirmed ? AppTheme.textPrimary : AppTheme.textSecondary.opacity(0.6))
             .lineLimit(1)
             .truncationMode(.middle)
@@ -138,7 +139,7 @@ struct ProjectRootsCard: View {
             if isManual {
                 Button(role: .destructive) { viewModel.removeManual(url) } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(scale.font(10, weight: .semibold))
                         .foregroundStyle(AppTheme.textSecondary)
                 }
                 .buttonStyle(.borderless)
@@ -147,6 +148,6 @@ struct ProjectRootsCard: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(AppTheme.Hairline.faint, in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous))
     }
 }

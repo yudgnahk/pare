@@ -70,7 +70,7 @@ private struct MainShellView: View {
                 .frame(maxHeight: .infinity)
 
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(AppTheme.Fill.control)
                 .frame(width: 1)
                 .frame(maxHeight: .infinity)
 

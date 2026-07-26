@@ -28,17 +28,17 @@ struct HistoryView: View {
                                     Image(systemName: "square.and.arrow.up")
                                     Text("Export")
                                 }
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(scale.font(12, weight: .semibold))
                                 .foregroundStyle(AppTheme.textPrimary)
                                 .padding(.horizontal, 12)
                                 .frame(height: AppTheme.Control.secondaryHeight)
                                 .background(
                                     Capsule(style: .continuous)
-                                        .fill(Color.white.opacity(0.10))
+                                        .fill(AppTheme.Fill.hover)
                                 )
                                 .overlay(
                                     Capsule(style: .continuous)
-                                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                                        .strokeBorder(AppTheme.Hairline.strong, lineWidth: 1)
                                 )
                             }
                             .menuStyle(.borderlessButton)
@@ -142,6 +142,7 @@ struct HistoryView: View {
 // MARK: - TransactionCard
 
 private struct TransactionCard: View {
+    @Environment(\.pareDisplayScale) private var scale
     let transaction: CleanupTransaction
     let isExpanded: Bool
     let restoringItemID: String?
@@ -159,14 +160,14 @@ private struct TransactionCard: View {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 8) {
                                 Image(systemName: "trash.fill")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(scale.font(13, weight: .semibold))
                                     .foregroundStyle(AppTheme.success)
                                 Text(formatDate(transaction.timestamp))
-                                    .font(.system(size: 14, weight: .bold))
+                                    .font(scale.font(14, weight: .bold))
                                     .foregroundStyle(AppTheme.textPrimary)
                                 if transaction.isDryRun {
                                     Text("DRY RUN")
-                                        .font(.system(size: 10, weight: .bold))
+                                        .font(scale.font(10, weight: .bold))
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
                                         .background(AppTheme.warning.opacity(0.2), in: Capsule())
@@ -174,18 +175,18 @@ private struct TransactionCard: View {
                                 }
                             }
                             Text("\(transaction.items.count) item\(transaction.items.count == 1 ? "" : "s") · \(transaction.profileName) profile")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(scale.font(12, weight: .medium))
                                 .foregroundStyle(AppTheme.textSecondary)
                         }
 
                         Spacer()
 
                         Text(formatBytes(transaction.totalBytesCandidates))
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(scale.font(15, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.textPrimary)
 
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(scale.font(12, weight: .semibold))
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                 }
@@ -216,6 +217,7 @@ private struct TransactionCard: View {
 // MARK: - CleanupItemRow
 
 private struct CleanupItemRow: View {
+    @Environment(\.pareDisplayScale) private var scale
     let item: CleanupItem
     let isRestoring: Bool
     let formatBytes: (Int64) -> String
@@ -224,17 +226,17 @@ private struct CleanupItemRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "doc.fill")
-                .font(.system(size: 11, weight: .medium))
+                .font(scale.font(11, weight: .medium))
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text((item.originalPath as NSString).lastPathComponent)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
                 Text(item.originalPath)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(scale.font(10, weight: .medium, design: .monospaced))
                     .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -243,7 +245,7 @@ private struct CleanupItemRow: View {
             Spacer()
 
             Text(formatBytes(item.sizeBytes))
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(scale.font(11, weight: .bold, design: .rounded))
                 .foregroundStyle(AppTheme.textSecondary)
 
             if item.trashedPath != nil {
@@ -252,7 +254,7 @@ private struct CleanupItemRow: View {
                         ProgressView().scaleEffect(0.7)
                     } else {
                         Text("Restore")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(scale.font(12, weight: .semibold))
                             .foregroundStyle(AppTheme.accent)
                     }
                 }
@@ -262,6 +264,6 @@ private struct CleanupItemRow: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(AppTheme.Hairline.faint, in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous))
     }
 }

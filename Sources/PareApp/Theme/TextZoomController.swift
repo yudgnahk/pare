@@ -139,11 +139,12 @@ struct TextZoomKeyMonitor: ViewModifier {
 
 struct TextZoomHUD: View {
     let message: String?
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         if let message {
             Text(message)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(scale.font(14, weight: .semibold, design: .rounded))
                 .foregroundStyle(AppTheme.textPrimary)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -152,7 +153,7 @@ struct TextZoomHUD: View {
                         .fill(AppTheme.panel.opacity(0.92))
                         .overlay(
                             Capsule(style: .continuous)
-                                .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+                                .strokeBorder(AppTheme.Hairline.strong, lineWidth: 1)
                         )
                         .shadow(color: .black.opacity(0.35), radius: 16, y: 6)
                 )

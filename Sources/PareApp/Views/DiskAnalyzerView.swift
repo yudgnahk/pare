@@ -94,7 +94,7 @@ struct DiskAnalyzerView: View {
             ProgressView()
                 .scaleEffect(1.2)
             Text("Analyzing disk usage…")
-                .font(.system(size: 14, weight: .medium))
+                .font(scale.font(14, weight: .medium))
                 .foregroundStyle(AppTheme.textSecondary)
             Spacer()
         }
@@ -156,7 +156,7 @@ private struct DiskNodeRow: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(Color.white.opacity(0.07))
+                            .fill(AppTheme.Fill.subtle)
                             .frame(height: 3)
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(barColor)
@@ -177,7 +177,7 @@ private struct DiskNodeRow: View {
                 HStack(spacing: 4) {
                     Button(action: onReveal) {
                         Image(systemName: "arrow.right.circle")
-                            .font(.system(size: 13))
+                            .font(scale.font(13))
                             .foregroundStyle(AppTheme.accent)
                     }
                     .buttonStyle(.borderless)
@@ -185,7 +185,7 @@ private struct DiskNodeRow: View {
 
                     Button(action: onTrash) {
                         Image(systemName: "trash")
-                            .font(.system(size: 13))
+                            .font(scale.font(13))
                             .foregroundStyle(AppTheme.review)
                     }
                     .buttonStyle(.borderless)

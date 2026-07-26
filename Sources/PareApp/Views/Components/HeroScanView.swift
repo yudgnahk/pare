@@ -138,10 +138,10 @@ struct HeroScanView: View {
                 VStack(spacing: 6) {
                     ZStack {
                         Circle()
-                            .fill(done || active ? AppTheme.accent.opacity(0.2) : Color.white.opacity(0.06))
+                            .fill(done || active ? AppTheme.accent.opacity(0.2) : AppTheme.Fill.subtle)
                             .frame(width: 44, height: 44)
                         Image(systemName: step.icon)
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(scale.font(16, weight: .semibold))
                             .foregroundStyle(done || active ? AppTheme.accent : AppTheme.textTertiary)
                             .scaleEffect(active && viewModel.isScanning ? 1.06 : 1)
                             .animation(
@@ -160,7 +160,7 @@ struct HeroScanView: View {
                 .frame(maxWidth: 100)
                 if index < steps.count - 1 {
                     Rectangle()
-                        .fill(done ? AppTheme.accent.opacity(0.5) : Color.white.opacity(0.1))
+                        .fill(done ? AppTheme.accent.opacity(0.5) : AppTheme.Fill.hover)
                         .frame(width: 24, height: 2)
                         .offset(y: -10)
                 }
@@ -201,12 +201,12 @@ struct HeroScanView: View {
                 .frame(width: scale.scaled(240), height: scale.scaled(240))
 
             Image(systemName: "sparkle")
-                .font(.system(size: scale.scaled(20), weight: .light))
+                .font(scale.font(20, weight: .light))
                 .foregroundStyle(AppTheme.accent.opacity(0.45))
                 .offset(x: -90, y: -50)
 
             Image(systemName: "sparkle")
-                .font(.system(size: scale.scaled(14), weight: .light))
+                .font(scale.font(14, weight: .light))
                 .foregroundStyle(AppTheme.success.opacity(0.4))
                 .offset(x: 95, y: -30)
 
@@ -225,12 +225,12 @@ struct HeroScanView: View {
                     .frame(width: scale.scaled(130), height: scale.scaled(130))
                     .overlay(
                         RoundedRectangle(cornerRadius: scale.scaled(28), style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                            .strokeBorder(AppTheme.Hairline.strong, lineWidth: 1)
                     )
                     .shadow(color: AppTheme.accent.opacity(0.3), radius: 28, y: 12)
 
                 Image(systemName: activeHeroIcon)
-                    .font(.system(size: scale.scaled(44), weight: .medium))
+                    .font(scale.font(44, weight: .medium))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [AppTheme.accent, AppTheme.success],

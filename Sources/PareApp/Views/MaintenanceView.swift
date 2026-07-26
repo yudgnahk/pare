@@ -28,11 +28,11 @@ struct MaintenanceView: View {
     private var headerCard: some View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
                     .fill(AppTheme.accent.opacity(0.14))
                     .frame(width: 40, height: 40)
                 Image(systemName: "wrench.and.screwdriver")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(scale.font(17, weight: .semibold))
                     .foregroundStyle(AppTheme.accent)
             }
             VStack(alignment: .leading, spacing: 3) {
@@ -101,7 +101,7 @@ private struct ActionCard: View {
                     .fill(iconColor.opacity(0.18))
                     .frame(width: 40, height: 40)
                 Image(systemName: action.systemImage)
-                    .font(.system(size: 17, weight: .medium))
+                    .font(scale.font(17, weight: .medium))
                     .foregroundStyle(iconColor)
             }
 
@@ -155,15 +155,15 @@ private struct ActionCard: View {
                     .frame(width: 12, height: 12)
                 Text("Running…")
             }
-            .font(.system(size: 11, weight: .semibold))
+            .font(scale.font(11, weight: .semibold))
             .foregroundStyle(AppTheme.accent)
         case .success:
             Label("Done", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 11, weight: .semibold))
+                .font(scale.font(11, weight: .semibold))
                 .foregroundStyle(AppTheme.success)
         case .failed:
             Label("Failed", systemImage: "xmark.circle.fill")
-                .font(.system(size: 11, weight: .semibold))
+                .font(scale.font(11, weight: .semibold))
                 .foregroundStyle(AppTheme.review)
         }
     }
@@ -180,16 +180,16 @@ private struct ActionCard: View {
                         .frame(width: 16, height: 16)
                 } else {
                     Image(systemName: state == .success ? "arrow.clockwise" : "play.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(scale.font(12, weight: .semibold))
                 }
             }
             .frame(width: 32, height: 32)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                     .fill(runButtonColor.opacity(0.22))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                     .strokeBorder(runButtonColor.opacity(0.35), lineWidth: 1)
             )
         }
@@ -206,11 +206,11 @@ private struct ActionCard: View {
             Button(action: { withAnimation(.easeInOut(duration: 0.2)) { logExpanded.toggle() } }) {
                 HStack(spacing: 6) {
                     Text("Output")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(scale.font(11, weight: .semibold))
                         .foregroundStyle(AppTheme.textSecondary)
                     Spacer()
                     Image(systemName: logExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(scale.font(9, weight: .semibold))
                         .foregroundStyle(AppTheme.textSecondary)
                 }
             }
@@ -226,7 +226,7 @@ private struct ActionCard: View {
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(Array(log.enumerated()), id: \.offset) { _, line in
                                 Text(line)
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(scale.font(11, design: .monospaced))
                                     .foregroundStyle(logLineColor(line))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -236,7 +236,7 @@ private struct ActionCard: View {
                     }
                     .frame(maxHeight: 160)
                     .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                             .fill(Color.black.opacity(0.25))
                     )
                     .onChange(of: log.count) { _ in

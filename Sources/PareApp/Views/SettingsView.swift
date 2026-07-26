@@ -110,7 +110,7 @@ struct SettingsView: View {
         GlassCard {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                         .fill(fdaAccent.opacity(0.14))
                         .frame(width: 36, height: 36)
                     Image(systemName: "lock.shield")
@@ -171,7 +171,7 @@ struct SettingsView: View {
         GlassCard {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                         .fill(AppTheme.accent.opacity(0.14))
                         .frame(width: 36, height: 36)
                     Image(systemName: icon)

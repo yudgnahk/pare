@@ -140,7 +140,7 @@ struct SecondaryActionButton: View {
 
         var fill: Color {
             switch self {
-            case .neutral: return Color.white.opacity(0.10)
+            case .neutral: return AppTheme.Fill.hover
             case .destructive: return AppTheme.review.opacity(0.16)
             case .accent: return AppTheme.accent.opacity(0.16)
             }
@@ -148,7 +148,7 @@ struct SecondaryActionButton: View {
 
         var border: Color {
             switch self {
-            case .neutral: return Color.white.opacity(0.14)
+            case .neutral: return AppTheme.Hairline.strong
             case .destructive: return AppTheme.review.opacity(0.35)
             case .accent: return AppTheme.accent.opacity(0.35)
             }
@@ -182,7 +182,7 @@ struct SecondaryActionButton: View {
                     .fill(role.fill)
                     .overlay(
                         Capsule(style: .continuous)
-                            .fill(Color.white.opacity(hovering ? 0.06 : 0))
+                            .fill(hovering ? AppTheme.Fill.subtle : Color.clear)
                     )
             )
             .overlay(
@@ -201,6 +201,7 @@ struct SecondaryActionButton: View {
 
 /// Compact icon-only toolbar control (settings, project paths, refresh glyph).
 struct IconActionButton: View {
+    @Environment(\.pareDisplayScale) private var scale
     let systemImage: String
     var help: String? = nil
     var isEnabled: Bool = true
@@ -211,12 +212,12 @@ struct IconActionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .medium))
+                .font(scale.font(14, weight: .medium))
                 .foregroundStyle(hovering ? AppTheme.textPrimary : AppTheme.textSecondary)
                 .frame(width: AppTheme.Control.iconSize, height: AppTheme.Control.iconSize)
                 .background(
                     RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                        .fill(Color.white.opacity(hovering ? 0.12 : 0.06))
+                        .fill(hovering ? AppTheme.Fill.hover : AppTheme.Fill.subtle)
                 )
                 .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous))
         }

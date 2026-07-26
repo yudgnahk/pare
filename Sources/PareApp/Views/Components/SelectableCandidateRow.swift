@@ -25,7 +25,7 @@ struct SelectableCandidateRow: View {
 
             Button(action: onToggle) {
                 Image(systemName: checkboxIcon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(scale.font(16, weight: .semibold))
                     .foregroundStyle(checkboxColor)
                     .frame(width: 20)
             }
@@ -74,7 +74,7 @@ struct SelectableCandidateRow: View {
 
             Button(action: onReveal) {
                 Image(systemName: "folder")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                     .foregroundStyle(canReveal ? AppTheme.accent : AppTheme.textTertiary)
             }
             .buttonStyle(.plain)

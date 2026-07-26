@@ -2,6 +2,7 @@ import SwiftUI
 import PareCore
 
 struct ExclusionListView: View {
+    @Environment(\.pareDisplayScale) private var scale
     @ObservedObject var viewModel: ExclusionListViewModel
     @Environment(\.dismiss) private var dismiss
 
@@ -14,16 +15,16 @@ struct ExclusionListView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Excluded Paths")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .font(scale.font(20, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.textPrimary)
                         Text("Paths listed here are never flagged in scan results.")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(scale.font(12, weight: .medium))
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                     Spacer()
                     Button("Done") { dismiss() }
                         .buttonStyle(.borderless)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(scale.font(14, weight: .semibold))
                         .foregroundStyle(AppTheme.accent)
                 }
                 .padding(.horizontal, 24)
@@ -53,30 +54,31 @@ struct ExclusionListView: View {
                 }
             }
         }
-        .frame(width: 540, height: 420)
+        .frame(width: AppTheme.Sheet.standardWidth, height: AppTheme.Sheet.standardHeight)
     }
 }
 
 private struct ExclusionEntryRow: View {
+    @Environment(\.pareDisplayScale) private var scale
     let entry: ExclusionEntry
     let onRemove: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: entry.matchType == .prefix ? "folder.fill" : "doc.fill")
-                .font(.system(size: 13, weight: .semibold))
+                .font(scale.font(13, weight: .semibold))
                 .foregroundStyle(AppTheme.textSecondary)
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.path)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(scale.font(12, weight: .medium, design: .monospaced))
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
                 Text(entry.matchType == .prefix ? "prefix match" : "exact match")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(scale.font(10, weight: .medium))
                     .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
             }
 
@@ -84,7 +86,7 @@ private struct ExclusionEntryRow: View {
 
             Button(action: onRemove) {
                 Image(systemName: "trash")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(scale.font(13, weight: .semibold))
                     .foregroundStyle(AppTheme.review)
             }
             .buttonStyle(.borderless)
@@ -92,6 +94,6 @@ private struct ExclusionEntryRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.Fill.subtle, in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
     }
 }

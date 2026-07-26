@@ -8,7 +8,7 @@ struct MetricTile: View {
     @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
-        GlassCard(padding: scale.space(16)) {
+        GlassCard(padding: scale.space(AppTheme.Spacing.lg)) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Text(label.uppercased())

@@ -31,7 +31,7 @@ struct EmptyStateView: View {
     private var expanded: some View {
         VStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: scale.scaled(36), weight: .light))
+                .font(scale.font(36, weight: .light))
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
 
             if let title {

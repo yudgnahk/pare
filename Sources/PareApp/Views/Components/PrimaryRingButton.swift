@@ -59,7 +59,7 @@ struct PrimaryRingButton: View {
                     .frame(width: size - 10, height: size - 10)
                     .overlay(
                         Circle()
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(AppTheme.Hairline.strong, lineWidth: 1)
                     )
                     .shadow(color: AppTheme.accent.opacity(0.25), radius: hovering ? 18 : 10, y: 6)
 

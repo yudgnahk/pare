@@ -14,7 +14,7 @@ struct TopFileRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
                     .fill(AppTheme.panelSecondary)
                     .frame(width: scale.scaled(34), height: scale.scaled(34))
 
@@ -103,7 +103,7 @@ struct TopFileRow: View {
 
     private var riskBorderColor: Color {
         switch riskLevel {
-        case .safe:     return Color.white.opacity(0.08)
+        case .safe:     return AppTheme.Fill.control
         case .review:   return AppTheme.warning.opacity(0.18)
         case .advanced: return AppTheme.review.opacity(0.22)
         }

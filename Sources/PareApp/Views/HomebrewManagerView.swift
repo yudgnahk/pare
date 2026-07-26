@@ -70,11 +70,11 @@ struct HomebrewManagerView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
                         .fill(AppTheme.accent.opacity(0.14))
                         .frame(width: 40, height: 40)
                     Image(systemName: "shippingbox")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(scale.font(17, weight: .semibold))
                         .foregroundStyle(AppTheme.accent)
                 }
                 VStack(alignment: .leading, spacing: 3) {
@@ -157,9 +157,9 @@ struct HomebrewManagerView: View {
                             .padding(.vertical, 7)
                             .background(
                                 viewModel.selectedTab == tab
-                                    ? Color.white.opacity(0.18)
+                                    ? AppTheme.Fill.selected
                                     : Color.clear,
-                                in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                in: RoundedRectangle(cornerRadius: AppTheme.Radius.chipCompact, style: .continuous)
                             )
                     }
                     .buttonStyle(.borderless)
@@ -167,7 +167,7 @@ struct HomebrewManagerView: View {
             }
             .padding(3)
         }
-        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.Fill.subtle, in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
     }
 
     // MARK: - Filter bar (search + contextual toggle only)
@@ -192,7 +192,7 @@ struct HomebrewManagerView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(AppTheme.Fill.subtle, in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
             .frame(maxWidth: 280)
 
             Spacer(minLength: 8)
@@ -242,7 +242,7 @@ struct HomebrewManagerView: View {
             .foregroundStyle(AppTheme.textSecondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .background(AppTheme.Fill.subtle, in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -426,7 +426,7 @@ struct HomebrewManagerView: View {
         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.04))
+        .background(AppTheme.Hairline.faint)
     }
 
     private var outdatedHeader: some View {
@@ -495,7 +495,7 @@ struct HomebrewManagerView: View {
         }
         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.07))
+        .background(AppTheme.Fill.subtle)
     }
 
     private var selectionSummaryLabel: String {
@@ -563,7 +563,7 @@ struct HomebrewManagerView: View {
     private var notInstalledPlaceholder: some View {
         VStack(spacing: 20) {
             Image(systemName: "shippingbox.fill")
-                .font(.system(size: scale.scaled(64)))
+                .font(scale.font(64))
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
             Text("Homebrew Not Installed")
                 .font(scale.font(22, weight: .bold, design: .rounded))
@@ -610,6 +610,7 @@ private struct SelectionControl: View {
 }
 
 private struct HomebrewConfirmationSheet: View {
+    @Environment(\.pareDisplayScale) private var scale
     let pending: HomebrewManagerViewModel.PendingConfirmation
     let onCancel: () -> Void
     let onConfirm: () -> Void
@@ -636,55 +637,55 @@ private struct HomebrewConfirmationSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
                 Image(systemName: isDestructive ? "exclamationmark.triangle.fill" : "checkmark.shield.fill")
-                    .font(.system(size: 26, weight: .semibold))
+                    .font(scale.font(26, weight: .semibold))
                     .foregroundStyle(isDestructive ? AppTheme.warning : AppTheme.accent)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(pending.action.title)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(scale.font(18, weight: .semibold))
                     Text("\(pending.names.count) selected")
-                        .font(.system(size: 13))
+                        .font(scale.font(13))
                         .foregroundStyle(.secondary)
                 }
             }
 
             Text(pending.action.operationDescription)
-                .font(.system(size: 13))
+                .font(scale.font(13))
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Affected")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Text(namesPreview)
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(scale.font(12, design: .monospaced))
                     .textSelection(.enabled)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(pending.commands.count > 1 ? "Homebrew commands" : "Homebrew command")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                     .foregroundStyle(.secondary)
                 if let patternSummary {
                     Text(patternSummary)
-                        .font(.system(size: 12))
+                        .font(scale.font(12))
                         .foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(Array(commandLines.enumerated()), id: \.offset) { _, line in
                         Text(line)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(scale.font(12, design: .monospaced))
                             .textSelection(.enabled)
                     }
                 }
                 if pending.commands.count > 1 {
                     Text("Runs once per item, in the order shown.")
-                        .font(.system(size: 11))
+                        .font(scale.font(11))
                         .foregroundStyle(.secondary)
                 }
             }
 
             if pending.warnsAboutAutoUpdates {
                 Label("One or more selected casks update themselves. Homebrew may replace an open app; save work and expect to relaunch it.", systemImage: "exclamationmark.arrow.circlepath")
-                    .font(.system(size: 12))
+                    .font(scale.font(12))
                     .foregroundStyle(AppTheme.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -705,7 +706,7 @@ private struct HomebrewConfirmationSheet: View {
             }
         }
         .padding(24)
-        .frame(width: 500)
+        .frame(width: AppTheme.Sheet.standardWidth)
         .background(.regularMaterial)
     }
 }
@@ -894,6 +895,7 @@ private struct CaskRow: View {
 // MARK: - Leave Homebrew confirmation
 
 private struct LeaveHomebrewConfirmSheet: View {
+    @Environment(\.pareDisplayScale) private var scale
     let cask: BrewCask
     @Binding var forceQuit: Bool
     let onCancel: () -> Void
@@ -903,13 +905,13 @@ private struct LeaveHomebrewConfirmSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
                 Image(systemName: "link.badge.minus")
-                    .font(.system(size: 28, weight: .semibold))
+                    .font(scale.font(28, weight: .semibold))
                     .foregroundStyle(AppTheme.accent)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Leave Homebrew")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(scale.font(18, weight: .semibold))
                     Text(cask.token)
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(scale.font(13, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -926,7 +928,7 @@ private struct LeaveHomebrewConfirmSheet: View {
 
             Toggle("Force quit the app if it is running", isOn: $forceQuit)
                 .toggleStyle(.checkbox)
-                .font(.system(size: 13))
+                .font(scale.font(13))
 
             HStack {
                 Spacer()
@@ -938,7 +940,7 @@ private struct LeaveHomebrewConfirmSheet: View {
             }
         }
         .padding(24)
-        .frame(width: 460)
+        .frame(width: AppTheme.Sheet.narrowWidth)
         .background(.regularMaterial)
     }
 
@@ -947,7 +949,7 @@ private struct LeaveHomebrewConfirmSheet: View {
             Text("•")
                 .foregroundStyle(AppTheme.accent)
             Text(text)
-                .font(.system(size: 13))
+                .font(scale.font(13))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -1095,6 +1097,7 @@ private struct MigrateCandidateRow: View {
 // MARK: - BrewOperationSheet
 
 struct BrewOperationSheet: View {
+    @Environment(\.pareDisplayScale) private var scale
     @ObservedObject var viewModel: HomebrewManagerViewModel
 
     var body: some View {
@@ -1105,7 +1108,7 @@ struct BrewOperationSheet: View {
             Divider()
             footer
         }
-        .frame(width: 620, height: 480)
+        .frame(width: AppTheme.Sheet.operationWidth, height: AppTheme.Sheet.operationHeight)
         .background(.regularMaterial)
     }
 
@@ -1116,25 +1119,25 @@ struct BrewOperationSheet: View {
                 switch viewModel.operationState {
                 case .running(let label):
                     Text(label)
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(scale.font(17, weight: .semibold))
                 case .succeeded:
                     Text("Operation Completed")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(scale.font(17, weight: .semibold))
                 case .partiallySucceeded:
                     Text("Completed with Errors")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(scale.font(17, weight: .semibold))
                         .foregroundStyle(AppTheme.warning)
                 case .failed:
                     Text("Operation Failed")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(scale.font(17, weight: .semibold))
                         .foregroundStyle(.red)
                 case .idle:
                     Text("Ready")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(scale.font(17, weight: .semibold))
                 }
                 if case .running = viewModel.operationState {
                     Text("\(viewModel.operationLog.count) lines")
-                        .font(.system(size: 12))
+                        .font(scale.font(12))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1152,19 +1155,19 @@ struct BrewOperationSheet: View {
                 .frame(width: 32, height: 32)
         case .succeeded:
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 28))
+                .font(scale.font(28))
                 .foregroundStyle(.green)
         case .partiallySucceeded:
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 28))
+                .font(scale.font(28))
                 .foregroundStyle(AppTheme.warning)
         case .failed:
             Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 28))
+                .font(scale.font(28))
                 .foregroundStyle(.red)
         case .idle:
             Image(systemName: "shippingbox")
-                .font(.system(size: 28))
+                .font(scale.font(28))
                 .foregroundStyle(.secondary)
         }
     }
@@ -1175,7 +1178,7 @@ struct BrewOperationSheet: View {
                 LazyVStack(alignment: .leading, spacing: 1) {
                     ForEach(Array(viewModel.operationLog.enumerated()), id: \.offset) { index, line in
                         Text(line)
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(scale.font(11, design: .monospaced))
                             .foregroundStyle(lineColor(line))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 16)
@@ -1208,19 +1211,19 @@ struct BrewOperationSheet: View {
         HStack {
             if case .failed(let msg) = viewModel.operationState {
                 Text(msg)
-                    .font(.system(size: 11))
+                    .font(scale.font(11))
                     .foregroundStyle(.red)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if case .partiallySucceeded = viewModel.operationState,
                       let summary = viewModel.operationSummary {
                 Text(summary)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(scale.font(11, weight: .semibold))
                     .foregroundStyle(AppTheme.warning)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if let summary = viewModel.operationSummary {
                 Text(summary)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(scale.font(11, weight: .semibold))
                     .foregroundStyle(summary.contains("failed") ? AppTheme.warning : AppTheme.success)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {

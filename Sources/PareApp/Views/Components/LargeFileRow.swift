@@ -115,7 +115,7 @@ struct LargeFileRow: View {
 
     private var riskBorderColor: Color {
         switch riskLevel {
-        case .safe:     return Color.white.opacity(0.08)
+        case .safe:     return AppTheme.Fill.control
         case .review:   return AppTheme.warning.opacity(0.15)
         case .advanced: return AppTheme.review.opacity(0.22)
         }

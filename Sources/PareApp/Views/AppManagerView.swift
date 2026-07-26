@@ -58,11 +58,11 @@ struct AppManagerView: View {
         VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
                         .fill(AppTheme.accent.opacity(0.14))
                         .frame(width: 40, height: 40)
                     Image(systemName: "square.grid.2x2")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(scale.font(17, weight: .semibold))
                         .foregroundStyle(AppTheme.accent)
                 }
                 VStack(alignment: .leading, spacing: 3) {
@@ -138,7 +138,7 @@ struct AppManagerView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(AppTheme.Fill.subtle, in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
             .frame(maxWidth: 280)
 
             Toggle("Hide system apps", isOn: $viewModel.hideSystemApps)
@@ -192,7 +192,7 @@ struct AppManagerView: View {
             .foregroundStyle(AppTheme.textSecondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .background(AppTheme.Fill.subtle, in: RoundedRectangle(cornerRadius: AppTheme.Radius.chip, style: .continuous))
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -243,7 +243,7 @@ struct AppManagerView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.Fill.subtle, in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
     }
 
     // MARK: - App Table
@@ -263,7 +263,7 @@ struct AppManagerView: View {
                         viewModel.dismissUpdateFeedback()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(scale.font(11, weight: .semibold))
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                     .buttonStyle(.borderless)
@@ -541,7 +541,7 @@ private struct AppRow: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: side, height: side)
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.chipCompact, style: .continuous))
         }
     }
 
@@ -550,6 +550,7 @@ private struct AppRow: View {
 // MARK: - Uninstall Confirm Sheet
 
 struct AppUninstallConfirmSheet: View {
+    @Environment(\.pareDisplayScale) private var scale
     @ObservedObject var viewModel: AppManagerViewModel
     let app: InstalledApp
 
@@ -573,14 +574,14 @@ struct AppUninstallConfirmSheet: View {
                 Image(nsImage: icon)
                     .resizable()
                     .frame(width: 48, height: 48)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Uninstall \(app.name)?")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(scale.font(18, weight: .bold))
                         .foregroundStyle(.primary)
                     Text(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file) + " will be freed")
-                        .font(.system(size: 13))
+                        .font(scale.font(13))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -651,14 +652,14 @@ struct AppUninstallConfirmSheet: View {
             }
             .padding(20)
         }
-        .frame(width: 560)
+        .frame(width: AppTheme.Sheet.wideWidth)
         .background(.regularMaterial)
     }
 
     private func leftoverSection(title: String, items: [LeftoverRow]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
+                .font(scale.font(11, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
             VStack(spacing: 2) {
@@ -667,7 +668,7 @@ struct AppUninstallConfirmSheet: View {
                 }
             }
             .padding(10)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
         }
     }
 
@@ -677,17 +678,17 @@ struct AppUninstallConfirmSheet: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(AppTheme.warning)
                 Text("Shared Data")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(scale.font(11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
             }
 
             Text("This data may be shared with other apps in the same suite. Remove only if you are uninstalling all related apps.")
-                .font(.system(size: 12))
+                .font(scale.font(12))
                 .foregroundStyle(.secondary)
 
             Toggle("Also remove shared group containers", isOn: $viewModel.includeGroupContainers)
-                .font(.system(size: 12, weight: .medium))
+                .font(scale.font(12, weight: .medium))
                 .toggleStyle(.checkbox)
 
             if viewModel.includeGroupContainers {
@@ -702,15 +703,16 @@ struct AppUninstallConfirmSheet: View {
                     }
                 }
                 .padding(10)
-                .background(AppTheme.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(AppTheme.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
             }
         }
-        .padding(14)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(AppTheme.Spacing.cardCompact)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
     }
 }
 
 private struct LeftoverRow: View {
+    @Environment(\.pareDisplayScale) private var scale
     let path: String
     let size: Int64
     let isGroup: Bool
@@ -719,12 +721,12 @@ private struct LeftoverRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: isGroup ? "folder.badge.questionmark" : "doc")
-                .font(.system(size: 11))
+                .font(scale.font(11))
                 .foregroundStyle(isGroup ? AppTheme.warning : AppTheme.textSecondary)
                 .frame(width: 16)
 
             Text(path)
-                .font(.system(size: 11, design: .monospaced))
+                .font(scale.font(11, design: .monospaced))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -733,7 +735,7 @@ private struct LeftoverRow: View {
 
             if size > 0 {
                 Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(scale.font(11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
         }
