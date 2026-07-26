@@ -40,6 +40,13 @@ let package = Package(
             name: "PareCoreTests",
             dependencies: ["PareCore"],
             swiftSettings: strictConcurrency
+        ),
+        // Test targets may depend on executable targets since Swift 5.5;
+        // debug builds compile with -enable-testing, so @testable import works.
+        .testTarget(
+            name: "PareAppTests",
+            dependencies: ["PareApp"],
+            swiftSettings: strictConcurrency
         )
     ]
 )
