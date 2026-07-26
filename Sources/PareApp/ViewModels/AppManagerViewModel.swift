@@ -104,33 +104,24 @@ final class AppManagerViewModel: ObservableObject {
         loadState = .loading
 
         // Snapshot update results so a Refresh does not wipe the "Updates only" list.
-        let previousByBundleID: [String: UpdateInfo] = Dictionary(
-            uniqueKeysWithValues: apps.compactMap { app -> (String, UpdateInfo)? in
-                guard let id = app.bundleID, let info = app.updateInfo else { return nil }
-                return (id, info)
-            }
-        )
-        let previousByPath: [String: UpdateInfo] = Dictionary(
-            uniqueKeysWithValues: apps.compactMap { app -> (String, UpdateInfo)? in
-                guard let info = app.updateInfo else { return nil }
-                return (app.path, info)
-            }
-        )
-        let shouldRecheckUpdates = hasCheckedUpdates || showOnlyOutdated || !previousByBundleID.isEmpty
+        let previous = UpdateInfoMerger.Snapshot(apps: apps)
+        let shouldRecheckUpdates = hasCheckedUpdates || showOnlyOutdated || !previous.byBundleID.isEmpty
 
         scanTask = Task {
             let found = await inventory.scan()
             guard !Task.isCancelled else { return }
 
-            self.apps = found.map { app in
-                var merged = app
-                if let id = app.bundleID, let info = previousByBundleID[id] {
-                    merged.updateInfo = info
-                } else if let info = previousByPath[app.path] {
-                    merged.updateInfo = info
-                }
-                return merged
+            guard !found.isEmpty else {
+                // An empty inventory means the scan itself failed (at minimum
+                // /System/Applications always exists) — surface it instead of
+                // showing a silent empty list.
+                self.loadState = .error(
+                    "No applications found. Pare may not be able to read the Applications folders — check permissions and try again."
+                )
+                return
             }
+
+            self.apps = UpdateInfoMerger.merge(scanned: found, previous: previous)
             self.loadState = .loaded
 
             // Re-verify after inventory refresh so the filter stays accurate.
@@ -169,23 +160,12 @@ final class AppManagerViewModel: ObservableObject {
                     self.updateFeedback = "Updated \(app.name) via Homebrew"
                     // Soft refresh so size/version update without clearing the list filter.
                     let found = await inventory.scan()
-                    let previous = Dictionary(
-                        uniqueKeysWithValues: self.apps.compactMap { a -> (String, UpdateInfo)? in
-                            guard let id = a.bundleID, let info = a.updateInfo else { return nil }
-                            return (id, info)
-                        }
+                    let previous = UpdateInfoMerger.Snapshot(apps: self.apps)
+                    self.apps = UpdateInfoMerger.merge(
+                        scanned: found,
+                        previous: previous,
+                        clearing: app
                     )
-                    self.apps = found.map { scanned in
-                        var a = scanned
-                        if let id = scanned.bundleID, let info = previous[id] {
-                            a.updateInfo = info
-                        }
-                        // Clear update for the app we just upgraded.
-                        if a.id == app.id || a.path == app.path {
-                            a.updateInfo = nil
-                        }
-                        return a
-                    }
                 } catch {
                     self.updateFeedback = error.localizedDescription
                 }

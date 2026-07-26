@@ -59,7 +59,7 @@ struct DeviceBackupsCard: View {
         .padding(.top, 10)
     }
 
-    private func backupRow(_ finding: ScanDashboardViewModel.FindingItem) -> some View {
+    private func backupRow(_ finding: FindingItem) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: "iphone")
                 .font(.system(size: 14, weight: .medium))

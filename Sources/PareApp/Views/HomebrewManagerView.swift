@@ -2,7 +2,7 @@ import SwiftUI
 import PareCore
 
 struct HomebrewManagerView: View {
-    @StateObject private var viewModel = HomebrewManagerViewModel()
+    @ObservedObject var viewModel: HomebrewManagerViewModel
     @Environment(\.displayScale) private var scale
 
     /// Resets list scroll when search, tab, or dependency toggle changes.
@@ -484,7 +484,16 @@ struct HomebrewManagerView: View {
 
     private var migrateList: some View {
         Group {
-            if viewModel.migrationCandidates.isEmpty && viewModel.loadState == .loaded {
+            if viewModel.isLoadingMigrationCandidates && viewModel.migrationCandidates.isEmpty {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Looking for apps that can be adopted into Homebrew…")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppTheme.textSecondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if viewModel.migrationCandidates.isEmpty && viewModel.loadState == .loaded {
                 emptyPrompt(
                     icon: "checkmark.circle",
                     text: "No migration candidates found — all detectable apps are already managed by Homebrew"

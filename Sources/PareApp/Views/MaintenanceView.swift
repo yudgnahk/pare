@@ -2,7 +2,7 @@ import SwiftUI
 import PareCore
 
 struct MaintenanceView: View {
-    @StateObject private var viewModel = MaintenanceViewModel()
+    @ObservedObject var viewModel: MaintenanceViewModel
     @Environment(\.displayScale) private var scale
 
     var body: some View {

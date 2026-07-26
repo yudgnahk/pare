@@ -3,7 +3,7 @@ import AppKit
 import PareCore
 
 struct AppManagerView: View {
-    @StateObject private var viewModel = AppManagerViewModel()
+    @ObservedObject var viewModel: AppManagerViewModel
     @Environment(\.displayScale) private var scale
 
     /// Token that changes when list membership / order inputs change so the
