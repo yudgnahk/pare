@@ -29,7 +29,7 @@ public struct PackageManagerCachesRule: ScanRule {
         ]
 
         for entry in wholeRoots {
-            findings += Self.directoryFindings(
+            findings += ScanFindingBuilder.directoryFindings(
                 at: home.appending(path: entry.path),
                 category: category,
                 riskLevel: riskLevel,
@@ -48,7 +48,7 @@ public struct PackageManagerCachesRule: ScanRule {
            ) {
             for child in children {
                 guard (try? child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { continue }
-                findings += Self.directoryFindings(
+                findings += ScanFindingBuilder.directoryFindings(
                     at: child,
                     category: category,
                     riskLevel: riskLevel,
@@ -59,36 +59,5 @@ public struct PackageManagerCachesRule: ScanRule {
         }
 
         return findings
-    }
-
-    static func directoryFindings(
-        at url: URL,
-        category: ScanCategory,
-        riskLevel: RiskLevel,
-        reason: String,
-        confidence: Double
-    ) -> [ScanFinding] {
-        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-        guard ScanPolicy.passesUnusedAge(
-            for: url,
-            minimumAgeSeconds: ScanPolicy.reconstructibleCacheMinAgeSeconds
-        ) else { return [] }
-
-        let size = FileSystemUtils.directorySize(url: url)
-        guard size > 0 else { return [] }
-
-        let lastUsed = try? url
-            .resourceValues(forKeys: [.contentModificationDateKey])
-            .contentModificationDate
-
-        return [ScanFinding(
-            category: category,
-            riskLevel: riskLevel,
-            reason: reason,
-            path: url.path,
-            sizeBytes: size,
-            lastUsed: lastUsed,
-            confidence: confidence
-        )]
     }
 }

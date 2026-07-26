@@ -47,7 +47,7 @@ public struct UserCachesRule: ScanRule {
             "Library/Containers/com.apple.wallpaper.agent/Data/Library/Caches/com.apple.wallpaper.caches",
         ]
         for relative in containerCaches {
-            findings += PackageManagerCachesRule.directoryFindings(
+            findings += ScanFindingBuilder.directoryFindings(
                 at: home.appending(path: relative),
                 category: category,
                 riskLevel: riskLevel,
@@ -93,7 +93,7 @@ public struct UserCachesRule: ScanRule {
             if Self.excludedTopLevelNames.contains(name) { continue }
             if name.hasPrefix("com.google.") || name.hasPrefix("org.mozilla.") { continue }
 
-            findings += PackageManagerCachesRule.directoryFindings(
+            findings += ScanFindingBuilder.directoryFindings(
                 at: child,
                 category: category,
                 riskLevel: riskLevel,

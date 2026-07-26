@@ -42,7 +42,7 @@ public struct AIToolCachesRule: ScanRule {
         for (url, reason) in targets {
             let path = url.path
             guard seen.insert(path).inserted else { continue }
-            findings += PackageManagerCachesRule.directoryFindings(
+            findings += ScanFindingBuilder.directoryFindings(
                 at: url,
                 category: category,
                 riskLevel: riskLevel,
