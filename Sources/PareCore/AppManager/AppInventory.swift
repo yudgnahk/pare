@@ -50,7 +50,7 @@ public actor AppInventory {
                 group.addTask {
                     var mutable = app
                     if mutable.sizeBytes == 0 {
-                        mutable.sizeBytes = Self.totalAllocatedSize(at: URL(fileURLWithPath: app.path))
+                        mutable.sizeBytes = FileSystemUtils.directorySize(url: URL(fileURLWithPath: app.path))
                     }
                     return mutable
                 }
@@ -189,22 +189,5 @@ public actor AppInventory {
     private static func lastUsedDate(for url: URL) -> Date? {
         let item = NSMetadataItem(url: url)
         return item?.value(forAttribute: kMDItemLastUsedDate as String) as? Date
-    }
-
-    static func totalAllocatedSize(at url: URL) -> Int64 {
-        guard let enumerator = FileManager.default.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
-
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            guard let values = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]),
-                  values.isRegularFile == true,
-                  let size = values.totalFileAllocatedSize else { continue }
-            total += Int64(size)
-        }
-        return total
     }
 }

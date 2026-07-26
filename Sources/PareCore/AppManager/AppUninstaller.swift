@@ -30,7 +30,7 @@ public struct AppUninstaller: Sendable {
                 ? URL(fileURLWithPath: base).appendingPathComponent(suffix!)
                 : URL(fileURLWithPath: base)
             if FileManager.default.fileExists(atPath: url.path) {
-                let size = AppInventory.totalAllocatedSize(at: url)
+                let size = FileSystemUtils.directorySize(url: url)
                 leftovers.append(AppLeftover(path: url.path, sizeBytes: size, category: category))
             }
         }
@@ -49,7 +49,7 @@ public struct AppUninstaller: Sendable {
         let logsDir = "\(home)/Library/Logs"
         let logURL = URL(fileURLWithPath: logsDir).appendingPathComponent(bundleID)
         if FileManager.default.fileExists(atPath: logURL.path) {
-            let size = AppInventory.totalAllocatedSize(at: logURL)
+            let size = FileSystemUtils.directorySize(url: logURL)
             leftovers.append(AppLeftover(path: logURL.path, sizeBytes: size, category: .logs))
         }
 
@@ -77,7 +77,7 @@ public struct AppUninstaller: Sendable {
         if let contents = try? FileManager.default.contentsOfDirectory(atPath: groupContainerDir) {
             for item in contents where item.hasSuffix(".\(bundleID)") || item.contains(bundleID) {
                 let fullPath = "\(groupContainerDir)/\(item)"
-                let size = AppInventory.totalAllocatedSize(at: URL(fileURLWithPath: fullPath))
+                let size = FileSystemUtils.directorySize(url: URL(fileURLWithPath: fullPath))
                 leftovers.append(AppLeftover(
                     path: fullPath,
                     sizeBytes: size,

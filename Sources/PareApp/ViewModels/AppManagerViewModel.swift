@@ -6,21 +6,6 @@ import PareCore
 @MainActor
 final class AppManagerViewModel: ObservableObject {
 
-    enum LoadState: Equatable {
-        case idle
-        case loading
-        case loaded
-        case error(String)
-
-        static func == (lhs: LoadState, rhs: LoadState) -> Bool {
-            switch (lhs, rhs) {
-            case (.idle, .idle), (.loading, .loading), (.loaded, .loaded): return true
-            case (.error(let a), .error(let b)): return a == b
-            default: return false
-            }
-        }
-    }
-
     enum SortField: String, CaseIterable {
         case name = "Name"
         case size = "Size"
