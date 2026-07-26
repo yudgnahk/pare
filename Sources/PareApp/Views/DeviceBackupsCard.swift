@@ -2,6 +2,7 @@ import SwiftUI
 import PareCore
 
 struct DeviceBackupsCard: View {
+    @Environment(\.pareDisplayScale) private var scale
     @ObservedObject var viewModel: ScanDashboardViewModel
     @State private var isExpanded = true
 
@@ -11,22 +12,22 @@ struct DeviceBackupsCard: View {
                 Button(action: { withAnimation(.spring(duration: 0.25)) { isExpanded.toggle() } }) {
                     HStack(spacing: 10) {
                         Image(systemName: "iphone.and.arrow.forward")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(scale.font(15, weight: .semibold))
                             .foregroundStyle(Color.indigo)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Device Backups")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(scale.font(14, weight: .semibold))
                                 .foregroundStyle(AppTheme.textPrimary)
                             Text(subtitle)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(scale.font(11, weight: .medium))
                                 .foregroundStyle(AppTheme.textSecondary)
                         }
 
                         Spacer()
 
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(scale.font(10, weight: .semibold))
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                 }
@@ -37,7 +38,7 @@ struct DeviceBackupsCard: View {
                     backupList
                 }
             }
-            .padding(16)
+            .padding(AppTheme.Spacing.lg)
         }
     }
 
@@ -62,19 +63,19 @@ struct DeviceBackupsCard: View {
     private func backupRow(_ finding: FindingItem) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: "iphone")
-                .font(.system(size: 14, weight: .medium))
+                .font(scale.font(14, weight: .medium))
                 .foregroundStyle(Color.indigo.opacity(0.8))
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(finding.reason)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(scale.font(12, weight: .medium))
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(2)
 
                 HStack(spacing: 6) {
                     Text(viewModel.formattedBytes(finding.sizeBytes))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(scale.font(11, weight: .semibold))
                         .foregroundStyle(AppTheme.warning)
 
                     if let date = finding.lastUsed {
@@ -84,7 +85,7 @@ struct DeviceBackupsCard: View {
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                 }
-                .font(.system(size: 11, weight: .medium))
+                .font(scale.font(11, weight: .medium))
             }
 
             Spacer(minLength: 8)
@@ -99,10 +100,10 @@ struct DeviceBackupsCard: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                 .fill(AppTheme.panelSecondary.opacity(0.5))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                         .strokeBorder(AppTheme.warning.opacity(0.15), lineWidth: 1)
                 )
         )

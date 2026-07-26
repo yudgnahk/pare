@@ -16,20 +16,20 @@ struct FullDiskAccessCard: View {
     var onDismiss: (() -> Void)?
     var onRescan: (() -> Void)?
 
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
-        GlassCard(padding: 16) {
+        GlassCard(padding: AppTheme.Spacing.lg) {
             // Icon + copy on the first row; actions use the *full* card width below so
             // three secondary buttons fit on one line (they wrap when squeezed beside the icon).
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
                             .fill(iconBackground)
                             .frame(width: 40, height: 40)
                         Image(systemName: iconName)
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(scale.font(17, weight: .semibold))
                             .foregroundStyle(iconColor)
                     }
 

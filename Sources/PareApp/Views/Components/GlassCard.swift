@@ -1,12 +1,12 @@
 import SwiftUI
 
 struct GlassCard<Content: View>: View {
-    var padding: CGFloat = 18
+    var padding: CGFloat = AppTheme.Spacing.card
     var cornerRadius: CGFloat = AppTheme.Radius.xl
     let content: Content
 
     init(
-        padding: CGFloat = 18,
+        padding: CGFloat = AppTheme.Spacing.card,
         cornerRadius: CGFloat = AppTheme.Radius.xl,
         @ViewBuilder content: () -> Content
     ) {
@@ -27,9 +27,9 @@ struct GlassCard<Content: View>: View {
                             .strokeBorder(
                                 LinearGradient(
                                     colors: [
-                                        Color.white.opacity(0.16),
+                                        AppTheme.Hairline.strong,
                                         AppTheme.accent.opacity(0.08),
-                                        Color.white.opacity(0.04)
+                                        AppTheme.Hairline.faint
                                     ],
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing

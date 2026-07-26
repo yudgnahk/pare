@@ -4,7 +4,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var textZoom: TextZoomController
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @StateObject private var exclusionVM = ExclusionListViewModel()
     /// Shared FDA state machine (same implementation the scan dashboard uses).
     @StateObject private var permissions = PermissionCoachingModel()
@@ -111,7 +111,7 @@ struct SettingsView: View {
         GlassCard {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                         .fill(fdaAccent.opacity(0.14))
                         .frame(width: 36, height: 36)
                     Image(systemName: "lock.shield")
@@ -166,7 +166,7 @@ struct SettingsView: View {
         GlassCard {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                         .fill(AppTheme.accent.opacity(0.14))
                         .frame(width: 36, height: 36)
                     Image(systemName: icon)

@@ -6,20 +6,7 @@ import PareCore
 struct ToolShareChart: View {
     let rollups: [ToolRollup]
     let formatBytes: (Int64) -> String
-    @Environment(\.displayScale) private var scale
-
-    private let palette: [Color] = [
-        AppTheme.accent,
-        Color(red: 0.50, green: 0.85, blue: 0.94),
-        Color(red: 0.68, green: 0.57, blue: 0.96),
-        AppTheme.success,
-        AppTheme.warning,
-        Color(red: 0.92, green: 0.62, blue: 0.41),
-        Color(red: 0.48, green: 0.77, blue: 0.61),
-        Color(red: 0.86, green: 0.66, blue: 0.44),
-        Color.teal,
-        Color.indigo.opacity(0.85),
-    ]
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         GlassCard {
@@ -121,7 +108,7 @@ struct ToolShareChart: View {
             ForEach(Array(rollups.prefix(10).enumerated()), id: \.element.id) { index, item in
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(palette[index % palette.count])
+                        .fill(CategoryStyle.chartColor(at: index))
                         .frame(width: 8, height: 8)
 
                     Text(item.app)
@@ -168,7 +155,7 @@ struct ToolShareChart: View {
             let fraction = Double(item.totalBytes) / Double(total)
             return Slice(
                 angle: .degrees(usable * fraction),
-                color: palette[index % palette.count]
+                color: CategoryStyle.chartColor(at: index)
             )
         }
     }

@@ -17,7 +17,7 @@ struct SelectableCandidateRow: View {
     var onExclude: (() -> Void)? = nil
     /// Folder-style leading icon when this row is a bulk folder group.
     var isFolder: Bool = false
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -25,7 +25,7 @@ struct SelectableCandidateRow: View {
 
             Button(action: onToggle) {
                 Image(systemName: checkboxIcon)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(scale.font(16, weight: .semibold))
                     .foregroundStyle(checkboxColor)
                     .frame(width: 20)
             }
@@ -74,7 +74,7 @@ struct SelectableCandidateRow: View {
 
             Button(action: onReveal) {
                 Image(systemName: "folder")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                     .foregroundStyle(canReveal ? AppTheme.accent : AppTheme.textTertiary)
             }
             .buttonStyle(.plain)

@@ -54,7 +54,7 @@ struct ContentView: View {
 private struct MainShellView: View {
     @Binding var selection: AppDestination
     let models: AppModelStore
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         HStack(spacing: 0) {
@@ -63,7 +63,7 @@ private struct MainShellView: View {
                 .frame(maxHeight: .infinity)
 
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(AppTheme.Fill.control)
                 .frame(width: 1)
                 .frame(maxHeight: .infinity)
 
