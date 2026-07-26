@@ -32,7 +32,8 @@ public struct RustCachesRule: ScanRule {
                 category: category,
                 riskLevel: riskLevel,
                 reason: reason,
-                confidence: confidence
+                confidence: confidence,
+                sizeIndex: environment.sizeIndex
             )
         }
         return findings

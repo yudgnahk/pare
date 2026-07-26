@@ -48,7 +48,8 @@ public struct JavaBuildCachesRule: ScanRule {
                 category: category,
                 riskLevel: target.risk,
                 reason: target.reason,
-                confidence: confidence
+                confidence: confidence,
+                sizeIndex: environment.sizeIndex
             )
         }
         return findings

@@ -38,14 +38,32 @@ public extension ScanRule {
 public struct ScanEnvironment: Sendable {
     public let homeDirectory: URL
     public let tempDirectory: URL
+    /// Memoized directory sizing shared by all rules within one scan.
+    /// `ScanRunner.run` swaps in a fresh index per run via `withFreshSizeIndex()`
+    /// so sizes are never reused across scans.
+    public let sizeIndex: DirectorySizeIndex
 
-    public init(homeDirectory: URL, tempDirectory: URL = FileManager.default.temporaryDirectory) {
+    public init(
+        homeDirectory: URL,
+        tempDirectory: URL = FileManager.default.temporaryDirectory,
+        sizeIndex: DirectorySizeIndex = DirectorySizeIndex()
+    ) {
         self.homeDirectory = homeDirectory
         self.tempDirectory = tempDirectory
+        self.sizeIndex = sizeIndex
     }
 
     public static func current() -> ScanEnvironment {
         ScanEnvironment(homeDirectory: FileManager.default.homeDirectoryForCurrentUser)
+    }
+
+    /// Copy of this environment with an empty size index (per-scan memoization).
+    public func withFreshSizeIndex() -> ScanEnvironment {
+        ScanEnvironment(
+            homeDirectory: homeDirectory,
+            tempDirectory: tempDirectory,
+            sizeIndex: DirectorySizeIndex()
+        )
     }
 }
 
@@ -64,9 +82,18 @@ public struct TraversalResult: Sendable {
 public protocol FileTraversing: Sendable {
     func collectFiles(in directories: [URL]) async -> [ScannedFile]
 
-    /// Like `collectFiles`, but also reports unreadable locations so callers can
+/// Like `collectFiles`, but also reports unreadable locations so callers can
     /// distinguish "empty" from "not allowed to look" (R1.3 / Full Disk Access).
     func collectFilesReportingErrors(in directories: [URL]) async -> TraversalResult
+
+    /// Single-directory variant. Implementations that fan out over a task group
+    /// in the array overload should provide a direct path here so per-directory
+    /// callers (e.g. `CachedFileTraversal`) don't pay for a one-child group.
+    func collectFiles(in directory: URL) async -> [ScannedFile]
+
+    /// Single-directory variant of `collectFilesReportingErrors` — same
+    /// no-task-group rationale as the single-directory `collectFiles`.
+    func collectFilesReportingErrors(in directory: URL) async -> TraversalResult
 }
 
 public extension FileTraversing {
@@ -74,5 +101,15 @@ public extension FileTraversing {
     /// errors override this.
     func collectFilesReportingErrors(in directories: [URL]) async -> TraversalResult {
         TraversalResult(files: await collectFiles(in: directories))
+    }
+
+    /// Default: forward to the array overload (correct for any conformer).
+    func collectFilesReportingErrors(in directory: URL) async -> TraversalResult {
+        await collectFilesReportingErrors(in: [directory])
+    }
+
+    /// Default: forward to the array overload (correct for any conformer).
+    func collectFiles(in directory: URL) async -> [ScannedFile] {
+        await collectFiles(in: [directory])
     }
 }

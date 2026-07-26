@@ -27,7 +27,7 @@ public struct UserCachesRule: ScanRule {
         var findings: [ScanFinding] = []
 
         let cachesRoot = home.appending(path: "Library/Caches")
-        findings += scanTopLevelCacheFolders(in: cachesRoot)
+        findings += scanTopLevelCacheFolders(in: cachesRoot, sizeIndex: environment.sizeIndex)
 
         // Container app caches commonly reclaimable (parity with common cleaners).
         // Intentionally omit mediaanalysisd and Library/Suggestions — deleting them
@@ -41,14 +41,15 @@ public struct UserCachesRule: ScanRule {
                 category: category,
                 riskLevel: riskLevel,
                 reason: "User app cache — reconstructible",
-                confidence: confidence
+                confidence: confidence,
+                sizeIndex: environment.sizeIndex
             )
         }
 
         return findings
     }
 
-    private func scanTopLevelCacheFolders(in root: URL) -> [ScanFinding] {
+    private func scanTopLevelCacheFolders(in root: URL, sizeIndex: DirectorySizeIndex) -> [ScanFinding] {
         let fm = FileManager.default
         guard fm.fileExists(atPath: root.path) else { return [] }
 
@@ -87,7 +88,8 @@ public struct UserCachesRule: ScanRule {
                 category: category,
                 riskLevel: riskLevel,
                 reason: "User app cache (\(child.lastPathComponent)) — reconstructible",
-                confidence: confidence
+                confidence: confidence,
+                sizeIndex: sizeIndex
             )
         }
         return findings

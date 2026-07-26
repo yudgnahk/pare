@@ -48,7 +48,8 @@ public struct ProductivityCachesRule: ScanRule {
                 at: home.appending(path: relPath),
                 reason: reason,
                 riskLevel: .safe,
-                minAgeDays: 3
+                minAgeDays: 3,
+                sizeIndex: environment.sizeIndex
             )
         }
 
@@ -57,7 +58,8 @@ public struct ProductivityCachesRule: ScanRule {
             at: home.appending(path: "Documents/Zoom"),
             reason: "Zoom cloud recordings folder",
             riskLevel: .review,
-            minAgeDays: 30
+            minAgeDays: 30,
+            sizeIndex: environment.sizeIndex
         )
 
         return findings
@@ -69,10 +71,11 @@ public struct ProductivityCachesRule: ScanRule {
         at url: URL,
         reason: String,
         riskLevel: RiskLevel,
-        minAgeDays: Int
+        minAgeDays: Int,
+        sizeIndex: DirectorySizeIndex
     ) -> [ScanFinding] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-        let size = FileSystemUtils.directorySize(url: url)
+        let size = sizeIndex.directorySize(url: url)
         guard size > 0 else { return [] }
 
         let resourceValues = try? url.resourceValues(forKeys: [

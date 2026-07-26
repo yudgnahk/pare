@@ -43,10 +43,17 @@ public struct ScanRunner: Sendable {
         var ruleFailures: [ScanRuleFailure] = []
         var unreadable: Set<String> = []
         let total = rules.count
+        // Fresh per-scan size index: rules sizing overlapping trees share one
+        // walk per directory within this run, but never across runs.
+        let runEnvironment = environment.withFreshSizeIndex()
 
         for (index, rule) in rules.enumerated() {
             guard !Task.isCancelled else { break }
-            let outcome = await runRule(rule, traversal: effectiveTraversal)
+            let outcome = await runRule(
+                rule,
+                environment: runEnvironment,
+                traversal: effectiveTraversal
+            )
             findings.append(contentsOf: outcome.findings)
             for (category, value) in outcome.grouped {
                 let current = grouped[category] ?? (0, 0)
@@ -58,6 +65,9 @@ public struct ScanRunner: Sendable {
             unreadable.formUnion(outcome.unreadablePaths)
             onProgress?(index + 1, total, rule.title)
         }
+
+        // Persist the mtime index once per scan (stores only mark it dirty).
+        await cache?.flush()
 
         let summaries = grouped
             .map { category, value in
@@ -86,6 +96,7 @@ public struct ScanRunner: Sendable {
 
     private func runRule(
         _ rule: any ScanRule,
+        environment: ScanEnvironment,
         traversal: any FileTraversing
     ) async -> RuleOutcome {
         var outcome = RuleOutcome()

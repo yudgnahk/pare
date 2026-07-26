@@ -26,6 +26,16 @@ public struct FileSystemTraversal: FileTraversing {
         }
     }
 
+    /// Direct single-directory traversal — no task group involved.
+    public func collectFiles(in directory: URL) async -> [ScannedFile] {
+        await collect(in: directory).files
+    }
+
+    /// Direct single-directory error-reporting traversal — no task group involved.
+    public func collectFilesReportingErrors(in directory: URL) async -> TraversalResult {
+        await collect(in: directory)
+    }
+
     /// Collects permission-error paths reported by the directory enumerator.
     /// The handler runs synchronously on the enumerating thread, so plain
     /// accumulation behind a reference box is safe.

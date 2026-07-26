@@ -55,7 +55,11 @@ public struct BrowserReviewDataRule: ScanRule {
             for (relFile, dataType) in chromiumFiles {
                 let relPath = "\(browserBase)/\(relFile)"
                 let reason = "\(browserName) \(dataType)"
-                findings += artifactFindings(at: home.appending(path: relPath), reason: reason)
+                findings += artifactFindings(
+                    at: home.appending(path: relPath),
+                    reason: reason,
+                    sizeIndex: environment.sizeIndex
+                )
             }
         }
 
@@ -78,7 +82,11 @@ public struct BrowserReviewDataRule: ScanRule {
                     ("indexedDB", "Firefox IndexedDB"),
                 ]
                 for (relFile, reason) in firefoxFiles {
-                    findings += artifactFindings(at: profile.appending(path: relFile), reason: reason)
+                    findings += artifactFindings(
+                        at: profile.appending(path: relFile),
+                        reason: reason,
+                        sizeIndex: environment.sizeIndex
+                    )
                 }
             }
         }
@@ -112,12 +120,16 @@ public struct BrowserReviewDataRule: ScanRule {
         )]
     }
 
-    private func artifactFindings(at url: URL, reason: String) -> [ScanFinding] {
+    private func artifactFindings(
+        at url: URL,
+        reason: String,
+        sizeIndex: DirectorySizeIndex
+    ) -> [ScanFinding] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
 
         let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
         let isDir = resourceValues?.isDirectory ?? false
-        let size = isDir ? FileSystemUtils.directorySize(url: url) : FileSystemUtils.fileSize(url: url)
+        let size = isDir ? sizeIndex.directorySize(url: url) : FileSystemUtils.fileSize(url: url)
         guard size > 0 else { return [] }
 
         let lastUsed = resourceValues?.contentModificationDate

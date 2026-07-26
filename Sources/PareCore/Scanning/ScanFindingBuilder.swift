@@ -17,14 +17,15 @@ public enum ScanFindingBuilder {
         riskLevel: RiskLevel,
         reason: String,
         confidence: Double,
-        minimumAgeSeconds: TimeInterval = ScanPolicy.reconstructibleCacheMinAgeSeconds
+        minimumAgeSeconds: TimeInterval = ScanPolicy.reconstructibleCacheMinAgeSeconds,
+        sizeIndex: DirectorySizeIndex? = nil
     ) -> [ScanFinding] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         guard ScanPolicy.passesUnusedAge(for: url, minimumAgeSeconds: minimumAgeSeconds) else {
             return []
         }
 
-        let size = FileSystemUtils.directorySize(url: url)
+        let size = sizeIndex?.directorySize(url: url) ?? FileSystemUtils.directorySize(url: url)
         guard size > 0 else { return [] }
 
         let lastUsed = try? url

@@ -538,4 +538,40 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertEqual(result.unreadablePaths, [tmp.path])
         XCTAssertTrue(result.files.isEmpty)
     }
+
+    // MARK: - FileTraversing single-directory overload
+
+    func testSingleDirectoryOverloadDefaultsToArrayOverload() async {
+        let dir = URL(fileURLWithPath: "/Users/test/Library/Caches")
+        let traversal: any FileTraversing = MockTraversal(filesByDirectory: [
+            dir.path: [
+                ScannedFile(url: dir.appendingPathComponent("a.bin"), sizeBytes: 42, lastModified: nil)
+            ]
+        ])
+
+        // MockTraversal only implements the array overload — the protocol
+        // default must forward the single-directory call to it.
+        let files = await traversal.collectFiles(in: dir)
+        XCTAssertEqual(files.map(\.sizeBytes), [42])
+    }
+
+    func testFileSystemTraversalSingleDirectoryMatchesArrayOverload() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("traversal-overload-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try Data(repeating: 1, count: 1024).write(to: tempDir.appendingPathComponent("f.bin"))
+
+        let traversal = FileSystemTraversal()
+        let single = await traversal.collectFiles(in: tempDir)
+        let viaArray = await traversal.collectFiles(in: [tempDir])
+
+        XCTAssertEqual(
+            single.map(\.url.path).sorted(),
+            viaArray.map(\.url.path).sorted(),
+            "direct single-directory path must return the same files as the task-group overload"
+        )
+        XCTAssertEqual(single.count, 1)
+    }
+
 }

@@ -34,7 +34,8 @@ public struct PackageManagerCachesRule: ScanRule {
                 category: category,
                 riskLevel: riskLevel,
                 reason: entry.reason,
-                confidence: confidence
+                confidence: confidence,
+                sizeIndex: environment.sizeIndex
             )
         }
 
@@ -53,7 +54,8 @@ public struct PackageManagerCachesRule: ScanRule {
                     category: category,
                     riskLevel: riskLevel,
                     reason: "npx package extract cache — reconstructible on next npx run",
-                    confidence: confidence
+                    confidence: confidence,
+                    sizeIndex: environment.sizeIndex
                 )
             }
         }

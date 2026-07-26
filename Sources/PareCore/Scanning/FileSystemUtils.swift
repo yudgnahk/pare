@@ -24,6 +24,9 @@ public enum FileSystemUtils {
         return .orderedSame
     }
 
+    /// Entries between cooperative `Task.isCancelled` checks while sizing a directory.
+    private static let cancellationCheckInterval = 256
+
     public static func directorySize(url: URL) -> Int64 {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
@@ -32,7 +35,15 @@ public enum FileSystemUtils {
             options: [.skipsHiddenFiles]
         ) else { return 0 }
         var total: Int64 = 0
+        var checkedCount = 0
         for case let fileURL as URL in enumerator {
+            // Cooperative cancellation: this walk is synchronous, so check
+            // `Task.isCancelled` periodically to let an aborted scan bail out
+            // instead of finishing a potentially huge tree.
+            checkedCount += 1
+            if checkedCount % cancellationCheckInterval == 0, Task.isCancelled {
+                break
+            }
             if let vals = try? fileURL.resourceValues(
                 forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey]
             ),

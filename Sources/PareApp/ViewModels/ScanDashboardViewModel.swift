@@ -128,6 +128,11 @@ final class ScanDashboardViewModel: ObservableObject {
         let totalReclaimableBytes: Int64
         /// Human-readable scan warnings (rule failures, unreadable locations — R1.2/R1.3).
         let scanWarnings: [String]
+        /// Rendered paths that existed on disk at scan finish (reveal button state).
+        /// Precomputed here so SwiftUI row bodies never call FileManager.
+        let revealablePaths: Set<String>
+        /// Rendered top-finding paths that are directories (folder icon state).
+        let folderFindingPaths: Set<String>
     }
 
     struct ToolRollupItem: Identifiable, Sendable {
@@ -214,6 +219,9 @@ final class ScanDashboardViewModel: ObservableObject {
     private var folderMetaById: [String: FolderMeta] = [:]
     private var safeFolderIds: Set<String> = []
     private var safeFolderIdsByCategory: [ScanCategory: Set<String>] = [:]
+    /// Precomputed at scan finish (background pass) — see `revealabilityIndex`.
+    private var revealablePaths: Set<String> = []
+    private var folderFindingPaths: Set<String> = []
     private let engine = CleanupEngine()
     private let scanCache = ScanMetadataCache()
     /// The running scan task — kept so we can cancel it on demand.
@@ -858,15 +866,22 @@ final class ScanDashboardViewModel: ObservableObject {
                 folderCount: aggregate.rowsByCategory[summary.category]?.count ?? 0
             )
         }
+        let sortedTopFindings = largestItemsSorted(from: findings, limit: 40)
+        let (revealablePaths, folderFindingPaths) = revealabilityIndex(
+            aggregate: aggregate,
+            topFindings: sortedTopFindings
+        )
         return PreparedScanResults(
             findings: findings,
             findingsByPath: pathIndex,
             aggregate: aggregate,
             summaries: summaries,
-            sortedTopFindings: largestItemsSorted(from: findings, limit: 40),
+            sortedTopFindings: sortedTopFindings,
             toolRollups: makeToolRollups(from: findings),
             totalReclaimableBytes: report.totalReclaimableBytes,
-            scanWarnings: makeScanWarnings(from: report)
+            scanWarnings: makeScanWarnings(from: report),
+            revealablePaths: revealablePaths,
+            folderFindingPaths: folderFindingPaths
         )
     }
 
@@ -885,6 +900,33 @@ final class ScanDashboardViewModel: ObservableObject {
         return warnings
     }
 
+    /// Stats every rendered path once, off the main actor, so row bodies can use
+    /// set lookups instead of per-render FileManager calls. Bounded work: folder
+    /// rows are capped per category and top findings are capped at 40.
+    nonisolated private static func revealabilityIndex(
+        aggregate: FolderAggregate,
+        topFindings: [FindingItem]
+    ) -> (revealable: Set<String>, folders: Set<String>) {
+        let fm = FileManager.default
+        var revealable: Set<String> = []
+        var folders: Set<String> = []
+
+        for rows in aggregate.rowsByCategory.values {
+            for row in rows where fm.fileExists(atPath: row.folderPath) {
+                revealable.insert(row.folderPath)
+            }
+        }
+        for item in topFindings {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: item.path, isDirectory: &isDir) else { continue }
+            revealable.insert(item.path)
+            if isDir.boolValue {
+                folders.insert(item.path)
+            }
+        }
+        return (revealable, folders)
+    }
+
     private func applyPreparedScanResults(
         _ prepared: PreparedScanResults,
         startedAt: Date,
@@ -898,6 +940,8 @@ final class ScanDashboardViewModel: ObservableObject {
         folderMetaById = prepared.aggregate.metaByFolderId
         safeFolderIds = prepared.aggregate.safeFolderIds
         safeFolderIdsByCategory = prepared.aggregate.safeFolderIdsByCategory
+        revealablePaths = prepared.revealablePaths
+        folderFindingPaths = prepared.folderFindingPaths
         categoryFolderRows = prepared.aggregate.rowsByCategory
         categoryToolGroups = prepared.aggregate.toolGroupsByCategory
         totalReclaimableBytes = prepared.totalReclaimableBytes
@@ -933,8 +977,17 @@ final class ScanDashboardViewModel: ObservableObject {
         revealFeedback = nil
     }
 
+    /// Set lookup against the scan-finish snapshot — called from SwiftUI row
+    /// bodies, so it must never touch the filesystem. `revealInFinder` still
+    /// re-checks existence live and surfaces feedback for stale entries.
     func canReveal(path: String) -> Bool {
-        FileManager.default.fileExists(atPath: path)
+        revealablePaths.contains(path)
+    }
+
+    /// Whether a top-finding path was a directory at scan finish (set lookup;
+    /// same no-filesystem-in-body rule as `canReveal`).
+    func isFolderFinding(path: String) -> Bool {
+        folderFindingPaths.contains(path)
     }
 
     // MARK: - Cleanup actions

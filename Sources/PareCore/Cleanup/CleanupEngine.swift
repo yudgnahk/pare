@@ -423,30 +423,32 @@ public actor CleanupEngine {
 
     // MARK: - Private helpers
 
+    /// All persona marker sets, concatenated once (~250 elements). Built lazily on
+    /// first use instead of per cleaned item — `clean` calls `isPersonaPath` for
+    /// every candidate path.
+    private static let allPersonaMarkers: [String] = ScanPolicy.designerSafePathMarkers
+        + ScanPolicy.designerReviewPathMarkers
+        + ScanPolicy.videoBuilderSafePathMarkers
+        + ScanPolicy.videoBuilderReviewPathMarkers
+        + ScanPolicy.developerSafePathMarkers
+        + ScanPolicy.developerReviewPathMarkers
+        + ScanPolicy.developerDockerReviewPathMarkers
+        + ScanPolicy.developerDockerSafePathMarkers
+        + ScanPolicy.developerPackageCacheMarkers
+        + ScanPolicy.aiToolSafePathMarkers
+        + ScanPolicy.browserExtendedSafePathMarkers
+        + ScanPolicy.browserExtendedReviewPathMarkers
+        + ScanPolicy.browserReviewDataPathMarkers
+        + ScanPolicy.mobileSyncBackupPathMarkers
+        + ScanPolicy.productivitySafePathMarkers
+        + ScanPolicy.productivityReviewPathMarkers
+        + ScanPolicy.launchAgentPathMarkers
+
     /// A path passes persona policy if it matches any of the known persona marker sets.
     /// Docker advanced / VM disk markers are intentionally **not** included — those paths
     /// are hard-blocked via `isDockerNeverDeletePath` and must never become cleanable.
     private func isPersonaPath(_ url: URL) -> Bool {
         if ScanPolicy.isDockerNeverDeletePath(url) { return false }
-
-        let allPersonaMarkers = ScanPolicy.designerSafePathMarkers
-            + ScanPolicy.designerReviewPathMarkers
-            + ScanPolicy.videoBuilderSafePathMarkers
-            + ScanPolicy.videoBuilderReviewPathMarkers
-            + ScanPolicy.developerSafePathMarkers
-            + ScanPolicy.developerReviewPathMarkers
-            + ScanPolicy.developerDockerReviewPathMarkers
-            + ScanPolicy.developerDockerSafePathMarkers
-            + ScanPolicy.developerPackageCacheMarkers
-            + ScanPolicy.aiToolSafePathMarkers
-            + ScanPolicy.browserExtendedSafePathMarkers
-            + ScanPolicy.browserExtendedReviewPathMarkers
-            + ScanPolicy.browserReviewDataPathMarkers
-            + ScanPolicy.mobileSyncBackupPathMarkers
-            + ScanPolicy.productivitySafePathMarkers
-            + ScanPolicy.productivityReviewPathMarkers
-            + ScanPolicy.launchAgentPathMarkers
-
-        return ScanPolicy.matchesPersonaPath(url, allowedMarkers: allPersonaMarkers)
+        return ScanPolicy.matchesPersonaPath(url, allowedMarkers: Self.allPersonaMarkers)
     }
 }

@@ -69,7 +69,7 @@ public struct VSCodeDuplicateExtensionsRule: ScanRule {
             }
             // sorted[0] is the newest — skip it, flag the rest.
             for older in sorted.dropFirst() {
-                let size = FileSystemUtils.directorySize(url: older.url)
+                let size = environment.sizeIndex.directorySize(url: older.url)
                 let lastModified = (try? older.url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
 
                 // Honour minimum age — don't flag dirs modified within 3 days.
