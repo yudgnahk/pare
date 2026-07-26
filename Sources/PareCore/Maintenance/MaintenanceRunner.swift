@@ -19,11 +19,17 @@ public enum MaintenanceError: Error, LocalizedError {
     }
 }
 
-/// Executes maintenance actions and streams output lines as they arrive
-/// via the shared `ProcessStreamer`.
+/// Executes maintenance actions and streams output lines as they arrive.
+/// Subprocess execution goes through an injected `ProcessRunning` seam
+/// (real `SystemProcessRunner` by default; tests inject a stub).
 public struct MaintenanceRunner: Sendable {
     public static let shared = MaintenanceRunner()
-    public init() {}
+
+    private let processRunner: any ProcessRunning
+
+    public init(processRunner: any ProcessRunning = SystemProcessRunner()) {
+        self.processRunner = processRunner
+    }
 
     // MARK: - Docker availability
 
@@ -35,18 +41,12 @@ public struct MaintenanceRunner: Sendable {
     /// Returns `true` when the Docker daemon is reachable (`docker info` exit 0).
     public func isDockerRunning() async -> Bool {
         guard let docker = dockerExecutable else { return false }
-        return await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: docker)
-            process.arguments = ["info"]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            process.standardInput = FileHandle.nullDevice
-            process.terminationHandler = { p in
-                continuation.resume(returning: p.terminationStatus == 0)
-            }
-            do { try process.run() } catch { continuation.resume(returning: false) }
-        }
+        let result = try? await processRunner.run(
+            executablePath: docker,
+            arguments: ["info"],
+            environment: nil
+        )
+        return result?.exitCode == 0
     }
 
     // MARK: - Dispatch
@@ -267,21 +267,34 @@ public struct MaintenanceRunner: Sendable {
         }
     }
 
-    /// Runs an executable and streams stdout lines via the shared `ProcessStreamer`.
-    /// stderr is captured and surfaced through `MaintenanceError.nonZeroExit`.
+    /// Runs an executable and streams stdout lines through the injected runner.
+    /// stderr is collected by the runner and surfaced on a non-zero exit.
     private func shellStream(_ executable: String, _ args: [String]) -> AsyncThrowingStream<String, Error> {
-        guard FileManager.default.fileExists(atPath: executable) else {
-            return AsyncThrowingStream {
-                $0.finish(throwing: MaintenanceError.executableNotFound(executable))
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let lines = processRunner.streamLines(
+                        executablePath: executable,
+                        arguments: args,
+                        environment: nil
+                    )
+                    for try await line in lines {
+                        if case .stdout(let text) = line {
+                            continuation.yield(text)
+                        }
+                    }
+                    continuation.finish()
+                } catch let error as ProcessRunnerError {
+                    switch error {
+                    case .executableNotFound(let path):
+                        continuation.finish(throwing: MaintenanceError.executableNotFound(path))
+                    case .nonZeroExit(let code, let stderr):
+                        continuation.finish(throwing: MaintenanceError.nonZeroExit(code, stderr))
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
             }
         }
-        return ProcessStreamer.stream(
-            executable: URL(fileURLWithPath: executable),
-            arguments: args,
-            yieldsStderr: false,
-            makeExitError: { code, stderr in
-                MaintenanceError.nonZeroExit(code, stderr)
-            }
-        )
     }
 }

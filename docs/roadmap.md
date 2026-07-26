@@ -205,7 +205,7 @@ Spec: `docs/features/phase-7-platform-completeness.md`
 ### Docker Full Cleanup
 - [x] `DockerStorageRule` (extends/replaces `DockerLogsRule`) — detect Docker VM disk image size (`Docker.raw`), report as `.advanced` finding (detect only; deleting the image is too destructive)
 - [x] Add Docker log paths to existing rule (lifecycle logs, Desktop logs)
-- [ ] `docker system prune` action in Maintenance tab (Phase 8) — safest way to reclaim Docker space
+- [x] `docker system prune` action in Maintenance tab (Phase 8) — safest way to reclaim Docker space (implemented: `docker system prune -f`, never `--volumes`)
 
 ### iOS / iPadOS Backup Management
 - [x] `MobileSyncBackupsRule` (customScan) — enumerate `~/Library/Application Support/MobileSync/Backup/`

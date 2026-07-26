@@ -120,6 +120,9 @@ public actor CleanupEngine {
     /// Supplies the user's exclusion list at cleanup time (scan-time filtering alone is
     /// not enough — exclusions added after a scan must still block cleanup). Injectable.
     private let exclusionsProvider: @Sendable () -> ExclusionList
+    /// Injectable clock for age re-checks — tests shift this instead of
+    /// back-dating real files. Defaults to the wall clock.
+    private let now: @Sendable () -> Date
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -128,7 +131,8 @@ public actor CleanupEngine {
     public init(
         store: CleanupTransactionStore = .shared,
         projectRootsProvider: (@Sendable () async -> [String])? = nil,
-        exclusionsProvider: (@Sendable () -> ExclusionList)? = nil
+        exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -138,6 +142,7 @@ public actor CleanupEngine {
         self.exclusionsProvider = exclusionsProvider ?? {
             (try? ExclusionStore.shared.load()) ?? .empty
         }
+        self.now = now
     }
 
     // MARK: - Quick Clean (safe-risk only)
@@ -280,7 +285,7 @@ public actor CleanupEngine {
                let minAge = ScanPolicy.minimumAgeSeconds(forCleanupPath: url, category: finding.category) {
                 if ScanPolicy.isReconstructibleCachePath(url) {
                     // Reconstructible caches have no multi-day age gate (minAge may be 0).
-                    if minAge > 0, !ScanPolicy.passesUnusedAge(for: url, minimumAgeSeconds: minAge) {
+                    if minAge > 0, !ScanPolicy.passesUnusedAge(for: url, minimumAgeSeconds: minAge, now: now()) {
                         skipped.append(CleanupSkippedItem(path: finding.path, error: .tooNew(finding.path)))
                         continue
                     }
@@ -292,7 +297,7 @@ public actor CleanupEngine {
                         skipped.append(CleanupSkippedItem(path: finding.path, error: .attributesUnreadable(finding.path)))
                         continue
                     }
-                    if Date().timeIntervalSince(date) < minAge {
+                    if now().timeIntervalSince(date) < minAge {
                         skipped.append(CleanupSkippedItem(path: finding.path, error: .tooNew(finding.path)))
                         continue
                     }

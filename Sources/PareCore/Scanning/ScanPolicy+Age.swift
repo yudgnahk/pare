@@ -40,11 +40,13 @@ extension ScanPolicy {
     /// Prefers **mtime** (updates when the cache is used); falls back to creation date.
     /// Fail-closed: unreadable attributes or missing dates BLOCK cleanup (return `false`)
     /// — never assume a file is old enough when we cannot prove it.
-    public static func passesUnusedAge(for url: URL, minimumAgeSeconds: TimeInterval) -> Bool {
+    /// `now` is injectable so tests can shift the reference clock instead of
+    /// back-dating real files.
+    public static func passesUnusedAge(for url: URL, minimumAgeSeconds: TimeInterval, now: Date = Date()) -> Bool {
         let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
         guard let values = try? url.resourceValues(forKeys: keys) else { return false }
         guard let lastUsed = values.contentModificationDate ?? values.creationDate else { return false }
-        return Date().timeIntervalSince(lastUsed) >= minimumAgeSeconds
+        return now.timeIntervalSince(lastUsed) >= minimumAgeSeconds
     }
 
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
@@ -85,9 +87,11 @@ extension ScanPolicy {
 
     /// Fail-closed: when an age gate applies (`minimumAgeSeconds != nil`) and no date is
     /// available, the check FAILS — an unknowable age must never satisfy an age gate.
-    public static func passesMinimumAge(for resourceValues: URLResourceValues, minimumAgeSeconds: TimeInterval?) -> Bool {
+    /// `now` is injectable so tests can shift the reference clock instead of
+    /// back-dating real files.
+    public static func passesMinimumAge(for resourceValues: URLResourceValues, minimumAgeSeconds: TimeInterval?, now: Date = Date()) -> Bool {
         guard let minimumAgeSeconds else { return true }
         guard let date = effectiveAgeDate(from: resourceValues) else { return false }
-        return Date().timeIntervalSince(date) >= minimumAgeSeconds
+        return now.timeIntervalSince(date) >= minimumAgeSeconds
     }
 }
