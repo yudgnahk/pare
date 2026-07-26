@@ -69,9 +69,19 @@ public struct CleanupResult: Sendable {
 /// 5. The minimum age threshold from `ScanPolicy.defaultMinimumAgeSeconds` must still be satisfied.
 public actor CleanupEngine {
     private let store: CleanupTransactionStore
+    /// Supplies the registered project scan roots (Spotlight-discovered + manual) used by
+    /// the fail-closed project-artifact re-verification gate. Injectable for tests.
+    private let projectRootsProvider: @Sendable () async -> [String]
 
-    public init(store: CleanupTransactionStore = .shared) {
+    public init(
+        store: CleanupTransactionStore = .shared,
+        projectRootsProvider: (@Sendable () async -> [String])? = nil
+    ) {
         self.store = store
+        self.projectRootsProvider = projectRootsProvider ?? {
+            let discovered = await ProjectRootDiscovery.shared.confirmedRoots().map(\.path)
+            return discovered + ProjectScanPathStore.shared.paths
+        }
     }
 
     // MARK: - Quick Clean (safe-risk only)
@@ -122,6 +132,9 @@ public actor CleanupEngine {
         var succeeded: [CleanupItem] = []
         var skipped: [(path: String, reason: String)] = []
 
+        // Resolved once per run — project-artifact re-verification needs the registered roots.
+        let projectRootPaths = await projectRootsProvider()
+
         for finding in findings {
             let url = URL(fileURLWithPath: finding.path)
 
@@ -151,10 +164,12 @@ public actor CleanupEngine {
                 continue
             }
 
-            // Re-verify the path is still considered safe by policy.
+            // Re-verify the path is still considered safe by policy. Fail-closed variants:
+            // wrong-platform matches only inside the scanned trees; project artifacts only
+            // with project-root evidence or under a registered project scan root.
             guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
-                    || ScanPolicy.isWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
-                    || ScanPolicy.isProjectArtifact(url) else {
+                    || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
+                    || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
                 skipped.append((finding.path, "Path no longer passes safety policy"))
                 continue
             }
@@ -169,7 +184,7 @@ public actor CleanupEngine {
             // Wrong-platform binaries/dirs are exempted: a Windows installer in ~/Downloads
             // or a win32/ native tree is inert on macOS from day zero — age is irrelevant.
             // Reconstructible package caches use a short floor (active download safety).
-            if !ScanPolicy.isWrongPlatformPath(url),
+            if !ScanPolicy.isCleanableWrongPlatformPath(url),
                let minAge = ScanPolicy.minimumAgeSeconds(forCleanupPath: url, category: finding.category) {
                 if ScanPolicy.isReconstructibleCachePath(url) {
                     // Reconstructible caches have no multi-day age gate (minAge may be 0).
@@ -178,12 +193,16 @@ public actor CleanupEngine {
                         continue
                     }
                 } else {
+                    // Fail-closed: unreadable attributes / missing dates block cleanup —
+                    // never assume the age gate is satisfied when age is unknowable.
                     let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
-                    if let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
-                        if Date().timeIntervalSince(date) < minAge {
-                            skipped.append((finding.path, "File is too new (age < \(Int(minAge / 86400)) days)"))
-                            continue
-                        }
+                    guard let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) else {
+                        skipped.append((finding.path, "File attributes unreadable — blocked for safety"))
+                        continue
+                    }
+                    if Date().timeIntervalSince(date) < minAge {
+                        skipped.append((finding.path, "File is too new (age < \(Int(minAge / 86400)) days)"))
+                        continue
                     }
                 }
             }

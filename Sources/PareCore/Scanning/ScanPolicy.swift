@@ -88,10 +88,12 @@ public enum ScanPolicy {
 
     /// `true` when the URL's last activity is at least `minimumAgeSeconds` ago.
     /// Prefers **mtime** (updates when the cache is used); falls back to creation date.
+    /// Fail-closed: unreadable attributes or missing dates BLOCK cleanup (return `false`)
+    /// — never assume a file is old enough when we cannot prove it.
     public static func passesUnusedAge(for url: URL, minimumAgeSeconds: TimeInterval) -> Bool {
         let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
-        guard let values = try? url.resourceValues(forKeys: keys) else { return true }
-        guard let lastUsed = values.contentModificationDate ?? values.creationDate else { return true }
+        guard let values = try? url.resourceValues(forKeys: keys) else { return false }
+        guard let lastUsed = values.contentModificationDate ?? values.creationDate else { return false }
         return Date().timeIntervalSince(lastUsed) >= minimumAgeSeconds
     }
 
@@ -461,8 +463,58 @@ public enum ScanPolicy {
     ]
 
     /// Returns `true` when the URL's last path component is a known build-artifact directory name.
+    /// NOTE: name-only match — for cleanup decisions use `isReclaimableProjectArtifact`,
+    /// which additionally requires project-root evidence (fail-closed).
     public static func isProjectArtifact(_ url: URL) -> Bool {
         projectArtifactDirectoryNames.contains(url.lastPathComponent.lowercased())
+    }
+
+    /// Marker files/directories whose presence identifies a directory as a project root.
+    /// Mirrors the Spotlight signal names used by `ProjectRootDiscovery`.
+    public static let projectRootMarkerFileNames: [String] = [
+        ".git", "package.json", "Package.swift", "Cargo.toml", "go.mod",
+        "pyproject.toml", "setup.py", "Gemfile", "pom.xml", "build.gradle",
+        "build.gradle.kts",
+    ]
+
+    /// How many ancestor directories to inspect for project-root evidence.
+    static let projectRootEvidenceMaxAncestors = 8
+
+    /// Cleanup-time gate for project build artifacts. Fail-closed: a bare directory
+    /// named `build`/`dist`/`target` anywhere on disk is NOT enough — the path must be
+    /// under a registered project scan root, or an ancestor directory must contain a
+    /// project marker (`.git`, `package.json`, `Cargo.toml`, …).
+    /// The user's home directory itself is never accepted as project-root evidence
+    /// (dotfile repos must not turn all of `~` into a cleanable project).
+    public static func isReclaimableProjectArtifact(
+        _ url: URL,
+        registeredRootPaths: [String],
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> Bool {
+        guard isProjectArtifact(url) else { return false }
+
+        let path = url.path
+        let underRegisteredRoot = registeredRootPaths.contains { root in
+            guard !root.isEmpty else { return false }
+            let normalized = root.hasSuffix("/") ? String(root.dropLast()) : root
+            return path == normalized || path.hasPrefix(normalized + "/")
+        }
+        if underRegisteredRoot { return true }
+
+        let homePath = homeDirectory.path
+        var ancestor = url.deletingLastPathComponent()
+        for _ in 0..<projectRootEvidenceMaxAncestors {
+            let ancestorPath = ancestor.path
+            if ancestorPath == "/" || ancestorPath.isEmpty || ancestorPath == homePath { break }
+            for marker in projectRootMarkerFileNames where fileExists(ancestorPath + "/" + marker) {
+                return true
+            }
+            let parent = ancestor.deletingLastPathComponent()
+            if parent.path == ancestorPath { break }
+            ancestor = parent
+        }
+        return false
     }
 
     public static let developerReviewExclusionMarkers = [
@@ -581,9 +633,11 @@ public enum ScanPolicy {
         return candidates.min()
     }
 
+    /// Fail-closed: when an age gate applies (`minimumAgeSeconds != nil`) and no date is
+    /// available, the check FAILS — an unknowable age must never satisfy an age gate.
     public static func passesMinimumAge(for resourceValues: URLResourceValues, minimumAgeSeconds: TimeInterval?) -> Bool {
         guard let minimumAgeSeconds else { return true }
-        guard let date = effectiveAgeDate(from: resourceValues) else { return true }
+        guard let date = effectiveAgeDate(from: resourceValues) else { return false }
         return Date().timeIntervalSince(date) >= minimumAgeSeconds
     }
 
@@ -687,7 +741,23 @@ public enum ScanPolicy {
 
     /// Downloads top-level wrong-platform files **or** paths inside non-macOS native
     /// platform directories (whole-folder reclaim). Age gates are skipped for both.
+    /// NOTE: scan-time helper (double-count avoidance). For cleanup decisions use
+    /// `isCleanableWrongPlatformPath`, which restricts native-dir matches to the
+    /// trees `WrongPlatformBinariesRule` actually scans (fail-closed).
     public static func isWrongPlatformPath(_ url: URL) -> Bool {
         isWrongPlatformBinary(url) || isUnderWrongPlatformNativeDirectory(url)
+    }
+
+    /// Cleanup-time gate for wrong-platform paths. Fail-closed: a bare `linux/` or
+    /// `win32/` path component anywhere on disk (e.g. `~/Documents/linux/notes`) must
+    /// NOT unlock cleanup. Only top-level `~/Downloads` binaries and native platform
+    /// directories under the editor/IDE scan roots of `WrongPlatformBinariesRule` pass.
+    public static func isCleanableWrongPlatformPath(_ url: URL) -> Bool {
+        if isWrongPlatformBinary(url) { return true }
+        guard isUnderWrongPlatformNativeDirectory(url) else { return false }
+        let path = url.path.lowercased()
+        return wrongPlatformScanRootRelativePaths.contains { relative in
+            path.contains("/" + relative.lowercased() + "/")
+        }
     }
 }
