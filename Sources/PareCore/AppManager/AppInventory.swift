@@ -16,7 +16,7 @@ public actor AppInventory {
         await withTaskGroup(of: [InstalledApp].self) { group in
             for dir in locations {
                 group.addTask {
-                    await Self.discoverApps(in: dir)
+                    Self.discoverApps(in: dir)
                 }
             }
             for await batch in group {
@@ -74,7 +74,10 @@ public actor AppInventory {
         ]
     }
 
-    private static func discoverApps(in directory: URL) async -> [InstalledApp] {
+    /// Synchronous by design: `FileManager.DirectoryEnumerator` iteration is
+    /// unavailable from async contexts under strict concurrency. Callers run
+    /// this inside task-group children to keep per-location scans parallel.
+    private static func discoverApps(in directory: URL) -> [InstalledApp] {
         guard let enumerator = FileManager.default.enumerator(
             at: directory,
             includingPropertiesForKeys: [
@@ -96,59 +99,7 @@ public actor AppInventory {
     }
 
     private static func discoverViaMetadataQuery() async -> [InstalledApp] {
-        return await withCheckedContinuation { continuation in
-            let query = NSMetadataQuery()
-            query.predicate = NSPredicate(
-                format: "kMDItemContentType == 'com.apple.application-bundle'"
-            )
-            query.searchScopes = [NSMetadataQueryLocalComputerScope]
-
-            var observer: NSObjectProtocol?
-            observer = NotificationCenter.default.addObserver(
-                forName: NSNotification.Name.NSMetadataQueryDidFinishGathering,
-                object: query,
-                queue: .main
-            ) { _ in
-                query.stop()
-                if let obs = observer {
-                    NotificationCenter.default.removeObserver(obs)
-                    observer = nil
-                }
-
-                var apps: [InstalledApp] = []
-                let standardPrefixes = ["/Applications/", "/System/Applications/",
-                                        FileManager.default.homeDirectoryForCurrentUser
-                                            .appendingPathComponent("Applications").path + "/"]
-
-                for i in 0..<query.resultCount {
-                    guard let item = query.result(at: i) as? NSMetadataItem,
-                          let path = item.value(forAttribute: kMDItemPath as String) as? String else {
-                        continue
-                    }
-                    // Skip apps already covered by standard location scan
-                    guard !standardPrefixes.contains(where: { path.hasPrefix($0) }) else { continue }
-                    let url = URL(fileURLWithPath: path)
-                    if let app = makeApp(from: url, isSystem: false) {
-                        apps.append(app)
-                    }
-                }
-                continuation.resume(returning: apps)
-            }
-
-            DispatchQueue.main.async { query.start() }
-
-            // Timeout after 5 seconds to avoid hanging
-            DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
-                if query.isStarted && !query.isStopped {
-                    query.stop()
-                    if let obs = observer {
-                        NotificationCenter.default.removeObserver(obs)
-                        observer = nil
-                    }
-                    continuation.resume(returning: [])
-                }
-            }
-        }
+        await MetadataQueryRunner.run()
     }
 
     static func makeApp(from url: URL, isSystem: Bool) -> InstalledApp? {
@@ -189,6 +140,112 @@ public actor AppInventory {
     private static func lastUsedDate(for url: URL) -> Date? {
         let item = NSMetadataItem(url: url)
         return item?.value(forAttribute: kMDItemLastUsedDate as String) as? Date
+    }
+
+    // MARK: - Spotlight bridge
+
+    /// Bridges NSMetadataQuery (requires a RunLoop) to async/await for apps in
+    /// non-standard locations (Setapp, etc.).
+    ///
+    /// The finish-gathering observer and the 5-second timeout race each other;
+    /// a locked `finished` flag guarantees the continuation is resumed exactly
+    /// once (the previous implementation could double-resume and crash).
+    /// All query interaction happens on the main queue. The runner retains
+    /// itself until `finish` runs so callbacks can never outlive it.
+    private final class MetadataQueryRunner: NSObject, @unchecked Sendable {
+        private let query = NSMetadataQuery()
+        private let lock = NSLock()
+        private var finished = false
+        private var completion: (([InstalledApp]) -> Void)?
+        private var observer: NSObjectProtocol?
+        /// Keeps `self` alive from `start` until `finish` even if local refs drop.
+        private var retainUntilFinished: MetadataQueryRunner?
+
+        /// Maximum time to wait for Spotlight before completing empty.
+        private static let timeoutSeconds: TimeInterval = 5
+
+        static func run() async -> [InstalledApp] {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.main.async {
+                    let runner = MetadataQueryRunner()
+                    runner.start { apps in
+                        continuation.resume(returning: apps)
+                    }
+                }
+            }
+        }
+
+        private func start(completion: @escaping ([InstalledApp]) -> Void) {
+            lock.withLock {
+                self.completion = completion
+                // Self-retain until finish() so callback lifetimes cannot drop us early.
+                self.retainUntilFinished = self
+            }
+
+            query.predicate = NSPredicate(
+                format: "kMDItemContentType == 'com.apple.application-bundle'"
+            )
+            query.searchScopes = [NSMetadataQueryLocalComputerScope]
+
+            let observer = NotificationCenter.default.addObserver(
+                forName: .NSMetadataQueryDidFinishGathering,
+                object: query,
+                queue: .main
+            ) { [self] _ in
+                self.finish(collectResults: true)
+            }
+            lock.withLock { self.observer = observer }
+
+            query.start()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.timeoutSeconds) { [self] in
+                self.finish(collectResults: false)
+            }
+        }
+
+        /// Runs on the main queue only. First caller through the locked flag wins.
+        private func finish(collectResults: Bool) {
+            let alreadyFinished: Bool = lock.withLock {
+                if finished { return true }
+                finished = true
+                return false
+            }
+            guard !alreadyFinished else { return }
+
+            query.stop()
+            let observer = lock.withLock { () -> NSObjectProtocol? in
+                defer { self.observer = nil }
+                return self.observer
+            }
+            if let observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+
+            var apps: [InstalledApp] = []
+            if collectResults {
+                let standardPrefixes = ["/Applications/", "/System/Applications/",
+                                        FileManager.default.homeDirectoryForCurrentUser
+                                            .appendingPathComponent("Applications").path + "/"]
+                for i in 0..<query.resultCount {
+                    guard let item = query.result(at: i) as? NSMetadataItem,
+                          let path = item.value(forAttribute: kMDItemPath as String) as? String else {
+                        continue
+                    }
+                    // Skip apps already covered by the standard location scan.
+                    guard !standardPrefixes.contains(where: { path.hasPrefix($0) }) else { continue }
+                    if let app = AppInventory.makeApp(from: URL(fileURLWithPath: path), isSystem: false) {
+                        apps.append(app)
+                    }
+                }
+            }
+
+            let completion = lock.withLock { () -> (([InstalledApp]) -> Void)? in
+                defer { self.completion = nil }
+                return self.completion
+            }
+            completion?(apps)
+            lock.withLock { retainUntilFinished = nil }
+        }
     }
 
     static func totalAllocatedSize(at url: URL) -> Int64 {

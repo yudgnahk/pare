@@ -186,8 +186,14 @@ public actor ProjectRootDiscovery {
 /// Lifetime: the runner must stay alive until `finish()` runs. Observer and timeout
 /// callbacks capture `self` strongly so the instance is not deallocated mid-query
 /// (a previous `[weak self]` pattern leaked the async continuation and hung scans forever).
+///
+/// Thread-safety: all mutable state is guarded by `lock`, making the
+/// `@unchecked Sendable` claim sound. The locked `finished` flag guarantees the
+/// completion runs exactly once even if the finish-gathering observer and the
+/// timeout fire concurrently.
 private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
     private let query = NSMetadataQuery()
+    private let lock = NSLock()
     private var completion: (([URL]) -> Void)?
     private var observer: NSObjectProtocol?
     private var finished = false
@@ -214,9 +220,11 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
     }
 
     private func start(completion: @escaping ([URL]) -> Void) {
-        self.completion = completion
-        // Self-retain until finish() so strong/weak callback mix cannot drop us early.
-        retainUntilFinished = self
+        lock.withLock {
+            self.completion = completion
+            // Self-retain until finish() so strong/weak callback mix cannot drop us early.
+            self.retainUntilFinished = self
+        }
 
         let predicates = Self.signalNames.map { name in
             NSPredicate(format: "%K == %@", NSMetadataItemFSNameKey, name)
@@ -224,13 +232,14 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
         query.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: predicates)
         query.searchScopes = [NSMetadataQueryUserHomeScope]
 
-        observer = NotificationCenter.default.addObserver(
+        let observer = NotificationCenter.default.addObserver(
             forName: .NSMetadataQueryDidFinishGathering,
             object: query,
             queue: .main
         ) { [self] _ in
             self.finish()
         }
+        lock.withLock { self.observer = observer }
 
         query.start()
 
@@ -240,12 +249,21 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
     }
 
     private func finish() {
-        guard !finished else { return }
-        finished = true
+        // Single-completion guarantee: first caller through the locked flag wins.
+        let alreadyFinished: Bool = lock.withLock {
+            if finished { return true }
+            finished = true
+            return false
+        }
+        guard !alreadyFinished else { return }
+
         query.stop()
+        let observer = lock.withLock { () -> NSObjectProtocol? in
+            defer { self.observer = nil }
+            return self.observer
+        }
         if let observer {
             NotificationCenter.default.removeObserver(observer)
-            self.observer = nil
         }
 
         let items = (0..<query.resultCount).compactMap { query.result(at: $0) as? NSMetadataItem }
@@ -253,8 +271,11 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
             guard let path = item.value(forAttribute: NSMetadataItemPathKey) as? String else { return nil }
             return URL(fileURLWithPath: path)
         }
+        let completion = lock.withLock { () -> (([URL]) -> Void)? in
+            defer { self.completion = nil }
+            return self.completion
+        }
         completion?(urls)
-        completion = nil
-        retainUntilFinished = nil
+        lock.withLock { retainUntilFinished = nil }
     }
 }
