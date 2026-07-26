@@ -20,7 +20,8 @@ public struct FileSystemTraversal: FileTraversing {
         }
     }
 
-    private func collectFiles(in directory: URL) async -> [ScannedFile] {
+    /// Direct single-directory traversal — no task group involved.
+    public func collectFiles(in directory: URL) async -> [ScannedFile] {
         let fileManager = FileManager.default
 
         guard fileManager.fileExists(atPath: directory.path) else {

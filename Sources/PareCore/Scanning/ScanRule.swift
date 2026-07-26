@@ -59,4 +59,16 @@ public struct ScanEnvironment: Sendable {
 
 public protocol FileTraversing: Sendable {
     func collectFiles(in directories: [URL]) async -> [ScannedFile]
+
+    /// Single-directory variant. Implementations that fan out over a task group
+    /// in the array overload should provide a direct path here so per-directory
+    /// callers (e.g. `CachedFileTraversal`) don't pay for a one-child group.
+    func collectFiles(in directory: URL) async -> [ScannedFile]
+}
+
+public extension FileTraversing {
+    /// Default: forward to the array overload (correct for any conformer).
+    func collectFiles(in directory: URL) async -> [ScannedFile] {
+        await collectFiles(in: [directory])
+    }
 }

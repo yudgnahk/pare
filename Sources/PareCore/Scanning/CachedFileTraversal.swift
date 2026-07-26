@@ -24,15 +24,16 @@ struct CachedFileTraversal: FileTraversing {
         }
     }
 
-    private func collectFiles(in directory: URL) async -> [ScannedFile] {
+    func collectFiles(in directory: URL) async -> [ScannedFile] {
         let mtime = directoryMtime(directory)
         if let mtime, await cache.isFresh(directory: directory, currentMtime: mtime),
            let cached = await cache.cachedFiles(for: directory) {
             return cached
         }
 
-        // Inner traversal is called with a single-element array so results stay per-directory.
-        let files = await inner.collectFiles(in: [directory])
+        // Single-directory call keeps results per-directory without the inner
+        // traversal spinning up a task group for exactly one child.
+        let files = await inner.collectFiles(in: directory)
 
         // Only cache complete results — skip if the task was cancelled mid-traversal.
         if let mtime, !Task.isCancelled {
