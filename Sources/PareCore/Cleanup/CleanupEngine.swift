@@ -48,6 +48,21 @@ public struct CleanupResult: Sendable {
     public let skipped: [(path: String, reason: String)]
     /// The persisted transaction record (nil for dry-run that explicitly opts out of persistence).
     public let transaction: CleanupTransaction?
+    /// Non-nil when the undo transaction could not be (fully) persisted to disk.
+    /// Files may already have been moved to Trash — surfaced here instead of throwing.
+    public let transactionSaveError: String?
+
+    init(
+        succeeded: [CleanupItem],
+        skipped: [(path: String, reason: String)],
+        transaction: CleanupTransaction?,
+        transactionSaveError: String? = nil
+    ) {
+        self.succeeded = succeeded
+        self.skipped = skipped
+        self.transaction = transaction
+        self.transactionSaveError = transactionSaveError
+    }
 
     public var totalBytesFreed: Int64 {
         succeeded.reduce(0) { $0 + $1.sizeBytes }
@@ -72,15 +87,26 @@ public actor CleanupEngine {
     /// Supplies the registered project scan roots (Spotlight-discovered + manual) used by
     /// the fail-closed project-artifact re-verification gate. Injectable for tests.
     private let projectRootsProvider: @Sendable () async -> [String]
+    /// Supplies the user's exclusion list at cleanup time (scan-time filtering alone is
+    /// not enough — exclusions added after a scan must still block cleanup). Injectable.
+    private let exclusionsProvider: @Sendable () -> ExclusionList
+
+    /// Persist the undo record every N successful trash moves so a crash mid-cleanup
+    /// loses at most this many items from the record.
+    private static let incrementalSaveInterval = 20
 
     public init(
         store: CleanupTransactionStore = .shared,
-        projectRootsProvider: (@Sendable () async -> [String])? = nil
+        projectRootsProvider: (@Sendable () async -> [String])? = nil,
+        exclusionsProvider: (@Sendable () -> ExclusionList)? = nil
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
             let discovered = await ProjectRootDiscovery.shared.confirmedRoots().map(\.path)
             return discovered + ProjectScanPathStore.shared.paths
+        }
+        self.exclusionsProvider = exclusionsProvider ?? {
+            (try? ExclusionStore.shared.load()) ?? .empty
         }
     }
 
@@ -132,11 +158,51 @@ public actor CleanupEngine {
         var succeeded: [CleanupItem] = []
         var skipped: [(path: String, reason: String)] = []
 
-        // Resolved once per run — project-artifact re-verification needs the registered roots.
+        // Resolved once per run — project-artifact re-verification needs the registered roots,
+        // and exclusions must be honored at cleanup time (not only at scan time).
         let projectRootPaths = await projectRootsProvider()
+        let exclusions = exclusionsProvider()
+
+        // Durable-undo guarantee: for real runs, the transaction record is written
+        // BEFORE anything is trashed and re-written incrementally during the loop.
+        // If the initial record cannot be persisted, abort — never delete without
+        // a durable undo record.
+        let transactionID = UUID()
+        let transactionTimestamp = Date()
+        var transactionSaveError: String?
+
+        func makeTransaction(_ items: [CleanupItem]) -> CleanupTransaction {
+            CleanupTransaction(
+                id: transactionID,
+                timestamp: transactionTimestamp,
+                profileName: profileName,
+                isDryRun: dryRun,
+                items: items
+            )
+        }
+
+        if !dryRun, !findings.isEmpty {
+            do {
+                try store.save(makeTransaction([]))
+            } catch {
+                let reason = "Could not persist undo record — cleanup aborted"
+                return CleanupResult(
+                    succeeded: [],
+                    skipped: findings.map { ($0.path, reason) },
+                    transaction: nil,
+                    transactionSaveError: error.localizedDescription
+                )
+            }
+        }
 
         for finding in findings {
             let url = URL(fileURLWithPath: finding.path)
+
+            // User exclusions always win — even if the finding predates the exclusion.
+            if exclusions.isExcluded(finding.path) {
+                skipped.append((finding.path, "Excluded by user"))
+                continue
+            }
 
             // Path-level ban: Docker VM disk / volume data — independent of risk label.
             // Mis-tagged findings must still never trash Docker.raw or the vms tree.
@@ -226,23 +292,47 @@ public actor CleanupEngine {
                         reason: finding.reason,
                         riskLevel: finding.riskLevel
                     ))
+                    // Incremental persistence: bound how many trashed items a crash can
+                    // drop from the undo record.
+                    if succeeded.count % Self.incrementalSaveInterval == 0 {
+                        do {
+                            try store.save(makeTransaction(succeeded))
+                        } catch {
+                            transactionSaveError = error.localizedDescription
+                        }
+                    }
                 } catch {
                     skipped.append((finding.path, "Trash move failed: \(error.localizedDescription)"))
                 }
             }
         }
 
-        let transaction = CleanupTransaction(
-            profileName: profileName,
-            isDryRun: dryRun,
-            items: succeeded
-        )
+        let transaction = makeTransaction(succeeded)
 
-        if !succeeded.isEmpty || dryRun {
-            try store.save(transaction)
+        if dryRun {
+            do {
+                try store.save(transaction)
+            } catch {
+                transactionSaveError = error.localizedDescription
+            }
+        } else if succeeded.isEmpty {
+            // Nothing was trashed — drop the empty placeholder record.
+            try? store.delete(id: transactionID)
+        } else {
+            do {
+                try store.save(transaction)
+                transactionSaveError = nil  // final save supersedes any incremental failure
+            } catch {
+                transactionSaveError = error.localizedDescription
+            }
         }
 
-        return CleanupResult(succeeded: succeeded, skipped: skipped, transaction: transaction)
+        return CleanupResult(
+            succeeded: succeeded,
+            skipped: skipped,
+            transaction: transaction,
+            transactionSaveError: transactionSaveError
+        )
     }
 
     // MARK: - Undo / Restore

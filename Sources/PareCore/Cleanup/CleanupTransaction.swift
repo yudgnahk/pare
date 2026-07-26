@@ -116,6 +116,13 @@ public final class CleanupTransactionStore: Sendable {
         }.sorted { $0.timestamp > $1.timestamp }
     }
 
+    /// Removes a single transaction record (no-op when absent).
+    public func delete(id: UUID) throws {
+        let file = transactionsDirectory.appending(path: "\(id.uuidString).json")
+        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        try FileManager.default.removeItem(at: file)
+    }
+
     public func deleteAll() throws {
         guard FileManager.default.fileExists(atPath: transactionsDirectory.path) else { return }
         let files = try FileManager.default.contentsOfDirectory(

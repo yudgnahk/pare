@@ -164,6 +164,101 @@ final class CleanupSafetyRegressionTests: XCTestCase {
             URL(fileURLWithPath: "/Users/t/Projects/win32/main.c")))
     }
 
+    // MARK: - R0.2: exclusions honored at cleanup time
+
+    /// A path excluded AFTER the scan must still be skipped by the engine.
+    func testExcludedPathIsSkippedAtCleanupTime() async throws {
+        let cacheDir = root.appending(path: "Library/Caches/com.pare.test")
+        let dir = try makeDirectory(at: cacheDir.appending(path: "excluded-cache"))
+        let engine = CleanupEngine(
+            store: CleanupTransactionStore(directory: storeDir),
+            projectRootsProvider: { [] },
+            exclusionsProvider: { ExclusionList(entries: [ExclusionEntry(path: dir.path)]) }
+        )
+
+        let result = try await engine.clean(
+            findings: [finding(for: dir, category: .userCaches)],
+            profileName: "test"
+        )
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        XCTAssertEqual(result.skipped.count, 1)
+        XCTAssertTrue(result.skipped[0].reason.contains("Excluded"), result.skipped[0].reason)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.path))
+    }
+
+    // MARK: - R0.4: durable undo record
+
+    /// If the undo record cannot be persisted, the engine must abort BEFORE
+    /// trashing anything — never delete without a durable undo record.
+    func testCleanupAbortsWhenUndoRecordCannotBePersisted() async throws {
+        // Occupy the store directory path with a FILE so createDirectory fails.
+        let blockedStorePath = root.appending(path: "blocked-store")
+        try Data("not a directory".utf8).write(to: blockedStorePath)
+
+        let cacheDir = root.appending(path: "Library/Caches/com.pare.test")
+        let dir = try makeDirectory(at: cacheDir.appending(path: "victim-cache"))
+        let engine = CleanupEngine(
+            store: CleanupTransactionStore(directory: blockedStorePath),
+            projectRootsProvider: { [] },
+            exclusionsProvider: { .empty }
+        )
+
+        let result = try await engine.clean(
+            findings: [finding(for: dir, category: .userCaches)],
+            profileName: "test"
+        )
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        XCTAssertNotNil(result.transactionSaveError)
+        XCTAssertEqual(result.skipped.count, 1)
+        XCTAssertTrue(result.skipped[0].reason.contains("undo record"), result.skipped[0].reason)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.path),
+                      "file must NOT be trashed when the undo record cannot be written")
+    }
+
+    /// Normal path: the transaction is persisted with all items and no save error.
+    func testUndoRecordPersistedWithAllItemsAfterClean() async throws {
+        let cacheDir = root.appending(path: "Library/Caches/com.pare.test")
+        let a = try makeDirectory(at: cacheDir.appending(path: "cache-a"))
+        let b = try makeDirectory(at: cacheDir.appending(path: "cache-b"))
+        let store = CleanupTransactionStore(directory: storeDir)
+        let engine = CleanupEngine(
+            store: store,
+            projectRootsProvider: { [] },
+            exclusionsProvider: { .empty }
+        )
+
+        let result = try await engine.clean(
+            findings: [finding(for: a, category: .userCaches), finding(for: b, category: .userCaches)],
+            profileName: "test"
+        )
+
+        XCTAssertEqual(result.succeeded.count, 2, "skipped: \(result.skipped)")
+        XCTAssertNil(result.transactionSaveError)
+        let persisted = try store.loadAll()
+        XCTAssertEqual(persisted.count, 1)
+        XCTAssertEqual(persisted.first?.items.count, 2)
+        XCTAssertEqual(persisted.first?.id, result.transaction?.id)
+    }
+
+    /// A run where everything is skipped must not leave an empty transaction record.
+    func testSkipOnlyRunLeavesNoEmptyTransactionRecord() async throws {
+        let dir = try makeDirectory(at: root.appending(path: "Documents/foo/build"))
+        let store = CleanupTransactionStore(directory: storeDir)
+        let engine = CleanupEngine(
+            store: store,
+            projectRootsProvider: { [] },
+            exclusionsProvider: { .empty }
+        )
+
+        let result = try await engine.clean(findings: [finding(for: dir)], profileName: "test")
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        XCTAssertTrue(try store.loadAll().isEmpty,
+                      "skip-only run must not persist an empty undo record")
+    }
+
     // MARK: - R0.3: fail-closed age gates
 
     /// Unreadable attributes must block the unused-age check (previously passed open).
