@@ -98,55 +98,18 @@ public struct BrewRunner: Sendable {
     /// Runs a brew subcommand and streams output lines as they arrive.
     /// Yields both stdout and stderr lines interleaved.
     public func stream(_ args: [String]) -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
-            Task {
-                guard let brewPath else {
-                    continuation.finish(throwing: BrewError.notInstalled)
-                    return
-                }
-
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: brewPath)
-                process.arguments = args
-                process.environment = makeEnvironment()
-                process.standardInput = FileHandle.nullDevice
-
-                let stdoutPipe = Pipe()
-                let stderrPipe = Pipe()
-                process.standardOutput = stdoutPipe
-                process.standardError = stderrPipe
-
-                do { try process.run() } catch {
-                    continuation.finish(throwing: error)
-                    return
-                }
-
-                await withTaskGroup(of: Void.self) { group in
-                    group.addTask {
-                        do {
-                            for try await line in stdoutPipe.fileHandleForReading.bytes.lines {
-                                continuation.yield(line)
-                            }
-                        } catch {}
-                    }
-                    group.addTask {
-                        do {
-                            for try await line in stderrPipe.fileHandleForReading.bytes.lines {
-                                continuation.yield(line)
-                            }
-                        } catch {}
-                    }
-                }
-
-                process.waitUntilExit()
-                let status = process.terminationStatus
-                if status != 0 {
-                    continuation.finish(throwing: BrewError.failed(exitCode: status, stderr: ""))
-                } else {
-                    continuation.finish()
-                }
-            }
+        guard let brewPath else {
+            return AsyncThrowingStream { $0.finish(throwing: BrewError.notInstalled) }
         }
+        return ProcessStreamer.stream(
+            executable: URL(fileURLWithPath: brewPath),
+            arguments: args,
+            environment: makeEnvironment(),
+            yieldsStderr: true,
+            makeExitError: { code, stderr in
+                BrewError.failed(exitCode: code, stderr: stderr)
+            }
+        )
     }
 
     // MARK: - Private
@@ -156,19 +119,5 @@ public struct BrewRunner: Sendable {
         env["HOMEBREW_NO_AUTO_UPDATE"] = "1"
         env["HOME"] = FileManager.default.homeDirectoryForCurrentUser.path
         return env
-    }
-}
-
-// Thread-safe buffer for draining subprocess pipes across DispatchQueue threads.
-private final class LockedBuffer: @unchecked Sendable {
-    private var _data = Data()
-    private let lock = NSLock()
-
-    func append(_ d: Data) {
-        lock.withLock { _data.append(d) }
-    }
-
-    var data: Data {
-        lock.withLock { _data }
     }
 }
