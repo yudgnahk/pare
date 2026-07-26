@@ -56,6 +56,30 @@ public enum ScanPolicy {
         "com.apple.helpd",
     ]
 
+    /// Rule-ownership policy: top-level `~/Library/Caches` folder names (lowercased)
+    /// that are owned by other scan rules and must not be double-reported by
+    /// `UserCachesRule`. Includes never-clean search-index stores.
+    public static let userCachesExcludedTopLevelFolderNames: Set<String> = Set([
+        "google",                       // Chrome — BrowserCachesRule
+        "com.apple.safari",             // BrowserCachesRule
+        "firefox",                      // BrowserCachesRule
+        "bravesoftware",                // BrowserCachesRule
+        "microsoft edge",               // BrowserCachesRule
+        "com.operasoftware.opera",      // BrowserCachesRule
+        "yarn",                         // PackageManagerCachesRule
+        "pnpm",                         // PackageManagerCachesRule
+        "cocoapods",                    // PackageManagerCachesRule
+        "org.swift.swiftpm",            // PackageManagerCachesRule
+        "homebrew",                     // HomebrewCacheRule
+        "go-build",                     // GoCachesRule
+        "com.microsoft.vscode.shipit",  // VSCodeCachesRule
+        "pip",                          // PythonCachesRule
+        "pypoetry",                     // PythonCachesRule
+        "uv",                           // Python tooling (report-only elsewhere)
+        "com.github.copilot-for-xcode", // AIToolCachesRule
+        "temporaryitems",               // TemporaryFilesRule
+    ]).union(searchIndexSensitiveCacheFolderNames)
+
     public static func isSearchIndexSensitivePath(_ url: URL) -> Bool {
         let path = url.path.lowercased()
         return searchIndexSensitivePathMarkers.contains { path.contains($0) }

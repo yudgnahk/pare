@@ -496,6 +496,30 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         }
     }
 
+    /// R0.5 regression: manually configured scan paths (ProjectScanPathStore) must be
+    /// scanned by ProjectArtifactsRule now that the Phase 5 path-only rule is gone.
+    func testScansManuallyConfiguredPaths() async throws {
+        let tmp = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        let cache = tmp.appending(path: "myapp/.cache")
+        try createDirWithContent(at: cache)
+        backdateItem(at: cache, days: 10)
+
+        let manualStore = ProjectScanPathStore()
+        let originalPaths = manualStore.paths
+        defer { manualStore.setAll(originalPaths) }
+        manualStore.setAll([tmp.path])
+
+        // Discovery has NO roots — only the manual store points at tmp.
+        let discovery = makeIsolatedDiscovery(manual: [], confirmed: [])
+        let rule = ProjectArtifactsRule(discovery: discovery, pathStore: manualStore)
+        let findings = await rule.customScan(environment: ScanEnvironment.current())!
+
+        XCTAssertTrue(findings.contains { $0.path.hasSuffix(".cache") },
+                      "Manual ProjectScanPathStore paths must be folded into the v2 rule")
+    }
+
     // MARK: Private helpers
 
     private func makeDiscovery(root: URL) async -> ProjectRootDiscovery {
@@ -527,6 +551,20 @@ final class Phase6ScanPolicyTests: XCTestCase {
         for name in names {
             let url = URL(fileURLWithPath: "/Users/user/project/\(name)")
             XCTAssertTrue(ScanPolicy.isProjectArtifact(url), "\(name) should be a recognised project artifact")
+        }
+    }
+
+    /// R0.5 regression: folders owned by other rules must be excluded from
+    /// UserCachesRule via the ScanPolicy ownership set (previously double-counted).
+    func testUserCachesOwnershipSetCoversOtherRuleOwnedFolders() {
+        let set = ScanPolicy.userCachesExcludedTopLevelFolderNames
+        for name in ["microsoft edge", "com.operasoftware.opera", "pip", "pypoetry",
+                     "uv", "com.github.copilot-for-xcode", "temporaryitems"] {
+            XCTAssertTrue(set.contains(name), "\(name) missing from UserCaches ownership exclusions")
+        }
+        // Never-clean search-index stores remain excluded.
+        for name in ScanPolicy.searchIndexSensitiveCacheFolderNames {
+            XCTAssertTrue(set.contains(name), "\(name) search-index store missing")
         }
     }
 

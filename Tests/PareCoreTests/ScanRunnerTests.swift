@@ -39,7 +39,7 @@ final class ScanRunnerTests: XCTestCase {
 
     func testBaselineRuleIncludesKnownRules() {
         let rules = [any ScanRule].baseline
-        XCTAssertEqual(rules.count, 12, "Baseline includes core + Phase 5–8 additions")
+        XCTAssertEqual(rules.count, 11, "Baseline includes core + Phase 5–8 additions")
         XCTAssertTrue(rules.contains(where: { $0.id == "user-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "temporary-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "logs-crash-reports" }))
@@ -48,7 +48,8 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "browser-review-data" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "installer-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "stale-app-version" }))
-        XCTAssertTrue(rules.contains(where: { $0.id == "project-artifacts" }))
+        XCTAssertFalse(rules.contains(where: { $0.id == "project-artifacts" }),
+                       "Phase 5 project-artifacts was removed in R0.5 (double-counted with v2)")
         XCTAssertTrue(rules.contains(where: { $0.id == "mobile-sync-backups" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "productivity-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "orphaned-launch-agents" }))
@@ -59,7 +60,7 @@ final class ScanRunnerTests: XCTestCase {
         let ids = all.map(\.id)
         XCTAssertEqual(ids.count, Set(ids).count, "RuleCatalog.all must be unique by id")
         // Keep in sync with RuleCatalog constructors (developer ∪ designer ∪ videoBuilder).
-        XCTAssertEqual(all.count, 36, "Update this when adding/removing rules from RuleCatalog")
+        XCTAssertEqual(all.count, 35, "Update this when adding/removing rules from RuleCatalog")
     }
 
     func testBrowserRuleSkipsSensitiveFiles() {

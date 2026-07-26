@@ -12,21 +12,10 @@ public struct UserCachesRule: ScanRule {
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.95
 
-    /// Top-level Library/Caches names (or path markers) owned by other rules
-    /// or never-clean search-index stores (Spotlight / Help).
-    private static let excludedTopLevelNames: Set<String> = Set([
-        "google",           // Chrome — BrowserCachesRule
-        "com.apple.safari",
-        "firefox",
-        "bravesoftware",
-        "yarn",
-        "pnpm",
-        "cocoapods",
-        "org.swift.swiftpm",
-        "homebrew",
-        "go-build",
-        "com.microsoft.vscode.shipit",
-    ]).union(ScanPolicy.searchIndexSensitiveCacheFolderNames)
+    /// Rule-ownership policy lives in `ScanPolicy` (single source of truth):
+    /// top-level Library/Caches names owned by other rules or never-clean
+    /// search-index stores (Spotlight / Help).
+    private static let excludedTopLevelNames = ScanPolicy.userCachesExcludedTopLevelFolderNames
 
     public init() {}
 
