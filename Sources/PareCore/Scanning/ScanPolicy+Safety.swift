@@ -167,4 +167,16 @@ extension ScanPolicy {
         let home = FileManager.default.homeDirectoryForCurrentUser.path.lowercased()
         return url.path.lowercased().hasPrefix("\(home)/library/group containers/")
     }
+
+    /// Exact path-component containment: `true` when `candidate` equals `root` or
+    /// is a descendant of it. Comparison is component-wise (case-insensitive, like
+    /// the other policy checks), so a root of `…/.cache/uv` matches
+    /// `…/.cache/uv/archive-v0` but never `…/.cache/uvicorn` or `…/.cache/uv-backup`.
+    /// New cache policies must use this instead of substring `path.contains` matching.
+    public static func isEqualToOrDescendant(candidate: URL, root: URL) -> Bool {
+        let candidateComponents = candidate.standardizedFileURL.pathComponents.map { $0.lowercased() }
+        let rootComponents = root.standardizedFileURL.pathComponents.map { $0.lowercased() }
+        guard !rootComponents.isEmpty, candidateComponents.count >= rootComponents.count else { return false }
+        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
+    }
 }
