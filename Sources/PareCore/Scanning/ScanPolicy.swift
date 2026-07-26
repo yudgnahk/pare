@@ -163,6 +163,44 @@ public enum ScanPolicy {
         "keychain"
     ]
 
+    /// True when the path contains a credential/user-data marker (bookmarks, history,
+    /// login, session, cookies, keychain). Rules must use this — never a private,
+    /// divergent copy of the marker list (R1.4).
+    public static func containsSensitiveDataMarker(_ url: URL) -> Bool {
+        let path = url.path.lowercased()
+        return sensitiveDataMarkers.contains { path.contains($0) }
+    }
+
+    /// VS Code review-required state locations (workspace storage / local history).
+    public static let vscodeReviewStateMarkers = [
+        "/library/application support/code/user/workspacestorage",
+        "/library/application support/code/user/history",
+    ]
+
+    /// JetBrains review-required (IDE marker, subtree marker) pairs — plugin and
+    /// JDBC-driver data that needs user review before removal.
+    public static let jetBrainsReviewRequiredMarkerPairs: [(ide: String, subtree: String)] = [
+        (ide: "/goland", subtree: "/plugins/"),
+        (ide: "/datagrip", subtree: "/plugins/"),
+        (ide: "/datagrip", subtree: "/jdbc-drivers/"),
+    ]
+
+    /// True when the path is JetBrains plugin/driver data requiring review.
+    public static func isJetBrainsReviewRequiredPath(_ url: URL) -> Bool {
+        let path = url.path.lowercased()
+        return jetBrainsReviewRequiredMarkerPairs.contains {
+            path.contains($0.ide) && path.contains($0.subtree)
+        }
+    }
+
+    /// Path components that disqualify a Spotlight hit from being a project root
+    /// (system/library trees, dependency dirs, Trash).
+    public static let projectDiscoveryExcludedPathComponents = [
+        "/Library/", "/System/", "/node_modules/", "/vendor/",
+        "/venv/", "/.venv/", "/.Trash/", "/site-packages/",
+        "/.Trash", "/Applications/"
+    ]
+
     /// App-specific state paths that must never be deleted — removing them would
     /// break credentials, active sessions, or IDE state for the matching tool.
     private static let appStateSensitiveMarkers = [

@@ -128,10 +128,8 @@ public actor ProjectRootDiscovery {
             rootPaths.insert(parent.path)
         }
 
-        // 2. Filter paths containing excluded path components.
-        let excluded = ["/Library/", "/System/", "/node_modules/", "/vendor/",
-                        "/venv/", "/.venv/", "/.Trash/", "/site-packages/",
-                        "/.Trash", "/Applications/"]
+        // 2. Filter paths containing excluded path components (list lives in ScanPolicy — R1.4).
+        let excluded = ScanPolicy.projectDiscoveryExcludedPathComponents
         let filtered = rootPaths.filter { path in
             !excluded.contains { path.contains($0) }
         }

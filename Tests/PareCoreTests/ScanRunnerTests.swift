@@ -80,6 +80,18 @@ final class ScanRunnerTests: XCTestCase {
                 resourceValues: values
             )
         )
+
+        // R1.4 regression: the rule now uses ScanPolicy's full sensitive-marker
+        // set — the old inline copy missed session/cookies/keychain.
+        for sensitive in ["Session Cache", "Cookies Cache", "keychain-cache"] {
+            XCTAssertFalse(
+                rule.include(
+                    fileURL: URL(fileURLWithPath: "/Users/test/Library/Caches/Google/Chrome/Default/\(sensitive)/data"),
+                    resourceValues: values
+                ),
+                "\(sensitive) must be blocked by the sensitive-data policy"
+            )
+        }
     }
 
     func testTemporaryRuleRequiresMinimumAge() {
