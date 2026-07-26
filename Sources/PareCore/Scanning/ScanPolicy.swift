@@ -611,6 +611,22 @@ public enum ScanPolicy {
             + productivitySafePathMarkers + productivityReviewPathMarkers
     }()
 
+    // MARK: - Named per-rule age thresholds (R1.5)
+    // Single source of truth — rules must reference these, never inline literals.
+
+    /// Older sibling backup of a device that has a newer backup.
+    public static let deviceBackupStaleAgeSeconds: TimeInterval = 30 * 24 * 60 * 60
+    /// The ONLY backup of a device — flag much later (180 days).
+    public static let deviceBackupSingleStaleAgeSeconds: TimeInterval = 180 * 24 * 60 * 60
+    /// Orphaned LaunchAgent plists — don't flag recently installed agents.
+    public static let launchAgentOrphanMinAgeSeconds: TimeInterval = 30 * 24 * 60 * 60
+    /// Browser review-required data (Local Storage, service workers…).
+    public static let browserReviewDataMinAgeSeconds: TimeInterval = 30 * 24 * 60 * 60
+    /// Superseded JetBrains IDE version data.
+    public static let jetBrainsStaleVersionMinAgeSeconds: TimeInterval = 90 * 24 * 60 * 60
+    /// Installer files — give users time to install before flagging.
+    public static let installerFileMinAgeSeconds: TimeInterval = 7 * 24 * 60 * 60
+
     public static func defaultMinimumAgeSeconds(for category: ScanCategory) -> TimeInterval? {
         switch category {
         case .userCaches, .temporaryFiles, .browserCaches, .developerPackageCaches,
@@ -619,21 +635,25 @@ public enum ScanPolicy {
         case .logsAndCrashReports:
             return 24 * 60 * 60  // 1 day
         case .installerFiles:
-            return 7 * 24 * 60 * 60  // 7 days — avoid flagging freshly downloaded installers
+            return installerFileMinAgeSeconds
         case .developerBuildArtifacts, .applications:
             return nil
         case .projectArtifacts:
             return 7 * 24 * 60 * 60  // 7 days — avoid flagging freshly created build dirs
         case .deviceBackups:
-            return 30 * 24 * 60 * 60  // 30 days — don't flag recent backups
+            return deviceBackupStaleAgeSeconds
         case .productivityCaches:
             return defaultCacheMinAgeSeconds  // 3 days
         case .launchAgents:
-            return 30 * 24 * 60 * 60  // 30 days — don't flag recently installed agents
+            return launchAgentOrphanMinAgeSeconds
         }
     }
 
     public static func matchesPersonaPath(_ url: URL, allowedMarkers: [String]) -> Bool {
+        // Parity with isLowImpactPath (R1.6): search-index stores must never pass
+        // the persona gate either — deleting them forces a costly reindex.
+        if isSearchIndexSensitivePath(url) { return false }
+
         let path = url.path.lowercased()
 
         let isProtected = protectedPathMarkers.contains { path.contains($0) }

@@ -554,6 +554,19 @@ final class Phase6ScanPolicyTests: XCTestCase {
         }
     }
 
+    /// R1.6: matchesPersonaPath must reject search-index stores even when a
+    /// persona marker matches (parity with isLowImpactPath).
+    func testMatchesPersonaPathRejectsSearchIndexStores() {
+        let spotlight = URL(fileURLWithPath: "/Users/x/Library/Caches/com.apple.Spotlight/index")
+        XCTAssertFalse(
+            ScanPolicy.matchesPersonaPath(spotlight, allowedMarkers: ["/library/caches/"]),
+            "search-index store must never pass the persona gate"
+        )
+        // Sanity: the same marker passes for a non-index path.
+        let normal = URL(fileURLWithPath: "/Users/x/Library/Caches/com.example.tool/blob")
+        XCTAssertTrue(ScanPolicy.matchesPersonaPath(normal, allowedMarkers: ["/library/caches/"]))
+    }
+
     /// R0.5 regression: folders owned by other rules must be excluded from
     /// UserCachesRule via the ScanPolicy ownership set (previously double-counted).
     func testUserCachesOwnershipSetCoversOtherRuleOwnedFolders() {

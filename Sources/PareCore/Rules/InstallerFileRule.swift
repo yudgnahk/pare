@@ -13,8 +13,8 @@ public struct InstallerFileRule: ScanRule {
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.80
 
-    // 7 days — gives users time to install before the file is flagged.
-    static let minimumAgeSeconds: TimeInterval = 7 * 24 * 60 * 60
+    // 7 days — gives users time to install before the file is flagged (ScanPolicy, R1.5).
+    static let minimumAgeSeconds = ScanPolicy.installerFileMinAgeSeconds
 
     public init() {}
 
