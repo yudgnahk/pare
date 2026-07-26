@@ -132,7 +132,11 @@ private struct DisplayScaleKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    var displayScale: DisplayScale {
+    /// Pare's window-driven type/density scale.
+    ///
+    /// Named `pareDisplayScale` so it no longer shadows SwiftUI's built-in
+    /// `\.displayScale` (`CGFloat` backing-scale factor).
+    var pareDisplayScale: DisplayScale {
         get { self[DisplayScaleKey.self] }
         set { self[DisplayScaleKey.self] = newValue }
     }
@@ -140,7 +144,7 @@ extension EnvironmentValues {
 
 // MARK: - Root injection
 
-/// Measures the window, multiplies by user zoom, and injects `displayScale`.
+/// Measures the window, multiplies by user zoom, and injects `pareDisplayScale`.
 struct DisplayScaleReader<Content: View>: View {
     @EnvironmentObject private var textZoom: TextZoomController
     @ViewBuilder let content: () -> Content
@@ -150,7 +154,7 @@ struct DisplayScaleReader<Content: View>: View {
 
     var body: some View {
         content()
-            .environment(\.displayScale, scale)
+            .environment(\.pareDisplayScale, scale)
             .background(
                 GeometryReader { geo in
                     Color.clear

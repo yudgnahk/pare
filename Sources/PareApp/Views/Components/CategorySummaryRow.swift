@@ -7,7 +7,7 @@ struct CategorySummaryRow: View {
     let fileCount: Int
     let share: Double
     let color: Color
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

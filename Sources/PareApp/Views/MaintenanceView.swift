@@ -3,7 +3,7 @@ import PareCore
 
 struct MaintenanceView: View {
     @StateObject private var viewModel = MaintenanceViewModel()
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         ZStack {
@@ -70,7 +70,7 @@ struct MaintenanceView: View {
 private struct ActionCard: View {
     let action: MaintenanceAction
     @ObservedObject var viewModel: MaintenanceViewModel
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     @State private var logExpanded = false
 

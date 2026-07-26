@@ -6,7 +6,7 @@ struct HeroScanView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
     var onOpenSettings: (() -> Void)? = nil
 
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var appeared = false
     @State private var floatOffset: CGFloat = 0
 

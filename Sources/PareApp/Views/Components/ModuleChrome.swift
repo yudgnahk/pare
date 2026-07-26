@@ -7,7 +7,7 @@ struct ModuleChrome<Content: View>: View {
     var systemImage: String? = nil
     @ViewBuilder var content: () -> Content
 
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

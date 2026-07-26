@@ -6,7 +6,7 @@ import PareCore
 struct ScanDashboardView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
     @StateObject private var exclusionListViewModel = ExclusionListViewModel()
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var showSettings = false
     @State private var showProjectPaths = false
     /// Expanded categories in Browse by category (folder list only — no per-file children).
@@ -496,7 +496,7 @@ struct ScanDashboardView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Circle()
-                            .fill(color(for: summary.category))
+                            .fill(CategoryStyle.tint(for: summary.category))
                             .frame(width: 8, height: 8)
 
                         Text(summary.category.rawValue)
@@ -897,43 +897,6 @@ struct ScanDashboardView: View {
         }
     }
 
-    private func color(for category: ScanCategory) -> Color {
-        switch category {
-        case .userCaches:
-            return AppTheme.accent
-        case .temporaryFiles:
-            return AppTheme.warning
-        case .logsAndCrashReports:
-            return AppTheme.review
-        case .browserCaches:
-            return AppTheme.success
-        case .developerBuildArtifacts:
-            return Color(red: 0.68, green: 0.57, blue: 0.96)
-        case .developerPackageCaches:
-            return Color(red: 0.50, green: 0.85, blue: 0.94)
-        case .developerSimulatorCaches:
-            return Color(red: 0.86, green: 0.66, blue: 0.44)
-        case .designerCaches:
-            return Color(red: 0.92, green: 0.62, blue: 0.41)
-        case .videoBuilderCaches:
-            return Color(red: 0.48, green: 0.77, blue: 0.61)
-        case .aiToolCaches:
-            return Color(red: 0.56, green: 0.76, blue: 0.98)
-        case .installerFiles:
-            return Color(red: 0.85, green: 0.75, blue: 0.45)
-        case .applications:
-            return Color(red: 0.72, green: 0.55, blue: 0.88)
-        case .projectArtifacts:
-            return Color(red: 0.94, green: 0.72, blue: 0.37)
-        case .deviceBackups:
-            return Color.indigo
-        case .productivityCaches:
-            return Color.teal
-        case .launchAgents:
-            return Color.orange
-        }
-    }
-
     private func placeholder(icon: String, title: String, message: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(title, systemImage: icon)
@@ -958,7 +921,7 @@ private struct CategoryFolderRowView: View, Equatable {
     let canReveal: Bool
     let onToggle: () -> Void
     let onReveal: () -> Void
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     static func == (lhs: CategoryFolderRowView, rhs: CategoryFolderRowView) -> Bool {
         lhs.row == rhs.row

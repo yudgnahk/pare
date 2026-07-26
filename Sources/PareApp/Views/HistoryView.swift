@@ -5,7 +5,7 @@ import PareCore
 
 struct HistoryView: View {
     @ObservedObject var viewModel: HistoryViewModel
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var expandedIDs: Set<UUID> = []
 
     var body: some View {

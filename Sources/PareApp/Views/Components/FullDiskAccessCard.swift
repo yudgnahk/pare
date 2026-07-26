@@ -16,7 +16,7 @@ struct FullDiskAccessCard: View {
     var onDismiss: (() -> Void)?
     var onRescan: (() -> Void)?
 
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         GlassCard(padding: 16) {

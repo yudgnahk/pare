@@ -3,7 +3,7 @@ import PareCore
 
 struct DiskAnalyzerView: View {
     @StateObject private var viewModel = DiskAnalyzerViewModel()
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         ZStack {
@@ -158,7 +158,7 @@ private struct DiskNodeRow: View {
     let formatBytes: (Int64) -> String
     let onReveal: () -> Void
     let onTrash: () -> Void
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     @State private var isHovered = false
 

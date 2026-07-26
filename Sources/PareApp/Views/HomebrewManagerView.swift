@@ -3,7 +3,7 @@ import PareCore
 
 struct HomebrewManagerView: View {
     @StateObject private var viewModel = HomebrewManagerViewModel()
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     /// Resets list scroll when search, tab, or dependency toggle changes.
     private var listResetToken: String {
@@ -742,7 +742,7 @@ private struct FormulaRow: View {
     let isSelected: Bool
     let onToggleSelection: () -> Void
     let onUninstall: () -> Void
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var isHovered = false
 
     private static let dateFormatter: DateFormatter = {
@@ -831,7 +831,7 @@ private struct CaskRow: View {
     let onToggleSelection: () -> Void
     let onLeaveHomebrew: () -> Void
     let onUninstall: () -> Void
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var isHovered = false
 
     private static let dateFormatter: DateFormatter = {
@@ -1014,7 +1014,7 @@ private struct OutdatedRow: View {
     var selectionEnabled: Bool = true
     let onToggleSelection: () -> Void
     let onUpgrade: () -> Void
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var isHovered = false
 
     var body: some View {
@@ -1105,7 +1105,7 @@ private struct MigrateCandidateRow: View {
     let isSelected: Bool
     let onToggleSelection: () -> Void
     let onMigrate: () -> Void
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var isHovered = false
 
     var body: some View {

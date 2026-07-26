@@ -46,7 +46,7 @@ struct PrimaryActionButton: View {
     var isEnabled: Bool = true
     let action: () -> Void
 
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var hovering = false
 
     var body: some View {
@@ -155,7 +155,7 @@ struct SecondaryActionButton: View {
         }
     }
 
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var hovering = false
 
     var body: some View {

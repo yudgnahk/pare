@@ -3,7 +3,7 @@ import SwiftUI
 /// Always-visible left navigation — fixed column, not collapsible SplitView.
 struct SidebarView: View {
     @Binding var selection: AppDestination
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

@@ -17,7 +17,7 @@ struct SelectableCandidateRow: View {
     var onExclude: (() -> Void)? = nil
     /// Folder-style leading icon when this row is a bulk folder group.
     var isFolder: Bool = false
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {

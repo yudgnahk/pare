@@ -10,7 +10,7 @@ struct LargeFileRow: View {
     let canReveal: Bool
     let onReveal: () -> Void
     var onExclude: (() -> Void)? = nil
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         ViewThatFits(in: .horizontal) {

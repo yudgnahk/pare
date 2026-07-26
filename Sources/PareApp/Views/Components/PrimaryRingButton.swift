@@ -7,7 +7,7 @@ struct PrimaryRingButton: View {
     var isEnabled: Bool = true
     let action: () -> Void
 
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var hovering = false
     @State private var pulsing = false
 

@@ -4,7 +4,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var textZoom: TextZoomController
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @StateObject private var exclusionVM = ExclusionListViewModel()
     @State private var showExclusions = false
     @State private var showProjectPaths = false

@@ -9,7 +9,7 @@ struct TopFileRow: View {
     let sizeText: String
     let lastUsedText: String
     var onExclude: (() -> Void)? = nil
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {

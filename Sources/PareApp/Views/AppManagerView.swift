@@ -4,7 +4,7 @@ import PareCore
 
 struct AppManagerView: View {
     @StateObject private var viewModel = AppManagerViewModel()
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     /// Token that changes when list membership / order inputs change so the
     /// scroll view can reset to a stable top origin instead of mid-list jumps.
@@ -386,7 +386,7 @@ private struct AppRow: View {
     var isUpdating: Bool = false
     var onUpdate: (() -> Void)? = nil
     let onUninstall: () -> Void
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var isHovered = false
 
     private static let dateFormatter: DateFormatter = {

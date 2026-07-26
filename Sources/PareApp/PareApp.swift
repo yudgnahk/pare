@@ -61,7 +61,7 @@ private struct MainShellView: View {
     @Binding var selection: AppDestination
     @ObservedObject var scanViewModel: ScanDashboardViewModel
     @ObservedObject var historyViewModel: HistoryViewModel
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         HStack(spacing: 0) {
