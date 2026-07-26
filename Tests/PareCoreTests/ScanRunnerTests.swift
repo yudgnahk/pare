@@ -38,7 +38,7 @@ final class ScanRunnerTests: XCTestCase {
     }
 
     func testBaselineRuleIncludesKnownRules() {
-        let rules = [any ScanRule].baseline
+        let rules = RuleCatalog.baseline
         XCTAssertEqual(rules.count, 12, "Baseline includes core + Phase 5–8 additions")
         XCTAssertTrue(rules.contains(where: { $0.id == "user-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "temporary-files" }))
@@ -131,7 +131,7 @@ final class ScanRunnerTests: XCTestCase {
     }
 
     func testDeveloperRuleCatalogIncludesPersonaRules() {
-        let rules = [any ScanRule].developer
+        let rules = RuleCatalog.developer
         XCTAssertTrue(rules.contains(where: { $0.id == "xcode-derived-data" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "xcode-archives" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "package-manager-caches" }))
@@ -149,7 +149,7 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-vm-data-advanced" }))
         // Orphaned logs-only rule is not registered; DockerStorageRule covers logs + VM visibility.
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-logs-review-required" }))
-        XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
+        XCTAssertTrue(rules.count > RuleCatalog.baseline.count)
     }
 
     func testVSCodeCachesRuleIncludesOnlySafeDeveloperMarkers() {
@@ -256,17 +256,17 @@ final class ScanRunnerTests: XCTestCase {
     }
 
     func testDesignerRuleCatalogIncludesPersonaRules() {
-        let rules = [any ScanRule].designer
+        let rules = RuleCatalog.designer
         XCTAssertTrue(rules.contains(where: { $0.id == "designer-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "designer-review-required-media" }))
-        XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
+        XCTAssertTrue(rules.count > RuleCatalog.baseline.count)
     }
 
     func testVideoBuilderRuleCatalogIncludesPersonaRules() {
-        let rules = [any ScanRule].videoBuilder
+        let rules = RuleCatalog.videoBuilder
         XCTAssertTrue(rules.contains(where: { $0.id == "video-builder-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "video-builder-review-required-media" }))
-        XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
+        XCTAssertTrue(rules.count > RuleCatalog.baseline.count)
     }
 
     func testDesignerRulesRespectPathAndRiskPolicy() {

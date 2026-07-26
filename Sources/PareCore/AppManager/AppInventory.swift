@@ -84,7 +84,7 @@ public actor AppInventory {
         ) else { return [] }
 
         var result: [InstalledApp] = []
-        let isSystem = directory.path.hasPrefix("/System/")
+        let isSystem = ScanPolicy.isSystemApp(directory)
 
         for case let url as URL in enumerator {
             guard url.pathExtension == "app" else { continue }
@@ -182,7 +182,7 @@ public actor AppInventory {
             installDate: installDate,
             lastUsed: lastUsed,
             isMAS: isMAS,
-            isSystemApp: isSystem || url.path.hasPrefix("/System/")
+            isSystemApp: isSystem || ScanPolicy.isSystemApp(url)
         )
     }
 

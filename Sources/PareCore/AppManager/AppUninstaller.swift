@@ -82,7 +82,7 @@ public struct AppUninstaller: Sendable {
                     path: fullPath,
                     sizeBytes: size,
                     category: .groupContainers,
-                    isGroupContainer: true
+                    isGroupContainer: ScanPolicy.isGroupContainer(URL(fileURLWithPath: fullPath))
                 ))
             }
         }

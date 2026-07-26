@@ -293,9 +293,7 @@ struct AppManagerView: View {
     }
 
     private var emptyIcon: String {
-        if viewModel.showOnlyOutdated { return "checkmark.seal" }
-        if !viewModel.searchText.isEmpty { return "magnifyingglass" }
-        return "magnifyingglass"
+        viewModel.showOnlyOutdated ? "checkmark.seal" : "magnifyingglass"
     }
 
     private var emptyMessage: String {

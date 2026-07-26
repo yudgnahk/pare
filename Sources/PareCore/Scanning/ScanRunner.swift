@@ -122,21 +122,3 @@ public struct ScanRunner: Sendable {
         return rule.include(fileURL: file.url, resourceValues: values)
     }
 }
-
-public extension Array where Element == any ScanRule {
-    static var baseline: [any ScanRule] {
-        RuleCatalog.baseline
-    }
-
-    static var developer: [any ScanRule] {
-        RuleCatalog.developer
-    }
-
-    static var designer: [any ScanRule] {
-        RuleCatalog.designer
-    }
-
-    static var videoBuilder: [any ScanRule] {
-        RuleCatalog.videoBuilder
-    }
-}
