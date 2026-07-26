@@ -38,7 +38,7 @@ public struct DockerStorageRule: ScanRule {
             // Belt-and-suspenders if path layout ever changes.
             guard !ScanPolicy.isDockerNeverDeletePath(url) else { continue }
 
-            let size = FileSystemUtils.directorySize(url: url)
+            let size = environment.sizeIndex.directorySize(url: url)
             guard size > 0 else { continue }
             let resourceValues = try? url.resourceValues(forKeys: [.contentModificationDateKey])
             let lastUsed = resourceValues?.contentModificationDate

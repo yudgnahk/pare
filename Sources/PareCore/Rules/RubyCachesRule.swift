@@ -33,21 +33,25 @@ public struct RubyCachesRule: ScanRule {
                 guard (try? versionDir.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
                 else { continue }
                 let cacheDir = versionDir.appending(path: "cache")
-                appendFinding(for: cacheDir, to: &findings)
+                appendFinding(for: cacheDir, sizeIndex: environment.sizeIndex, to: &findings)
             }
         }
 
         // Fixed dotfile cache dirs
         for path in [".bundle/cache", ".rbenv/cache"] {
-            appendFinding(for: home.appending(path: path), to: &findings)
+            appendFinding(for: home.appending(path: path), sizeIndex: environment.sizeIndex, to: &findings)
         }
 
         return findings
     }
 
-    private func appendFinding(for url: URL, to findings: inout [ScanFinding]) {
+    private func appendFinding(
+        for url: URL,
+        sizeIndex: DirectorySizeIndex,
+        to findings: inout [ScanFinding]
+    ) {
         guard FileManager.default.fileExists(atPath: url.path) else { return }
-        let size = FileSystemUtils.directorySize(url: url)
+        let size = sizeIndex.directorySize(url: url)
         guard size > 0 else { return }
         let lastUsed = try? url
             .resourceValues(forKeys: [.contentModificationDateKey])

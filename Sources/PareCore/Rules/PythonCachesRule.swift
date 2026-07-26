@@ -29,7 +29,7 @@ public struct PythonCachesRule: ScanRule {
         var findings: [ScanFinding] = []
         for target in targets {
             guard FileManager.default.fileExists(atPath: target.path) else { continue }
-            let size = FileSystemUtils.directorySize(url: target)
+            let size = environment.sizeIndex.directorySize(url: target)
             guard size > 0 else { continue }
             let lastUsed = try? target
                 .resourceValues(forKeys: [.contentModificationDateKey])

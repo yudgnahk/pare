@@ -39,7 +39,14 @@ public struct ProjectArtifactRule: ScanRule {
         for root in roots {
             if Task.isCancelled { break }
             let rootURL = URL(fileURLWithPath: root)
-            await walk(directory: rootURL, depth: 0, maxDepth: 5, minAge: minAge, findings: &findings)
+            await walk(
+                directory: rootURL,
+                depth: 0,
+                maxDepth: 5,
+                minAge: minAge,
+                sizeIndex: environment.sizeIndex,
+                findings: &findings
+            )
         }
 
         return findings
@@ -52,6 +59,7 @@ public struct ProjectArtifactRule: ScanRule {
         depth: Int,
         maxDepth: Int,
         minAge: TimeInterval?,
+        sizeIndex: DirectorySizeIndex,
         findings: inout [ScanFinding]
     ) async {
         guard depth < maxDepth, !Task.isCancelled else { return }
@@ -86,7 +94,7 @@ public struct ProjectArtifactRule: ScanRule {
                     if let date = effectiveDate, Date().timeIntervalSince(date) < minAge { continue }
                 }
 
-                let size = FileSystemUtils.directorySize(url: item)
+                let size = sizeIndex.directorySize(url: item)
                 guard size > 0 else { continue }
 
                 let lastUsed = values.contentModificationDate
@@ -103,7 +111,14 @@ public struct ProjectArtifactRule: ScanRule {
                 // Don't recurse into matched artifact directories.
             } else if !rawName.hasPrefix(".") {
                 // Recurse into visible dirs; skip unknown hidden dirs.
-                await walk(directory: item, depth: depth + 1, maxDepth: maxDepth, minAge: minAge, findings: &findings)
+                await walk(
+                    directory: item,
+                    depth: depth + 1,
+                    maxDepth: maxDepth,
+                    minAge: minAge,
+                    sizeIndex: sizeIndex,
+                    findings: &findings
+                )
             }
         }
     }

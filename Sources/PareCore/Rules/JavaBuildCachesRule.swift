@@ -45,7 +45,7 @@ public struct JavaBuildCachesRule: ScanRule {
         for target in targets {
             let url = home.appending(path: target.path)
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            let size = FileSystemUtils.directorySize(url: url)
+            let size = environment.sizeIndex.directorySize(url: url)
             guard size > 0 else { continue }
             let lastUsed = try? url
                 .resourceValues(forKeys: [.contentModificationDateKey])

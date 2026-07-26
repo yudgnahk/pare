@@ -41,10 +41,17 @@ public struct ScanRunner: Sendable {
         var findings: [ScanFinding] = []
         var grouped: [ScanCategory: (Int64, Int)] = [:]
         let total = rules.count
+        // Fresh per-scan size index: rules sizing overlapping trees share one
+        // walk per directory within this run, but never across runs.
+        let runEnvironment = environment.withFreshSizeIndex()
 
         for (index, rule) in rules.enumerated() {
             guard !Task.isCancelled else { break }
-            let (ruleFindings, ruleGrouped) = await runRule(rule, traversal: effectiveTraversal)
+            let (ruleFindings, ruleGrouped) = await runRule(
+                rule,
+                environment: runEnvironment,
+                traversal: effectiveTraversal
+            )
             findings.append(contentsOf: ruleFindings)
             for (category, value) in ruleGrouped {
                 let current = grouped[category] ?? (0, 0)
@@ -68,6 +75,7 @@ public struct ScanRunner: Sendable {
 
     private func runRule(
         _ rule: any ScanRule,
+        environment: ScanEnvironment,
         traversal: any FileTraversing
     ) async -> ([ScanFinding], [ScanCategory: (Int64, Int)]) {
         var localFindings: [ScanFinding] = []

@@ -28,14 +28,32 @@ public extension ScanRule {
 public struct ScanEnvironment: Sendable {
     public let homeDirectory: URL
     public let tempDirectory: URL
+    /// Memoized directory sizing shared by all rules within one scan.
+    /// `ScanRunner.run` swaps in a fresh index per run via `withFreshSizeIndex()`
+    /// so sizes are never reused across scans.
+    public let sizeIndex: DirectorySizeIndex
 
-    public init(homeDirectory: URL, tempDirectory: URL = FileManager.default.temporaryDirectory) {
+    public init(
+        homeDirectory: URL,
+        tempDirectory: URL = FileManager.default.temporaryDirectory,
+        sizeIndex: DirectorySizeIndex = DirectorySizeIndex()
+    ) {
         self.homeDirectory = homeDirectory
         self.tempDirectory = tempDirectory
+        self.sizeIndex = sizeIndex
     }
 
     public static func current() -> ScanEnvironment {
         ScanEnvironment(homeDirectory: FileManager.default.homeDirectoryForCurrentUser)
+    }
+
+    /// Copy of this environment with an empty size index (per-scan memoization).
+    public func withFreshSizeIndex() -> ScanEnvironment {
+        ScanEnvironment(
+            homeDirectory: homeDirectory,
+            tempDirectory: tempDirectory,
+            sizeIndex: DirectorySizeIndex()
+        )
     }
 }
 

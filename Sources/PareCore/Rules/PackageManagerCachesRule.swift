@@ -34,7 +34,8 @@ public struct PackageManagerCachesRule: ScanRule {
                 category: category,
                 riskLevel: riskLevel,
                 reason: entry.reason,
-                confidence: confidence
+                confidence: confidence,
+                sizeIndex: environment.sizeIndex
             )
         }
 
@@ -53,7 +54,8 @@ public struct PackageManagerCachesRule: ScanRule {
                     category: category,
                     riskLevel: riskLevel,
                     reason: "npx package extract cache — reconstructible on next npx run",
-                    confidence: confidence
+                    confidence: confidence,
+                    sizeIndex: environment.sizeIndex
                 )
             }
         }
@@ -66,7 +68,8 @@ public struct PackageManagerCachesRule: ScanRule {
         category: ScanCategory,
         riskLevel: RiskLevel,
         reason: String,
-        confidence: Double
+        confidence: Double,
+        sizeIndex: DirectorySizeIndex
     ) -> [ScanFinding] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         guard ScanPolicy.passesUnusedAge(
@@ -74,7 +77,7 @@ public struct PackageManagerCachesRule: ScanRule {
             minimumAgeSeconds: ScanPolicy.reconstructibleCacheMinAgeSeconds
         ) else { return [] }
 
-        let size = FileSystemUtils.directorySize(url: url)
+        let size = sizeIndex.directorySize(url: url)
         guard size > 0 else { return [] }
 
         let lastUsed = try? url

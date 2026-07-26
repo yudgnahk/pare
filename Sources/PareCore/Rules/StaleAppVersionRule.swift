@@ -74,7 +74,7 @@ public struct StaleAppVersionRule: ScanRule {
             for older in sorted.dropFirst() {
                 let res = try? older.url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
                 let modDate = res?.contentModificationDate
-                let size = FileSystemUtils.directorySize(url: older.url)
+                let size = environment.sizeIndex.directorySize(url: older.url)
                 findings.append(ScanFinding(
                     category: category,
                     riskLevel: riskLevel,
