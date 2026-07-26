@@ -840,8 +840,8 @@ struct ScanDashboardView: View {
     }
 
     private func isLikelyFolderFinding(_ finding: ScanDashboardViewModel.FindingItem) -> Bool {
-        var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: finding.path, isDirectory: &isDir) && isDir.boolValue
+        // Precomputed at scan finish — no FileManager calls during body evaluation.
+        viewModel.isFolderFinding(path: finding.path)
     }
 
     private func selectionIcon(_ state: ScanDashboardViewModel.CategorySelectState) -> String {
