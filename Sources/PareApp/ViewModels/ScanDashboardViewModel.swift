@@ -501,11 +501,8 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Largest reclaimable findings by size, then ordered SAFE group → REVIEW group
     /// (each group still size-sorted) so both risk tiers appear when they make the cut.
     nonisolated static func largestItemsSorted(from findings: [ScanFinding], limit: Int) -> [FindingItem] {
-        let reclaimable = findings.filter { $0.riskLevel != .advanced }
-        let top = reclaimable.sorted { $0.sizeBytes > $1.sizeBytes }.prefix(limit)
-        let safe = top.filter { $0.riskLevel == .safe }
-        let review = top.filter { $0.riskLevel == .review }
-        return (safe + review).map(FindingItem.init(finding:))
+        ScanReportPresenter.largestItems(from: findings, limit: limit)
+            .map(FindingItem.init(finding:))
     }
 
     func abbreviatedPath(_ path: String) -> String {
@@ -1116,10 +1113,7 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     func formattedBytes(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+        ScanReportPresenter.formatBytes(bytes)
     }
 
     func formattedDate(_ date: Date?) -> String {
