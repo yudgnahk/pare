@@ -346,8 +346,11 @@ final class HomebrewManagerViewModel: ObservableObject {
                     cask: cask,
                     forceQuitRunning: forceQuit
                 ) { [weak self] line in
+                    // Bind before the inner Task: capturing the weak `self` var
+                    // directly is a strict-concurrency error on older toolchains.
+                    guard let self else { return }
                     Task { @MainActor in
-                        self?.appendLog(line)
+                        self.appendLog(line)
                     }
                 }
                 self.casks.removeAll { $0.token == result.token }

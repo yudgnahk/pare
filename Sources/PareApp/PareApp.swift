@@ -80,6 +80,10 @@ private struct MainShellView: View {
         .ignoresSafeArea()
     }
 
+    // Explicitly main-actor isolated: the destination views are @MainActor, and
+    // older Swift toolchains do not infer isolation for a computed property
+    // outside `body` (errors under strict concurrency on the macOS 13/14 CI legs).
+    @MainActor
     @ViewBuilder
     private var detailContent: some View {
         switch selection {
