@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build & test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-13, macos-14, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build (all targets)
+        run: swift build --build-tests
+
+      - name: Test
+        run: swift test
+
+  coverage:
+    name: Coverage report
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test with coverage
+        run: swift test --enable-code-coverage
+
+      - name: Coverage summary
+        run: |
+          BIN_PATH="$(swift build --show-bin-path)"
+          PROFDATA="$BIN_PATH/codecov/default.profdata"
+          TEST_BINARY="$(find "$BIN_PATH" -name 'ParePackageTests' -type f -path '*.xctest*' | head -n 1)"
+          if [[ -z "$TEST_BINARY" || ! -f "$PROFDATA" ]]; then
+            echo "Coverage artifacts not found (bin: $BIN_PATH)" >&2
+            exit 1
+          fi
+          xcrun llvm-cov report \
+            "$TEST_BINARY" \
+            -instr-profile="$PROFDATA" \
+            -ignore-filename-regex='(Tests|\.build)/' \
+            | tee coverage-summary.txt
+
+      - name: Upload coverage summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage-summary.txt
