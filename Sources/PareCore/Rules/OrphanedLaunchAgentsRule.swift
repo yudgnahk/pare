@@ -62,7 +62,7 @@ public struct OrphanedLaunchAgentsRule: ScanRule {
             ))
         }
 
-        return findings.isEmpty ? nil : findings
+        return findings
     }
 
     // MARK: - Private

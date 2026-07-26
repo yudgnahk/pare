@@ -60,7 +60,7 @@ public struct ProductivityCachesRule: ScanRule {
             minAgeDays: 30
         )
 
-        return findings.isEmpty ? nil : findings
+        return findings
     }
 
     // MARK: - Private

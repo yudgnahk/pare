@@ -156,7 +156,7 @@ public struct MaintenanceRunner: Sendable {
                         continuation.yield("  ✓ \(label) done.")
                     } catch let err as MaintenanceError {
                         // sqlite3 VACUUM on a locked db exits non-zero; treat as warning
-                        continuation.yield("  ⚠ \(label): \(err.localizedDescription ?? "")")
+                        continuation.yield("  ⚠ \(label): \(err.localizedDescription)")
                     }
                 }
 

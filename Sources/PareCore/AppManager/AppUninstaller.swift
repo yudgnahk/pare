@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 /// Scans for per-app leftover files and moves the app + leftovers to Trash.
-/// Never uses FileManager.removeItem — always NSWorkspace.recycle.
+/// Never permanently deletes — always FileManager.trashItem (move to Trash).
 public struct AppUninstaller: Sendable {
 
     public init() {}
