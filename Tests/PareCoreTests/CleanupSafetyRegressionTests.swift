@@ -259,6 +259,47 @@ final class CleanupSafetyRegressionTests: XCTestCase {
                       "skip-only run must not persist an empty undo record")
     }
 
+    // MARK: - R0.7: undo honesty
+
+    /// Restore failures must be reported with reasons — never silently dropped.
+    func testRestoreReportsFailureWhenTrashItemMissing() async {
+        let engine = makeEngine()
+        let item = CleanupItem(
+            originalPath: root.appending(path: "gone.bin").path,
+            trashedPath: root.appending(path: "not-in-trash.bin").path,
+            sizeBytes: 10,
+            reason: "test",
+            riskLevel: .safe
+        )
+        let tx = CleanupTransaction(profileName: "test", isDryRun: false, items: [item])
+
+        let (restored, failed) = await engine.restore(transaction: tx)
+
+        XCTAssertTrue(restored.isEmpty)
+        XCTAssertEqual(failed.count, 1)
+        XCTAssertFalse(failed[0].reason.isEmpty, "restore failure must carry a reason")
+    }
+
+    /// Single-item restore throws (with the real reason) instead of returning false.
+    func testRestoreItemThrowsWithoutRecordedTrashPath() async {
+        let engine = makeEngine()
+        let item = CleanupItem(
+            originalPath: root.appending(path: "orphan.bin").path,
+            trashedPath: nil,
+            sizeBytes: 10,
+            reason: "test",
+            riskLevel: .safe
+        )
+
+        do {
+            try await engine.restoreItem(item)
+            XCTFail("restoreItem must throw when no Trash path was recorded")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Cannot restore"),
+                          error.localizedDescription)
+        }
+    }
+
     // MARK: - R0.3: fail-closed age gates
 
     /// Unreadable attributes must block the unused-age check (previously passed open).

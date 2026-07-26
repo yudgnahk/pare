@@ -353,14 +353,18 @@ struct ScanDashboardView: View {
                 }
             }
 
-        case .undone(let restoredCount):
+        case .undone(let restoredCount, let failedCount):
             GlassCard {
                 HStack(spacing: 14) {
-                    Image(systemName: "arrow.uturn.backward.circle.fill")
-                        .foregroundStyle(AppTheme.warning)
+                    Image(systemName: failedCount > 0
+                          ? "exclamationmark.triangle.fill"
+                          : "arrow.uturn.backward.circle.fill")
+                        .foregroundStyle(failedCount > 0 ? AppTheme.review : AppTheme.warning)
                         .font(.system(size: 22))
 
-                    Text("\(restoredCount) file\(restoredCount == 1 ? "" : "s") restored.")
+                    Text(failedCount > 0
+                         ? "Restored \(restoredCount) of \(restoredCount + failedCount) files — \(failedCount) could not be restored (check the Trash)."
+                         : "\(restoredCount) file\(restoredCount == 1 ? "" : "s") restored.")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppTheme.textPrimary)
 

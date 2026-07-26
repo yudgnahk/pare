@@ -15,7 +15,7 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case fileNotFound(String)
     /// The Trash move failed with an underlying system error.
     case trashFailed(String, Error)
-    /// Undo failed because the Trash item no longer exists.
+    /// Undo failed — the associated value describes what went wrong.
     case restoreFailed(String)
 
     public var errorDescription: String? {
@@ -32,8 +32,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "File not found: \(path)"
         case .trashFailed(let path, let error):
             return "Failed to move to Trash: \(path) — \(error.localizedDescription)"
-        case .restoreFailed(let path):
-            return "Cannot restore — Trash item no longer exists: \(path)"
+        case .restoreFailed(let reason):
+            return "Cannot restore — \(reason)"
         }
     }
 }
@@ -340,63 +340,58 @@ public actor CleanupEngine {
     /// Restores all items from a previously recorded transaction by moving them
     /// out of the Trash back to their original locations.
     ///
-    /// Items where the Trash path no longer exists are reported in `skipped`.
-    public func restore(transaction: CleanupTransaction) async -> (restored: [String], skipped: [String]) {
+    /// Items that could not be restored are reported in `failed`, each with a reason
+    /// (undo honesty — callers must not present a failed restore as success).
+    public func restore(
+        transaction: CleanupTransaction
+    ) async -> (restored: [String], failed: [(path: String, reason: String)]) {
         guard !transaction.isDryRun else {
-            return ([], transaction.items.map(\.originalPath))
+            return ([], transaction.items.map { ($0.originalPath, "Dry-run transaction — nothing was trashed") })
         }
 
         var restored: [String] = []
-        var skipped: [String] = []
+        var failed: [(path: String, reason: String)] = []
 
         for item in transaction.items {
-            guard let trashedPath = item.trashedPath else {
-                skipped.append(item.originalPath)
-                continue
-            }
-
-            let trashURL = URL(fileURLWithPath: trashedPath)
-            let destinationURL = URL(fileURLWithPath: item.originalPath)
-
-            guard FileManager.default.fileExists(atPath: trashedPath) else {
-                skipped.append(item.originalPath)
-                continue
-            }
-
-            // Create parent directory if needed.
-            let parentDir = destinationURL.deletingLastPathComponent()
-            try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
-
             do {
-                try FileManager.default.moveItem(at: trashURL, to: destinationURL)
+                try restoreFromTrash(item)
                 restored.append(item.originalPath)
             } catch {
-                skipped.append(item.originalPath)
+                failed.append((item.originalPath, error.localizedDescription))
             }
         }
 
-        return (restored, skipped)
+        return (restored, failed)
     }
 
     // MARK: - Single-item restore
 
     /// Restores one item from the Trash to its original path.
-    /// Returns `true` when the move succeeded.
-    public func restoreItem(_ item: CleanupItem) async -> Bool {
-        guard let trashedPath = item.trashedPath else { return false }
+    /// Throws `CleanupError.restoreFailed` with the underlying reason on failure.
+    public func restoreItem(_ item: CleanupItem) async throws {
+        try restoreFromTrash(item)
+    }
+
+    /// Shared restore primitive — moves one trashed item back to its original path.
+    private func restoreFromTrash(_ item: CleanupItem) throws {
+        guard let trashedPath = item.trashedPath else {
+            throw CleanupError.restoreFailed("No Trash location was recorded for \(item.originalPath)")
+        }
         let trashURL = URL(fileURLWithPath: trashedPath)
         let destinationURL = URL(fileURLWithPath: item.originalPath)
 
-        guard FileManager.default.fileExists(atPath: trashedPath) else { return false }
+        guard FileManager.default.fileExists(atPath: trashedPath) else {
+            throw CleanupError.restoreFailed("Trash item no longer exists for \(item.originalPath)")
+        }
 
+        // Create parent directory if needed — a failure here surfaces via the move below.
         let parentDir = destinationURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
 
         do {
             try FileManager.default.moveItem(at: trashURL, to: destinationURL)
-            return true
         } catch {
-            return false
+            throw CleanupError.restoreFailed("\(item.originalPath): \(error.localizedDescription)")
         }
     }
 
