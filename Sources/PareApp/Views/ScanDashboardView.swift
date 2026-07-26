@@ -45,13 +45,25 @@ struct ScanDashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // No global animations on the results tree — they re-run during scroll and lag hard.
         .sheet(isPresented: $viewModel.showCleanConfirmation) {
-            QuickCleanConfirmationSheet(viewModel: viewModel)
+            CleanConfirmationSheet(
+                config: quickCleanConfig,
+                onCancel: { viewModel.cancelCleanup() },
+                onConfirm: { viewModel.confirmQuickClean() }
+            )
         }
         .sheet(isPresented: $viewModel.showDeepCleanConfirmation) {
-            DeepCleanConfirmationSheet(viewModel: viewModel)
+            CleanConfirmationSheet(
+                config: deepCleanConfig,
+                onCancel: { viewModel.cancelDeepClean() },
+                onConfirm: { viewModel.confirmDeepClean() }
+            )
         }
         .sheet(isPresented: $viewModel.showSelectedCleanConfirmation) {
-            SelectedCleanConfirmationSheet(viewModel: viewModel)
+            CleanConfirmationSheet(
+                config: selectedCleanConfig,
+                onCancel: { viewModel.cancelSelectedClean() },
+                onConfirm: { viewModel.confirmCleanSelected() }
+            )
         }
         .sheet(isPresented: $showSettings) {
             ExclusionListView(viewModel: exclusionListViewModel)
@@ -292,115 +304,40 @@ struct ScanDashboardView: View {
             EmptyView()
 
         case .cleaning:
-            GlassCard {
-                HStack(spacing: 14) {
-                    ProgressView()
-                        .scaleEffect(0.85)
-                    Text("Moving files to Trash…")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                    Spacer()
-                }
-            }
+            StatusBanner(kind: .progress, title: "Moving files to Trash…")
 
         case .done(let bytesFreed, let skippedCount):
-            GlassCard {
-                HStack(spacing: 14) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(AppTheme.success)
-                        .font(.system(size: 22))
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Cleaned \(viewModel.formattedBytes(bytesFreed))")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        if skippedCount > 0 {
-                            Text("\(skippedCount) items skipped (policy check).")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-                    }
-
-                    Spacer()
-
-                    if viewModel.canUndo {
-                        Button("Undo") { viewModel.undoLastCleanup() }
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(AppTheme.accent)
-                    }
-
-                    Button {
-                        viewModel.dismissCleanupResult()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                    .buttonStyle(.borderless)
+            StatusBanner(
+                kind: .success,
+                title: "Cleaned \(viewModel.formattedBytes(bytesFreed))",
+                detail: skippedCount > 0 ? "\(skippedCount) items skipped (policy check)." : nil,
+                onDismiss: { viewModel.dismissCleanupResult() }
+            ) {
+                if viewModel.canUndo {
+                    Button("Undo") { viewModel.undoLastCleanup() }
+                        .buttonStyle(.borderless)
+                        .font(scale.font(13, weight: .semibold))
+                        .foregroundStyle(AppTheme.accent)
                 }
             }
 
         case .undoing:
-            GlassCard {
-                HStack(spacing: 14) {
-                    ProgressView()
-                        .scaleEffect(0.85)
-                    Text("Restoring files from Trash…")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                    Spacer()
-                }
-            }
+            StatusBanner(kind: .progress, title: "Restoring files from Trash…")
 
         case .undone(let restoredCount):
-            GlassCard {
-                HStack(spacing: 14) {
-                    Image(systemName: "arrow.uturn.backward.circle.fill")
-                        .foregroundStyle(AppTheme.warning)
-                        .font(.system(size: 22))
-
-                    Text("\(restoredCount) file\(restoredCount == 1 ? "" : "s") restored.")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        viewModel.dismissCleanupResult()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                    .buttonStyle(.borderless)
-                }
-            }
+            StatusBanner(
+                kind: .warning,
+                title: "\(restoredCount) file\(restoredCount == 1 ? "" : "s") restored.",
+                icon: "arrow.uturn.backward.circle.fill",
+                onDismiss: { viewModel.dismissCleanupResult() }
+            )
 
         case .error(let message):
-            GlassCard {
-                HStack(spacing: 14) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(AppTheme.review)
-                        .font(.system(size: 22))
-
-                    Text(message)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .lineLimit(3)
-
-                    Spacer()
-
-                    Button {
-                        viewModel.dismissCleanupResult()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                    .buttonStyle(.borderless)
-                }
-            }
+            StatusBanner(
+                kind: .error,
+                title: message,
+                onDismiss: { viewModel.dismissCleanupResult() }
+            )
         }
     }
 
@@ -452,10 +389,11 @@ struct ScanDashboardView: View {
                 }
 
                 if viewModel.summaries.isEmpty {
-                    placeholder(
+                    EmptyStateView(
                         icon: "tray",
                         title: "No scan results yet",
-                        message: "Start a scan to browse reclaimable storage by category."
+                        message: "Start a scan to browse reclaimable storage by category.",
+                        layout: .inline
                     )
                 } else {
                     // Keep collapsed by default — only expanded categories show folder rows.
@@ -475,60 +413,27 @@ struct ScanDashboardView: View {
         let selectionState = viewModel.categorySelectionState(summary.category)
 
         return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Button {
-                    viewModel.toggleCategory(summary.category)
-                } label: {
-                    Image(systemName: selectionIcon(selectionState))
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(AppTheme.accent)
-                        .frame(width: 20)
-                }
-                .buttonStyle(.plain)
-                .help("Toggle all SAFE folders in this category")
-
-                Button {
+            DisclosureSelectRow(
+                style: .category,
+                title: summary.category.rawValue,
+                badgeText: categoryBadge(summary),
+                sizeText: viewModel.formattedBytes(summary.reclaimableBytes),
+                isExpanded: isExpanded,
+                selection: triState(selectionState),
+                selectHelp: "Toggle all SAFE folders in this category",
+                onToggleSelect: { viewModel.toggleCategory(summary.category) },
+                onToggleExpand: {
                     if isExpanded {
                         expandedCategories.remove(key)
                     } else {
                         expandedCategories.insert(key)
                     }
-                } label: {
-                    HStack(spacing: 10) {
-                        Circle()
-                            .fill(CategoryStyle.tint(for: summary.category))
-                            .frame(width: 8, height: 8)
-
-                        Text(summary.category.rawValue)
-                            .font(scale.rowTitle)
-                            .foregroundStyle(AppTheme.textPrimary)
-                            .lineLimit(1)
-
-                        Text(categoryBadge(summary))
-                            .font(scale.micro)
-                            .foregroundStyle(AppTheme.textTertiary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.08), in: Capsule())
-
-                        Spacer(minLength: 8)
-
-                        Text(viewModel.formattedBytes(summary.reclaimableBytes))
-                            .font(scale.font(14, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppTheme.textPrimary)
-                            .lineLimit(1)
-                            .layoutPriority(1)
-
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(scale.micro)
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .frame(width: 12)
-                    }
                 }
-                .buttonStyle(.plain)
+            ) {
+                Circle()
+                    .fill(CategoryStyle.tint(for: summary.category))
+                    .frame(width: 8, height: 8)
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 4)
 
             if isExpanded {
                 if viewModel.usesToolGrouping(for: summary.category) {
@@ -601,65 +506,29 @@ struct ScanDashboardView: View {
         let selectionState = viewModel.toolGroupSelectionState(group)
 
         return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Button {
-                    viewModel.toggleToolGroup(group)
-                } label: {
-                    Image(systemName: selectionIcon(selectionState))
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(group.isSelectable ? AppTheme.accent : AppTheme.textTertiary)
-                        .frame(width: 20)
-                }
-                .buttonStyle(.plain)
-                .disabled(!group.isSelectable)
-                .help("Select all folders under \(group.toolName)")
-
-                Button {
+            DisclosureSelectRow(
+                style: .tool,
+                title: group.toolName,
+                badgeText: "\(group.folderCount) folders",
+                sizeText: viewModel.formattedBytes(group.totalBytes),
+                isExpanded: isExpanded,
+                selection: triState(selectionState),
+                isSelectable: group.isSelectable,
+                selectHelp: "Select all folders under \(group.toolName)",
+                onToggleSelect: { viewModel.toggleToolGroup(group) },
+                onToggleExpand: {
                     if isExpanded {
                         expandedToolGroups.remove(group.id)
                     } else {
                         expandedToolGroups.insert(group.id)
                     }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: toolIcon(for: group.toolName))
-                            .font(scale.font(12, weight: .semibold))
-                            .foregroundStyle(AppTheme.accent)
-                            .frame(width: 18)
-
-                        Text(group.toolName)
-                            .font(scale.rowTitle)
-                            .foregroundStyle(AppTheme.textPrimary)
-                            .lineLimit(1)
-
-                        Text("\(group.folderCount) folders")
-                            .font(scale.micro)
-                            .foregroundStyle(AppTheme.textTertiary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.08), in: Capsule())
-
-                        Spacer(minLength: 6)
-
-                        Text(viewModel.formattedBytes(group.totalBytes))
-                            .font(scale.font(13, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppTheme.textPrimary)
-                            .lineLimit(1)
-                            .layoutPriority(1)
-
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(scale.micro)
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
                 }
-                .buttonStyle(.plain)
+            ) {
+                Image(systemName: toolIcon(for: group.toolName))
+                    .font(scale.font(12, weight: .semibold))
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(width: 18)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 7)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .fill(AppTheme.panelSecondary.opacity(0.65))
-            )
 
             if isExpanded {
                 let rows = viewModel.folderRows(for: group)
@@ -748,21 +617,17 @@ struct ScanDashboardView: View {
                 }
 
                 if let feedback = viewModel.revealFeedback {
-                    Label(feedback, systemImage: "exclamationmark.triangle")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(AppTheme.warning)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    StatusBanner(kind: .warning, title: feedback, style: .inline)
                 }
 
                 let safeItems = viewModel.largestSafeItems
                 let reviewItems = viewModel.largestReviewItems
                 if safeItems.isEmpty && reviewItems.isEmpty {
-                    placeholder(
+                    EmptyStateView(
                         icon: "doc.text.magnifyingglass",
                         title: "Nothing to review yet",
-                        message: "Largest candidates appear after a completed scan."
+                        message: "Largest candidates appear after a completed scan.",
+                        layout: .inline
                     )
                 } else {
                     LazyVStack(alignment: .leading, spacing: 10) {
@@ -844,11 +709,11 @@ struct ScanDashboardView: View {
         return FileManager.default.fileExists(atPath: finding.path, isDirectory: &isDir) && isDir.boolValue
     }
 
-    private func selectionIcon(_ state: ScanDashboardViewModel.CategorySelectState) -> String {
+    private func triState(_ state: ScanDashboardViewModel.CategorySelectState) -> TriSelectionState {
         switch state {
-        case .all: return "checkmark.circle.fill"
-        case .partial: return "minus.circle.fill"
-        case .none: return "circle"
+        case .all: return .all
+        case .partial: return .partial
+        case .none: return .none
         }
     }
 
@@ -897,19 +762,6 @@ struct ScanDashboardView: View {
         }
     }
 
-    private func placeholder(icon: String, title: String, message: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(AppTheme.textPrimary)
-            Text(message)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(AppTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
 }
 
 // MARK: - CategoryFolderRowView (lightweight, equatable inputs)
@@ -1027,283 +879,137 @@ private enum CleanConfirmationSpotlightWarning {
         "This is normal incremental work, not a full reindex. Pare never deletes Spotlight’s own store."
 }
 
-// MARK: - SelectedCleanConfirmationSheet
+// MARK: - Clean confirmation configs
 
-private struct SelectedCleanConfirmationSheet: View {
-    @ObservedObject var viewModel: ScanDashboardViewModel
-
-    var body: some View {
-        ZStack {
-            AppBackgroundView()
-
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(AppTheme.accent.opacity(0.18))
-                            .frame(width: 48, height: 48)
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(AppTheme.accent)
-                            .font(.system(size: 20, weight: .semibold))
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Clean selected")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Only items you checked")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    infoRow(
-                        icon: "checkmark.circle",
-                        color: AppTheme.success,
-                        text: "\(viewModel.selectedCandidatesCount) item(s) · \(viewModel.formattedBytes(viewModel.selectedCandidatesBytes))"
-                    )
-                    if viewModel.selectedReviewCount > 0 {
-                        infoRow(
-                            icon: "exclamationmark.triangle",
-                            color: AppTheme.warning,
-                            text: "\(viewModel.selectedReviewCount) REVIEW item(s) — may include browser Local Storage or similar site data."
-                        )
-                    }
-                    if viewModel.selectedCleanMayTriggerSpotlightWork {
-                        infoRow(
-                            icon: "magnifyingglass",
-                            color: AppTheme.warning,
-                            text: CleanConfirmationSpotlightWarning.message
-                        )
-                    }
-                    infoRow(
-                        icon: "arrow.uturn.backward",
-                        color: AppTheme.accent,
-                        text: "Moved to Trash; Undo available after cleanup."
-                    )
-                }
-                .padding(16)
-                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                HStack(spacing: 12) {
-                    Button("Cancel") { viewModel.cancelSelectedClean() }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    Button("Move to Trash") { viewModel.confirmCleanSelected() }
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(AppTheme.success, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .buttonStyle(.borderless)
-                }
-            }
-            .padding(28)
+extension ScanDashboardView {
+    private var quickCleanConfig: CleanConfirmationSheet.Config {
+        var lines: [CleanConfirmationSheet.InfoLine] = [
+            .init(
+                icon: "checkmark.shield.fill",
+                color: AppTheme.success,
+                text: "\(viewModel.quickCleanCandidatesCount) safe-risk file\(viewModel.quickCleanCandidatesCount == 1 ? "" : "s") will be moved to Trash."
+            ),
+            .init(
+                icon: "exclamationmark.triangle",
+                color: AppTheme.warning,
+                text: "Review and Advanced findings are never touched."
+            )
+        ]
+        if viewModel.quickCleanMayTriggerSpotlightWork {
+            lines.append(.init(
+                icon: "magnifyingglass",
+                color: AppTheme.warning,
+                text: CleanConfirmationSpotlightWarning.message
+            ))
         }
-        .frame(minWidth: 400, idealWidth: 440, maxWidth: 520,
-               minHeight: 300, idealHeight: 340, maxHeight: 480)
+        lines.append(.init(
+            icon: "arrow.uturn.backward",
+            color: AppTheme.accent,
+            text: "You can undo immediately after cleanup via the Undo button."
+        ))
+        lines.append(.init(
+            icon: "externaldrive",
+            color: AppTheme.textSecondary,
+            text: "Estimated space: \(viewModel.formattedBytes(viewModel.quickCleanCandidatesBytes))"
+        ))
+
+        return .init(
+            title: "Quick Clean",
+            subtitle: "Safe-risk findings only",
+            headerIcon: "trash.fill",
+            headerTint: AppTheme.success,
+            infoLines: lines,
+            size: .init(minHeight: 320, idealHeight: 360)
+        )
     }
 
-    private func infoRow(icon: String, color: Color, text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 20)
-            Text(text)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(AppTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+    private var deepCleanConfig: CleanConfirmationSheet.Config {
+        var lines: [CleanConfirmationSheet.InfoLine] = [
+            .init(
+                icon: "bolt.fill",
+                color: AppTheme.review,
+                text: "\(viewModel.deepCleanCandidatesCount) file\(viewModel.deepCleanCandidatesCount == 1 ? "" : "s") will be moved to Trash (\(viewModel.reviewRiskCandidatesCount) review-risk)."
+            ),
+            .init(
+                icon: "exclamationmark.shield",
+                color: AppTheme.warning,
+                text: "ADVANCED findings (e.g. Docker VM data) are never touched."
+            )
+        ]
+        if viewModel.deepCleanMayTriggerSpotlightWork {
+            lines.append(.init(
+                icon: "magnifyingglass",
+                color: AppTheme.warning,
+                text: CleanConfirmationSpotlightWarning.message
+            ))
         }
-    }
-}
+        lines.append(.init(
+            icon: "arrow.uturn.backward",
+            color: AppTheme.accent,
+            text: "You can undo immediately after cleanup via the Undo button."
+        ))
+        lines.append(.init(
+            icon: "externaldrive",
+            color: AppTheme.textSecondary,
+            text: "Estimated space: \(viewModel.formattedBytes(viewModel.deepCleanCandidatesBytes))"
+        ))
 
-// MARK: - QuickCleanConfirmationSheet
-
-private struct QuickCleanConfirmationSheet: View {
-    @ObservedObject var viewModel: ScanDashboardViewModel
-
-    var body: some View {
-        ZStack {
-            AppBackgroundView()
-
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(AppTheme.success.opacity(0.18))
-                            .frame(width: 48, height: 48)
-                        Image(systemName: "trash.fill")
-                            .foregroundStyle(AppTheme.success)
-                            .font(.system(size: 20, weight: .semibold))
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Quick Clean")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Safe-risk findings only")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 10) {
-                    infoRow(icon: "checkmark.shield.fill", color: AppTheme.success,
-                            text: "\(viewModel.quickCleanCandidatesCount) safe-risk file\(viewModel.quickCleanCandidatesCount == 1 ? "" : "s") will be moved to Trash.")
-                    infoRow(icon: "exclamationmark.triangle", color: AppTheme.warning,
-                            text: "Review and Advanced findings are never touched.")
-                    if viewModel.quickCleanMayTriggerSpotlightWork {
-                        infoRow(icon: "magnifyingglass", color: AppTheme.warning,
-                                text: CleanConfirmationSpotlightWarning.message)
-                    }
-                    infoRow(icon: "arrow.uturn.backward", color: AppTheme.accent,
-                            text: "You can undo immediately after cleanup via the Undo button.")
-                    infoRow(icon: "externaldrive", color: AppTheme.textSecondary,
-                            text: "Estimated space: \(viewModel.formattedBytes(viewModel.quickCleanCandidatesBytes))")
-                }
-                .padding(16)
-                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                HStack(spacing: 12) {
-                    Button("Cancel") { viewModel.cancelCleanup() }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    Button("Move to Trash") { viewModel.confirmQuickClean() }
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(AppTheme.success, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .buttonStyle(.borderless)
-                }
-            }
-            .padding(28)
-        }
-        .frame(minWidth: 400, idealWidth: 440, maxWidth: 520,
-               minHeight: 320, idealHeight: 360, maxHeight: 480)
+        return .init(
+            title: "Deep Clean",
+            subtitle: "Safe + Review-risk findings",
+            subtitleColor: AppTheme.review,
+            headerIcon: "bolt.fill",
+            headerTint: AppTheme.review,
+            warningText: "Deep Clean includes REVIEW-risk items — files that may be regenerated by your apps but could require re-configuration. Proceed only if you have reviewed them.",
+            infoLines: lines,
+            confirmTint: AppTheme.review,
+            confirmForeground: .white,
+            size: .init(
+                minWidth: 420,
+                idealWidth: 480,
+                maxWidth: AppTheme.Sheet.wideWidth,
+                minHeight: 380,
+                idealHeight: 420,
+                maxHeight: 560
+            )
+        )
     }
 
-    private func infoRow(icon: String, color: Color, text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 20)
-            Text(text)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(AppTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+    private var selectedCleanConfig: CleanConfirmationSheet.Config {
+        var lines: [CleanConfirmationSheet.InfoLine] = [
+            .init(
+                icon: "checkmark.circle",
+                color: AppTheme.success,
+                text: "\(viewModel.selectedCandidatesCount) item(s) · \(viewModel.formattedBytes(viewModel.selectedCandidatesBytes))"
+            )
+        ]
+        if viewModel.selectedReviewCount > 0 {
+            lines.append(.init(
+                icon: "exclamationmark.triangle",
+                color: AppTheme.warning,
+                text: "\(viewModel.selectedReviewCount) REVIEW item(s) — may include browser Local Storage or similar site data."
+            ))
         }
-    }
-}
-
-// MARK: - DeepCleanConfirmationSheet
-
-private struct DeepCleanConfirmationSheet: View {
-    @ObservedObject var viewModel: ScanDashboardViewModel
-
-    var body: some View {
-        ZStack {
-            AppBackgroundView()
-
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(AppTheme.review.opacity(0.18))
-                            .frame(width: 48, height: 48)
-                        Image(systemName: "bolt.fill")
-                            .foregroundStyle(AppTheme.review)
-                            .font(.system(size: 20, weight: .semibold))
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Deep Clean")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Safe + Review-risk findings")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.review)
-                    }
-                }
-
-                // Warning banner
-                HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(AppTheme.review)
-                        .font(.system(size: 16, weight: .bold))
-                    Text("Deep Clean includes REVIEW-risk items — files that may be regenerated by your apps but could require re-configuration. Proceed only if you have reviewed them.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(14)
-                .background(AppTheme.review.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 10) {
-                    infoRow(icon: "bolt.fill", color: AppTheme.review,
-                            text: "\(viewModel.deepCleanCandidatesCount) file\(viewModel.deepCleanCandidatesCount == 1 ? "" : "s") will be moved to Trash (\(viewModel.reviewRiskCandidatesCount) review-risk).")
-                    infoRow(icon: "exclamationmark.shield", color: AppTheme.warning,
-                            text: "ADVANCED findings (e.g. Docker VM data) are never touched.")
-                    if viewModel.deepCleanMayTriggerSpotlightWork {
-                        infoRow(icon: "magnifyingglass", color: AppTheme.warning,
-                                text: CleanConfirmationSpotlightWarning.message)
-                    }
-                    infoRow(icon: "arrow.uturn.backward", color: AppTheme.accent,
-                            text: "You can undo immediately after cleanup via the Undo button.")
-                    infoRow(icon: "externaldrive", color: AppTheme.textSecondary,
-                            text: "Estimated space: \(viewModel.formattedBytes(viewModel.deepCleanCandidatesBytes))")
-                }
-                .padding(16)
-                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                HStack(spacing: 12) {
-                    Button("Cancel") { viewModel.cancelDeepClean() }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    Button("Move to Trash") { viewModel.confirmDeepClean() }
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(AppTheme.review, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .buttonStyle(.borderless)
-                }
-            }
-            .padding(28)
+        if viewModel.selectedCleanMayTriggerSpotlightWork {
+            lines.append(.init(
+                icon: "magnifyingglass",
+                color: AppTheme.warning,
+                text: CleanConfirmationSpotlightWarning.message
+            ))
         }
-        .frame(minWidth: 420, idealWidth: 480, maxWidth: 560,
-               minHeight: 380, idealHeight: 420, maxHeight: 560)
-    }
+        lines.append(.init(
+            icon: "arrow.uturn.backward",
+            color: AppTheme.accent,
+            text: "Moved to Trash; Undo available after cleanup."
+        ))
 
-    private func infoRow(icon: String, color: Color, text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 20)
-            Text(text)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(AppTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        return .init(
+            title: "Clean selected",
+            subtitle: "Only items you checked",
+            headerIcon: "checkmark.circle.fill",
+            headerTint: AppTheme.accent,
+            infoLines: lines
+        )
     }
 }
 

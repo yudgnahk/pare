@@ -327,7 +327,7 @@ struct HomebrewManagerView: View {
     }
 
     private var formulaeHeader: some View {
-        HStack {
+        TableHeaderRow {
             selectionColumnSpacer
             Text("Name").frame(maxWidth: .infinity, alignment: .leading)
             Text("Version").frame(width: scale.scaled(100), alignment: .leading)
@@ -338,11 +338,6 @@ struct HomebrewManagerView: View {
             }
             Spacer().frame(width: scale.scaled(50))
         }
-        .font(scale.tableHeader)
-        .foregroundStyle(AppTheme.textSecondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.12))
     }
 
     // MARK: - Casks
@@ -375,7 +370,7 @@ struct HomebrewManagerView: View {
     }
 
     private var casksHeader: some View {
-        HStack {
+        TableHeaderRow {
             selectionColumnSpacer
             Text("Token").frame(maxWidth: .infinity, alignment: .leading)
             Text("Version").frame(width: scale.scaled(120), alignment: .leading)
@@ -386,11 +381,6 @@ struct HomebrewManagerView: View {
             }
             Spacer().frame(width: scale.scaled(100))
         }
-        .font(scale.tableHeader)
-        .foregroundStyle(AppTheme.textSecondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.12))
     }
 
     // MARK: - Outdated
@@ -440,7 +430,7 @@ struct HomebrewManagerView: View {
     }
 
     private var outdatedHeader: some View {
-        HStack {
+        TableHeaderRow {
             selectionColumnSpacer
             Text("Package").frame(maxWidth: .infinity, alignment: .leading)
             Text("Installed").frame(width: scale.scaled(120), alignment: .leading)
@@ -450,11 +440,6 @@ struct HomebrewManagerView: View {
             }
             Spacer().frame(width: scale.colActions)
         }
-        .font(scale.tableHeader)
-        .foregroundStyle(AppTheme.textSecondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.12))
     }
 
     // MARK: - Migrate
@@ -572,17 +557,7 @@ struct HomebrewManagerView: View {
     }
 
     private func emptyPrompt(icon: String, text: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: scale.scaled(40)))
-                .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
-            Text(text)
-                .font(scale.body)
-                .foregroundStyle(AppTheme.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 400)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyStateView(icon: icon, message: text)
     }
 
     private var notInstalledPlaceholder: some View {
@@ -759,7 +734,7 @@ private struct FormulaRow: View {
                         .font(scale.rowTitle)
                         .foregroundStyle(AppTheme.textPrimary)
                         .lineLimit(1)
-                    if formula.pinned { badge("pinned", color: AppTheme.accent) }
+                    if formula.pinned { Badge(text: "pinned", color: AppTheme.accent) }
                 }
                 if !formula.desc.isEmpty {
                     Text(formula.desc)
@@ -804,23 +779,9 @@ private struct FormulaRow: View {
             .frame(width: scale.scaled(50), alignment: .trailing)
             .opacity(isHovered ? 1 : 0.5)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, scale.space(10))
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
-        )
-        .onHover { isHovered = $0 }
+        .hoverableRow(isHovered: $isHovered, verticalPadding: scale.space(10))
     }
 
-    private func badge(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(scale.badge)
-            .foregroundStyle(color)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-    }
 }
 
 // MARK: - CaskRow
@@ -849,10 +810,10 @@ private struct CaskRow: View {
                         .foregroundStyle(cask.isOrphaned ? AppTheme.warning : AppTheme.textPrimary)
                         .lineLimit(1)
                     if cask.isOrphaned {
-                        badge("orphaned", color: AppTheme.warning)
+                        Badge(text: "orphaned", color: AppTheme.warning)
                     }
                     if cask.autoUpdates {
-                        badge("auto", color: AppTheme.accent)
+                        Badge(text: "auto", color: AppTheme.accent)
                     }
                 }
                 if cask.isOrphaned {
@@ -920,27 +881,14 @@ private struct CaskRow: View {
             .frame(width: cask.isOrphaned ? scale.scaled(90) : scale.scaled(100), alignment: .trailing)
             .opacity(isHovered ? 1 : (cask.isOrphaned ? 0.8 : 0.5))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, scale.space(cask.isOrphaned ? 12 : 10))
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(
-                    cask.isOrphaned
-                        ? AppTheme.warning.opacity(isHovered ? 0.12 : 0.07)
-                        : Color.white.opacity(isHovered ? 0.06 : 0)
-                )
+        .hoverableRow(
+            isHovered: $isHovered,
+            verticalPadding: scale.space(cask.isOrphaned ? 12 : 10),
+            hoverFill: cask.isOrphaned ? AppTheme.warning.opacity(0.12) : AppTheme.Fill.subtle,
+            restFill: cask.isOrphaned ? AppTheme.warning.opacity(0.07) : .clear
         )
-        .onHover { isHovered = $0 }
     }
 
-    private func badge(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(scale.badge)
-            .foregroundStyle(color)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-    }
 }
 
 // MARK: - Leave Homebrew confirmation
@@ -1030,8 +978,8 @@ private struct OutdatedRow: View {
                     .font(scale.rowTitle)
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
-                if package.pinned { badge("pinned", color: AppTheme.accent) }
-                if package.isAutoUpdate { badge("auto", color: AppTheme.accent) }
+                if package.pinned { Badge(text: "pinned", color: AppTheme.accent) }
+                if package.isAutoUpdate { Badge(text: "auto", color: AppTheme.accent) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1079,23 +1027,9 @@ private struct OutdatedRow: View {
             .frame(width: scale.colActions, alignment: .trailing)
             .opacity(isHovered ? 1 : 0.7)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, scale.space(10))
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
-        )
-        .onHover { isHovered = $0 }
+        .hoverableRow(isHovered: $isHovered, verticalPadding: scale.space(10))
     }
 
-    private func badge(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(scale.badge)
-            .foregroundStyle(color)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-    }
 }
 
 // MARK: - MigrateCandidateRow
@@ -1154,13 +1088,7 @@ private struct MigrateCandidateRow: View {
             .frame(width: scale.colActions, alignment: .trailing)
             .opacity(isHovered ? 1 : 0.7)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, scale.space(10))
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
-        )
-        .onHover { isHovered = $0 }
+        .hoverableRow(isHovered: $isHovered, verticalPadding: scale.space(10))
     }
 }
 

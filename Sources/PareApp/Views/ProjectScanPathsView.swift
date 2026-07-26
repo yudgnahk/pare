@@ -49,20 +49,11 @@ struct ProjectScanPathsView: View {
                 Divider().opacity(0.15)
 
                 if viewModel.paths.isEmpty {
-                    Spacer()
-                    VStack(spacing: 10) {
-                        Image(systemName: "folder.badge.questionmark")
-                            .font(.system(size: 34, weight: .light))
-                            .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
-                        Text("No project paths yet")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Add your ~/Projects folder to automatically\ndetect build artifacts in future scans.")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    Spacer()
+                    EmptyStateView(
+                        icon: "folder.badge.questionmark",
+                        title: "No project paths yet",
+                        message: "Add your ~/Projects folder to automatically\ndetect build artifacts in future scans."
+                    )
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {

@@ -330,7 +330,7 @@ struct AppManagerView: View {
     }
 
     private var tableHeader: some View {
-        HStack(spacing: 0) {
+        TableHeaderRow(spacing: 0) {
             Text("Application")
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text("Version")
@@ -345,11 +345,6 @@ struct AppManagerView: View {
             }
             Spacer().frame(width: scale.scaled(120))
         }
-        .font(scale.tableHeader)
-        .foregroundStyle(AppTheme.textSecondary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.black.opacity(0.12))
     }
 
     private var loadingPlaceholder: some View {
@@ -366,16 +361,7 @@ struct AppManagerView: View {
     }
 
     private func emptyPrompt(icon: String, text: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: scale.scaled(40)))
-                .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
-            Text(text)
-                .font(scale.body)
-                .foregroundStyle(AppTheme.textSecondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyStateView(icon: icon, message: text)
     }
 }
 
@@ -410,16 +396,16 @@ private struct AppRow: View {
                             .foregroundStyle(AppTheme.textPrimary)
                             .lineLimit(1)
                         if app.isSystemApp {
-                            badge("SIP", color: AppTheme.textSecondary)
+                            Badge(text: "SIP", color: AppTheme.textSecondary)
                         }
                         if app.isMAS {
-                            badge("MAS", color: AppTheme.accent)
+                            Badge(text: "MAS", color: AppTheme.accent)
                         }
                         if app.isHomebrewManaged {
-                            badge("brew", color: AppTheme.success)
+                            Badge(text: "brew", color: AppTheme.success)
                         }
                         if hasUpdate, let available = app.updateInfo?.availableVersion {
-                            badge("→ \(available)", color: AppTheme.warning)
+                            Badge(text: "→ \(available)", color: AppTheme.warning)
                         }
                     }
                     if let bundleID = app.bundleID {
@@ -485,13 +471,7 @@ private struct AppRow: View {
             .frame(width: scale.scaled(120), alignment: .trailing)
             .opacity(isHovered || hasUpdate ? 1 : 0.6)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, scale.space(10))
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isHovered ? Color.white.opacity(0.06) : Color.clear)
-        )
-        .onHover { isHovered = $0 }
+        .hoverableRow(isHovered: $isHovered, verticalPadding: scale.space(10))
         .contextMenu {
             if hasUpdate {
                 Button("Update…") { onUpdate?() }
@@ -565,14 +545,6 @@ private struct AppRow: View {
         }
     }
 
-    private func badge(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(scale.badge)
-            .foregroundStyle(color)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-    }
 }
 
 // MARK: - Uninstall Confirm Sheet

@@ -60,40 +60,19 @@ struct HistoryView: View {
                 .padding(.bottom, AppTheme.Spacing.md)
 
                 if let error = viewModel.errorMessage {
-                    HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(AppTheme.warning)
-                        Text(error)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Spacer()
-                        Button {
-                            viewModel.errorMessage = nil
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-                        .buttonStyle(.borderless)
+                    ErrorBanner(message: error) {
+                        viewModel.errorMessage = nil
                     }
                     .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
                     .padding(.bottom, 12)
                 }
 
                 if viewModel.transactions.isEmpty {
-                    Spacer()
-                    VStack(spacing: 10) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 36, weight: .light))
-                            .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
-                        Text("No cleanup history")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Run a Quick Clean or Deep Clean to create a history record.")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                    Spacer()
+                    EmptyStateView(
+                        icon: "clock.arrow.circlepath",
+                        title: "No cleanup history",
+                        message: "Run a Quick Clean or Deep Clean to create a history record."
+                    )
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 12) {

@@ -33,20 +33,11 @@ struct ExclusionListView: View {
                 Divider().opacity(0.15)
 
                 if viewModel.entries.isEmpty {
-                    Spacer()
-                    VStack(spacing: 10) {
-                        Image(systemName: "eye.slash")
-                            .font(.system(size: 32, weight: .light))
-                            .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
-                        Text("No exclusions yet")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Right-click any finding and choose\n\"Exclude from Scans\" to add it here.")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    Spacer()
+                    EmptyStateView(
+                        icon: "eye.slash",
+                        title: "No exclusions yet",
+                        message: "Right-click any finding and choose\n\"Exclude from Scans\" to add it here."
+                    )
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {
