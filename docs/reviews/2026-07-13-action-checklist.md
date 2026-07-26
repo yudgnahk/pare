@@ -15,10 +15,10 @@ Use this as a working checklist. Details live in [2026-07-13-full-project-review
 - [~] **H2** Spotlight project discovery hang  
   - Working tree fixed; **not committed**  
   - Verify: developer/app scan completes; no “continuation leaked” log
-- [ ] **H3** Fix 2 failing tests  
+- [x] **H3** Fix 2 failing tests — resolved 2026-07-26 (`make test` fully green on `master`)  
   - `testBaselineRuleIncludesKnownRules` (expects 8, actual 12)  
   - `testDeveloperRuleCatalogIncludesPersonaRules` (expects `docker-logs-review-required`)  
-  - Goal: `make test` green
+  - Goal: `make test` green ✓
 - [ ] Re-run full smoke: `make build` · `make test` · `make run-app` (scan → results → cancel once)
 
 ---

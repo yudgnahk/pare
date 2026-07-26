@@ -2,7 +2,7 @@
 
 ## Phase 0 - Discovery and Guardrails
 - [x] Define supported macOS version range: **macOS 13+** (set in `Package.swift`).
-- [ ] Decide distribution path (direct notarized app vs App Store constraints) — pending business decision.
+- [x] Decide distribution path: **direct download via GitHub Releases** (notarized DMG; MAS is incompatible with full-disk scanning) — see `docs/roadmap.md` Phase 9.
 - [x] Lock safe-delete policy: **move to Trash first** (implemented in `CleanupEngine`).
 - [x] Define protected paths and never-delete zones (implemented in `ScanPolicy` protected/sensitive markers + app-state markers).
 - [x] Create persona cleanup matrix: **Baseline / Developer / Designer / Video Builder** (implemented in `RuleCatalog`). CLI retains profile-based scanning; SwiftUI app uses unified `RuleCatalog.all` (36 unique rules, no profile picker).
