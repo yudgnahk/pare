@@ -9,10 +9,6 @@ struct ScanDashboardView: View {
     @Environment(\.displayScale) private var scale
     @State private var showSettings = false
     @State private var showProjectPaths = false
-    /// Expanded categories in Browse by category (folder list only — no per-file children).
-    @State private var expandedCategories: Set<String> = []
-    /// Expanded tool groups (e.g. Developer Package Caches → JetBrains).
-    @State private var expandedToolGroups: Set<String> = []
 
     /// Calm hero when idle or first-time scan; rich results after success.
     private var showsHero: Bool {
@@ -44,14 +40,15 @@ struct ScanDashboardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // No global animations on the results tree — they re-run during scroll and lag hard.
-        .sheet(isPresented: $viewModel.showCleanConfirmation) {
-            QuickCleanConfirmationSheet(viewModel: viewModel)
-        }
-        .sheet(isPresented: $viewModel.showDeepCleanConfirmation) {
-            DeepCleanConfirmationSheet(viewModel: viewModel)
-        }
-        .sheet(isPresented: $viewModel.showSelectedCleanConfirmation) {
-            SelectedCleanConfirmationSheet(viewModel: viewModel)
+        .sheet(item: $viewModel.pendingCleanup) { pending in
+            switch pending {
+            case .quick:
+                QuickCleanConfirmationSheet(viewModel: viewModel)
+            case .deep:
+                DeepCleanConfirmationSheet(viewModel: viewModel)
+            case .selected:
+                SelectedCleanConfirmationSheet(viewModel: viewModel)
+            }
         }
         .sheet(isPresented: $showSettings) {
             ExclusionListView(viewModel: exclusionListViewModel)
@@ -149,15 +146,13 @@ struct ScanDashboardView: View {
                     }
 
                     SecondaryActionButton(title: "All Safe", systemImage: "checkmark.shield") {
-                        expandedCategories.removeAll()
-                        expandedToolGroups.removeAll()
+                        viewModel.collapseBrowserSections()
                         viewModel.selectAllSafe()
                     }
 
                     SecondaryActionButton(title: "Clear", systemImage: "xmark") {
                         // Collapse expanded trees first so Clear doesn't re-diff huge views.
-                        expandedCategories.removeAll()
-                        expandedToolGroups.removeAll()
+                        viewModel.collapseBrowserSections()
                         viewModel.clearSelection()
                     }
 
@@ -469,9 +464,8 @@ struct ScanDashboardView: View {
         }
     }
 
-    private func categoryFolderSection(_ summary: ScanDashboardViewModel.SummaryItem) -> some View {
-        let key = summary.category.rawValue
-        let isExpanded = expandedCategories.contains(key)
+    private func categoryFolderSection(_ summary: SummaryItem) -> some View {
+        let isExpanded = viewModel.isCategoryExpanded(summary.category)
         let selectionState = viewModel.categorySelectionState(summary.category)
 
         return VStack(alignment: .leading, spacing: 6) {
@@ -488,11 +482,7 @@ struct ScanDashboardView: View {
                 .help("Toggle all SAFE folders in this category")
 
                 Button {
-                    if isExpanded {
-                        expandedCategories.remove(key)
-                    } else {
-                        expandedCategories.insert(key)
-                    }
+                    viewModel.toggleCategoryExpanded(summary.category)
                 } label: {
                     HStack(spacing: 10) {
                         Circle()
@@ -560,7 +550,7 @@ struct ScanDashboardView: View {
         )
     }
 
-    private func flatFolderList(for summary: ScanDashboardViewModel.SummaryItem) -> some View {
+    private func flatFolderList(for summary: SummaryItem) -> some View {
         let rows = viewModel.folderRows(for: summary.category)
         return Group {
             if rows.isEmpty {
@@ -596,8 +586,8 @@ struct ScanDashboardView: View {
         }
     }
 
-    private func toolGroupSection(_ group: ScanDashboardViewModel.CategoryToolGroup) -> some View {
-        let isExpanded = expandedToolGroups.contains(group.id)
+    private func toolGroupSection(_ group: CategoryToolGroup) -> some View {
+        let isExpanded = viewModel.isToolGroupExpanded(group)
         let selectionState = viewModel.toolGroupSelectionState(group)
 
         return VStack(alignment: .leading, spacing: 4) {
@@ -615,11 +605,7 @@ struct ScanDashboardView: View {
                 .help("Select all folders under \(group.toolName)")
 
                 Button {
-                    if isExpanded {
-                        expandedToolGroups.remove(group.id)
-                    } else {
-                        expandedToolGroups.insert(group.id)
-                    }
+                    viewModel.toggleToolGroupExpanded(group)
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: toolIcon(for: group.toolName))
@@ -706,7 +692,7 @@ struct ScanDashboardView: View {
         }
     }
 
-    private func categoryBadge(_ summary: ScanDashboardViewModel.SummaryItem) -> String {
+    private func categoryBadge(_ summary: SummaryItem) -> String {
         if viewModel.usesToolGrouping(for: summary.category) {
             let tools = viewModel.toolGroups(for: summary.category).count
             if tools > 0 {
@@ -809,7 +795,7 @@ struct ScanDashboardView: View {
         .padding(.top, 4)
     }
 
-    private func largestItemRow(_ finding: ScanDashboardViewModel.FindingItem) -> some View {
+    private func largestItemRow(_ finding: FindingItem) -> some View {
         SelectableCandidateRow(
             path: finding.path,
             displayName: largestItemDisplayName(finding),
@@ -827,7 +813,7 @@ struct ScanDashboardView: View {
         )
     }
 
-    private func largestItemDisplayName(_ finding: ScanDashboardViewModel.FindingItem) -> String {
+    private func largestItemDisplayName(_ finding: FindingItem) -> String {
         let name = URL(fileURLWithPath: finding.path).lastPathComponent
         if finding.category == .userCaches {
             return "\(name) · app cache"
@@ -835,16 +821,16 @@ struct ScanDashboardView: View {
         return name
     }
 
-    private func largestItemSubtitle(_ finding: ScanDashboardViewModel.FindingItem) -> String {
+    private func largestItemSubtitle(_ finding: FindingItem) -> String {
         "\(finding.category.rawValue) · \(viewModel.abbreviatedPath(finding.path))"
     }
 
-    private func isLikelyFolderFinding(_ finding: ScanDashboardViewModel.FindingItem) -> Bool {
+    private func isLikelyFolderFinding(_ finding: FindingItem) -> Bool {
         var isDir: ObjCBool = false
         return FileManager.default.fileExists(atPath: finding.path, isDirectory: &isDir) && isDir.boolValue
     }
 
-    private func selectionIcon(_ state: ScanDashboardViewModel.CategorySelectState) -> String {
+    private func selectionIcon(_ state: CategorySelectState) -> String {
         switch state {
         case .all: return "checkmark.circle.fill"
         case .partial: return "minus.circle.fill"
@@ -952,9 +938,9 @@ struct ScanDashboardView: View {
 // MARK: - CategoryFolderRowView (lightweight, equatable inputs)
 
 private struct CategoryFolderRowView: View, Equatable {
-    let row: ScanDashboardViewModel.CategoryFolderRow
+    let row: CategoryFolderRow
     let sizeText: String
-    let selectionState: ScanDashboardViewModel.CategorySelectState
+    let selectionState: CategorySelectState
     let canReveal: Bool
     let onToggle: () -> Void
     let onReveal: () -> Void
@@ -1124,7 +1110,7 @@ private struct SelectedCleanConfirmationSheet: View {
                 .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 HStack(spacing: 12) {
-                    Button("Cancel") { viewModel.cancelSelectedClean() }
+                    Button("Cancel") { viewModel.cancelPendingCleanup() }
                         .buttonStyle(.borderless)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppTheme.textSecondary)
@@ -1132,7 +1118,7 @@ private struct SelectedCleanConfirmationSheet: View {
                         .padding(.vertical, 12)
                         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                    Button("Move to Trash") { viewModel.confirmCleanSelected() }
+                    Button("Move to Trash") { viewModel.confirmPendingCleanup() }
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.black)
                         .frame(maxWidth: .infinity)
@@ -1209,7 +1195,7 @@ private struct QuickCleanConfirmationSheet: View {
                 .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 HStack(spacing: 12) {
-                    Button("Cancel") { viewModel.cancelCleanup() }
+                    Button("Cancel") { viewModel.cancelPendingCleanup() }
                         .buttonStyle(.borderless)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppTheme.textSecondary)
@@ -1217,7 +1203,7 @@ private struct QuickCleanConfirmationSheet: View {
                         .padding(.vertical, 12)
                         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                    Button("Move to Trash") { viewModel.confirmQuickClean() }
+                    Button("Move to Trash") { viewModel.confirmPendingCleanup() }
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.black)
                         .frame(maxWidth: .infinity)
@@ -1307,7 +1293,7 @@ private struct DeepCleanConfirmationSheet: View {
                 .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 HStack(spacing: 12) {
-                    Button("Cancel") { viewModel.cancelDeepClean() }
+                    Button("Cancel") { viewModel.cancelPendingCleanup() }
                         .buttonStyle(.borderless)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppTheme.textSecondary)
@@ -1315,7 +1301,7 @@ private struct DeepCleanConfirmationSheet: View {
                         .padding(.vertical, 12)
                         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                    Button("Move to Trash") { viewModel.confirmDeepClean() }
+                    Button("Move to Trash") { viewModel.confirmPendingCleanup() }
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)

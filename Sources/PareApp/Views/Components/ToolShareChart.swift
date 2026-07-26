@@ -4,7 +4,7 @@ import PareCore
 /// Donut chart of reclaimable space by attributed tool/app (visual only — selection lives elsewhere).
 /// Pure SwiftUI/Canvas so it works on macOS 13 (Charts `SectorMark` needs 14+).
 struct ToolShareChart: View {
-    let rollups: [ScanDashboardViewModel.ToolRollupItem]
+    let rollups: [ToolRollup]
     let formatBytes: (Int64) -> String
     @Environment(\.displayScale) private var scale
 
