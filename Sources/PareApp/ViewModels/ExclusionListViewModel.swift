@@ -4,6 +4,8 @@ import PareCore
 @MainActor
 final class ExclusionListViewModel: ObservableObject {
     @Published private(set) var entries: [ExclusionEntry] = []
+    /// Non-nil when a store operation failed (R0.9 — no silent failures).
+    @Published var errorMessage: String?
 
     private let store: ExclusionStore
 
@@ -13,11 +15,23 @@ final class ExclusionListViewModel: ObservableObject {
     }
 
     func load() {
-        entries = (try? store.load())?.entries ?? []
+        do {
+            entries = try store.load().entries
+            errorMessage = nil
+        } catch {
+            entries = []
+            errorMessage = "Could not load exclusions: \(error.localizedDescription)"
+        }
     }
 
     func remove(id: UUID) {
-        try? store.removeEntry(id: id)
-        entries.removeAll { $0.id == id }
+        do {
+            try store.removeEntry(id: id)
+            entries.removeAll { $0.id == id }
+            errorMessage = nil
+        } catch {
+            // Keep the entry visible — the persisted store still contains it.
+            errorMessage = "Could not remove exclusion: \(error.localizedDescription)"
+        }
     }
 }

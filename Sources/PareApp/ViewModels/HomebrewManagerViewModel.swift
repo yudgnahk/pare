@@ -116,6 +116,8 @@ final class HomebrewManagerViewModel: ObservableObject {
     @Published private(set) var selectedOutdatedIDs: Set<String> = []
     @Published private(set) var selectedMigrationIDs: Set<String> = []
     @Published var operationSummary: String?
+    /// Non-nil when a background formulae refresh failed (R0.9 — no silent failures).
+    @Published var reloadError: String?
 
     // MARK: - Computed
 
@@ -271,7 +273,12 @@ final class HomebrewManagerViewModel: ObservableObject {
                 self.casks = c
                 self.selectedFormulaIDs.removeAll()
                 self.selectedCaskIDs.removeAll()
-            } catch {}
+                self.reloadError = nil
+            } catch {
+                // R0.9: never fail silently — keep the existing list but say why
+                // the refresh didn't happen.
+                self.reloadError = "Could not refresh packages: \(error.localizedDescription)"
+            }
         }
     }
 

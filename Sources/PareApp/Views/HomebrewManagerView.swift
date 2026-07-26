@@ -28,6 +28,29 @@ struct HomebrewManagerView: View {
                 // Fixed chrome + scrollable list region only.
                 VStack(spacing: 0) {
                     headerBar
+                    if let reloadError = viewModel.reloadError {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(AppTheme.warning)
+                            Text(reloadError)
+                                .font(scale.caption)
+                                .foregroundStyle(AppTheme.textPrimary)
+                                .lineLimit(2)
+                            Spacer()
+                            Button {
+                                viewModel.reloadError = nil
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                        .padding(.vertical, 6)
+                        .background(AppTheme.warning.opacity(0.12))
+                    }
                     tabPickerRow
                         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
                         .padding(.top, scale.space(AppTheme.Spacing.md))
