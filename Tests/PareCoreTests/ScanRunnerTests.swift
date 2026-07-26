@@ -59,7 +59,7 @@ final class ScanRunnerTests: XCTestCase {
         let ids = all.map(\.id)
         XCTAssertEqual(ids.count, Set(ids).count, "RuleCatalog.all must be unique by id")
         // Keep in sync with RuleCatalog constructors (developer ∪ designer ∪ videoBuilder).
-        XCTAssertEqual(all.count, 36, "Update this when adding/removing rules from RuleCatalog")
+        XCTAssertEqual(all.count, 37, "Update this when adding/removing rules from RuleCatalog")
     }
 
     func testBrowserRuleSkipsSensitiveFiles() {

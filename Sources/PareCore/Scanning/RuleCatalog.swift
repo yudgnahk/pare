@@ -55,6 +55,7 @@ public enum RuleCatalog {
             AIToolCachesRule(),
             HomebrewCacheRule(),
             PythonCachesRule(),
+            UvCacheRule(),
             RubyCachesRule(),
             JavaBuildCachesRule(),
             RustCachesRule(),

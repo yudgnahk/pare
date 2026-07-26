@@ -26,6 +26,7 @@ public struct UserCachesRule: ScanRule {
         "homebrew",
         "go-build",
         "com.microsoft.vscode.shipit",
+        "uv",               // UvCacheRule — native-cleanup-only, never a .safe whole-folder finding
     ]).union(ScanPolicy.searchIndexSensitiveCacheFolderNames)
 
     public init() {}
