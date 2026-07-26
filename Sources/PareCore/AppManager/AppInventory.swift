@@ -103,50 +103,62 @@ public actor AppInventory {
             )
             query.searchScopes = [NSMetadataQueryLocalComputerScope]
 
+            // R0.8: finish-gathering (main queue) and the 5s timeout (global queue)
+            // previously raced — both could resume the continuation (a crash). A
+            // locked finished flag guarantees exactly one resume.
+            let lock = NSLock()
+            var finished = false
             var observer: NSObjectProtocol?
-            observer = NotificationCenter.default.addObserver(
-                forName: NSNotification.Name.NSMetadataQueryDidFinishGathering,
-                object: query,
-                queue: .main
-            ) { _ in
+
+            func finishOnce(_ collectApps: () -> [InstalledApp]) {
+                lock.lock()
+                guard !finished else {
+                    lock.unlock()
+                    return
+                }
+                finished = true
+                lock.unlock()
+
                 query.stop()
                 if let obs = observer {
                     NotificationCenter.default.removeObserver(obs)
                     observer = nil
                 }
+                continuation.resume(returning: collectApps())
+            }
 
-                var apps: [InstalledApp] = []
-                let standardPrefixes = ["/Applications/", "/System/Applications/",
-                                        FileManager.default.homeDirectoryForCurrentUser
-                                            .appendingPathComponent("Applications").path + "/"]
+            observer = NotificationCenter.default.addObserver(
+                forName: NSNotification.Name.NSMetadataQueryDidFinishGathering,
+                object: query,
+                queue: .main
+            ) { _ in
+                finishOnce {
+                    var apps: [InstalledApp] = []
+                    let standardPrefixes = ["/Applications/", "/System/Applications/",
+                                            FileManager.default.homeDirectoryForCurrentUser
+                                                .appendingPathComponent("Applications").path + "/"]
 
-                for i in 0..<query.resultCount {
-                    guard let item = query.result(at: i) as? NSMetadataItem,
-                          let path = item.value(forAttribute: kMDItemPath as String) as? String else {
-                        continue
+                    for i in 0..<query.resultCount {
+                        guard let item = query.result(at: i) as? NSMetadataItem,
+                              let path = item.value(forAttribute: kMDItemPath as String) as? String else {
+                            continue
+                        }
+                        // Skip apps already covered by standard location scan
+                        guard !standardPrefixes.contains(where: { path.hasPrefix($0) }) else { continue }
+                        let url = URL(fileURLWithPath: path)
+                        if let app = makeApp(from: url, isSystem: false) {
+                            apps.append(app)
+                        }
                     }
-                    // Skip apps already covered by standard location scan
-                    guard !standardPrefixes.contains(where: { path.hasPrefix($0) }) else { continue }
-                    let url = URL(fileURLWithPath: path)
-                    if let app = makeApp(from: url, isSystem: false) {
-                        apps.append(app)
-                    }
+                    return apps
                 }
-                continuation.resume(returning: apps)
             }
 
             DispatchQueue.main.async { query.start() }
 
             // Timeout after 5 seconds to avoid hanging
             DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
-                if query.isStarted && !query.isStopped {
-                    query.stop()
-                    if let obs = observer {
-                        NotificationCenter.default.removeObserver(obs)
-                        observer = nil
-                    }
-                    continuation.resume(returning: [])
-                }
+                finishOnce { [] }
             }
         }
     }

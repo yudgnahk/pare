@@ -11,11 +11,6 @@ public struct VSCodeReviewRequiredStateRule: ScanRule {
     public let riskLevel: RiskLevel = .review
     public let confidence: Double = 0.78
 
-    private let vscodeReviewMarkers = [
-        "/library/application support/code/user/workspacestorage",
-        "/library/application support/code/user/history",
-    ]
-
     public init() {}
 
     public func targetDirectories(environment: ScanEnvironment) -> [URL] {
@@ -28,7 +23,7 @@ public struct VSCodeReviewRequiredStateRule: ScanRule {
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
         let path = fileURL.path.lowercased()
 
-        let hasVscodeReviewMarker = vscodeReviewMarkers.contains { path.contains($0) }
+        let hasVscodeReviewMarker = ScanPolicy.vscodeReviewStateMarkers.contains { path.contains($0) }
         guard hasVscodeReviewMarker else {
             return false
         }

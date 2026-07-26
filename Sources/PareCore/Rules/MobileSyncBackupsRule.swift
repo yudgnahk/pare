@@ -65,12 +65,14 @@ public struct MobileSyncBackupsRule: ScanRule {
             grouped[entry.serialNumber, default: []].append(entry)
         }
 
-        let thirtyDays: TimeInterval = 30 * 24 * 60 * 60
-        let oneHundredEightyDays: TimeInterval = 180 * 24 * 60 * 60
+        // Thresholds live in ScanPolicy (R1.5).
+        let staleSiblingAge = ScanPolicy.deviceBackupStaleAgeSeconds
+        let staleSingleAge = ScanPolicy.deviceBackupSingleStaleAgeSeconds
         var findings: [ScanFinding] = []
 
         for (_, group) in grouped {
-            guard let mostRecentDate = group.compactMap(\.backupDate).max() else { continue }
+            // Skip devices with no dated backup at all — age is unknowable.
+            guard group.contains(where: { $0.backupDate != nil }) else { continue }
 
             let sorted = group.sorted { lhs, rhs in
                 let lDate = lhs.backupDate ?? .distantPast
@@ -81,7 +83,7 @@ public struct MobileSyncBackupsRule: ScanRule {
             if sorted.count == 1, let single = sorted.first {
                 // Single backup — flag only if > 180 days old
                 if let date = single.backupDate,
-                   Date().timeIntervalSince(date) >= oneHundredEightyDays {
+                   Date().timeIntervalSince(date) >= staleSingleAge {
                     let ageStr = Self.formatAge(from: date)
                     findings.append(ScanFinding(
                         category: category,
@@ -99,7 +101,7 @@ public struct MobileSyncBackupsRule: ScanRule {
             // Multiple backups — flag all except the most recent
             for entry in sorted.dropFirst() {
                 guard let date = entry.backupDate,
-                      Date().timeIntervalSince(date) >= thirtyDays else { continue }
+                      Date().timeIntervalSince(date) >= staleSiblingAge else { continue }
                 let dateStr = Self.formatDate(date)
                 findings.append(ScanFinding(
                     category: category,

@@ -32,6 +32,22 @@ struct ExclusionListView: View {
 
                 Divider().opacity(0.15)
 
+                if let errorMessage = viewModel.errorMessage {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(AppTheme.warning)
+                        Text(errorMessage)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .lineLimit(2)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 8)
+                    .background(AppTheme.warning.opacity(0.12))
+                }
+
                 if viewModel.entries.isEmpty {
                     Spacer()
                     VStack(spacing: 10) {

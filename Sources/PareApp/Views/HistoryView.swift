@@ -7,6 +7,7 @@ struct HistoryView: View {
     @ObservedObject var viewModel: HistoryViewModel
     @Environment(\.displayScale) private var scale
     @State private var expandedIDs: Set<UUID> = []
+    @State private var exportError: String?
 
     var body: some View {
         ModuleChrome(
@@ -125,6 +126,17 @@ struct HistoryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { viewModel.load() }
+        .alert(
+            "Export Failed",
+            isPresented: Binding(
+                get: { exportError != nil },
+                set: { if !$0 { exportError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { exportError = nil }
+        } message: {
+            Text(exportError ?? "")
+        }
     }
 
     // MARK: Export
@@ -135,11 +147,16 @@ struct HistoryView: View {
         panel.nameFieldStringValue = "pare-history.json"
         panel.message = "Choose where to save the cleanup history"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(viewModel.transactions) else { return }
-        try? data.write(to: url, options: .atomicWrite)
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(viewModel.transactions)
+            try data.write(to: url, options: .atomicWrite)
+        } catch {
+            // R0.9: export failures must be visible, not silently dropped.
+            exportError = "Could not export JSON: \(error.localizedDescription)"
+        }
     }
 
     private func exportCSV() {
@@ -156,7 +173,11 @@ struct HistoryView: View {
             }
         }
         let csv = rows.joined(separator: "\n")
-        try? csv.data(using: .utf8)?.write(to: url, options: .atomicWrite)
+        do {
+            try Data(csv.utf8).write(to: url, options: .atomicWrite)
+        } catch {
+            exportError = "Could not export CSV: \(error.localizedDescription)"
+        }
     }
 }
 

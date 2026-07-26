@@ -75,6 +75,7 @@ struct ScanDashboardView: View {
             LazyVStack(spacing: AppTheme.Spacing.xl, pinnedViews: []) {
                 resultsHeader
                 permissionCoachingSection
+                scanWarningsSection
                 selectionBar
                 cleanupStatusBanner
                 metrics
@@ -86,6 +87,29 @@ struct ScanDashboardView: View {
             .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
             .padding(.vertical, AppTheme.Spacing.pageVertical)
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Scan warnings — rule failures and unreadable locations (R1.2/R1.3).
+    @ViewBuilder
+    private var scanWarningsSection: some View {
+        if !viewModel.scanWarnings.isEmpty {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(viewModel.scanWarnings, id: \.self) { warning in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(AppTheme.warning)
+                            Text(warning)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -353,14 +377,18 @@ struct ScanDashboardView: View {
                 }
             }
 
-        case .undone(let restoredCount):
+        case .undone(let restoredCount, let failedCount):
             GlassCard {
                 HStack(spacing: 14) {
-                    Image(systemName: "arrow.uturn.backward.circle.fill")
-                        .foregroundStyle(AppTheme.warning)
+                    Image(systemName: failedCount > 0
+                          ? "exclamationmark.triangle.fill"
+                          : "arrow.uturn.backward.circle.fill")
+                        .foregroundStyle(failedCount > 0 ? AppTheme.review : AppTheme.warning)
                         .font(.system(size: 22))
 
-                    Text("\(restoredCount) file\(restoredCount == 1 ? "" : "s") restored.")
+                    Text(failedCount > 0
+                         ? "Restored \(restoredCount) of \(restoredCount + failedCount) files — \(failedCount) could not be restored (check the Trash)."
+                         : "\(restoredCount) file\(restoredCount == 1 ? "" : "s") restored.")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppTheme.textPrimary)
 

@@ -97,7 +97,7 @@ public struct BrowserReviewDataRule: ScanRule {
         let lastUsed = resourceValues?.contentModificationDate
 
         if let date = lastUsed,
-           Date().timeIntervalSince(date) < 30 * 24 * 60 * 60 {
+           Date().timeIntervalSince(date) < ScanPolicy.browserReviewDataMinAgeSeconds {
             return []
         }
 
@@ -123,7 +123,7 @@ public struct BrowserReviewDataRule: ScanRule {
         let lastUsed = resourceValues?.contentModificationDate
 
         if let date = lastUsed,
-           Date().timeIntervalSince(date) < 30 * 24 * 60 * 60 {
+           Date().timeIntervalSince(date) < ScanPolicy.browserReviewDataMinAgeSeconds {
             return []
         }
 

@@ -19,7 +19,7 @@ public struct JetBrainsStaleVersionRule: ScanRule {
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.88
 
-    private static let minimumAgeSeconds: TimeInterval = 90 * 24 * 60 * 60
+    private static let minimumAgeSeconds = ScanPolicy.jetBrainsStaleVersionMinAgeSeconds
 
     public init() {}
 

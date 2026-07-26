@@ -1,11 +1,13 @@
 import Foundation
 
 /// Detects project-**local** build/cache directories (`.cache`, `target`, `.parcel-cache`, …)
-/// inside project roots discovered automatically by Spotlight (via `ProjectRootDiscovery`).
+/// inside project roots discovered automatically by Spotlight (via `ProjectRootDiscovery`)
+/// **plus** any manually configured scan paths (`ProjectScanPathStore`).
 ///
-/// This replaces the Phase 5 path-based `ProjectArtifactRule` for developer and `all` profiles.
-/// Unlike the Phase 5 rule, no manual path configuration is required — roots are found
-/// automatically and presented to the user for opt-out.
+/// This is the single project-artifact rule (the Phase 5 path-only `ProjectArtifactRule`
+/// was unregistered and removed in R0.5 — both rules registered together double-counted
+/// every artifact). Manual paths are folded in here so users who configured them keep
+/// their coverage.
 ///
 /// Walk strategy:
 ///   - Descend up to 8 levels below each confirmed root.
@@ -25,9 +27,11 @@ public struct ProjectArtifactsRule: ScanRule {
     public let confidence: Double = 0.93
 
     private let discovery: ProjectRootDiscovery
+    private let pathStore: ProjectScanPathStore
 
-    public init(discovery: ProjectRootDiscovery = .shared) {
+    public init(discovery: ProjectRootDiscovery = .shared, pathStore: ProjectScanPathStore = .shared) {
         self.discovery = discovery
+        self.pathStore = pathStore
     }
 
     public func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
@@ -35,7 +39,11 @@ public struct ProjectArtifactsRule: ScanRule {
 
     public func customScan(environment: ScanEnvironment) async -> [ScanFinding]? {
         await discovery.discoverIfNeeded()
-        let roots = await discovery.confirmedRoots()
+        let discovered = await discovery.confirmedRoots()
+        // Fold in manually configured scan paths (Phase 5 store), deduplicated by path.
+        var seen = Set<String>()
+        let roots = (discovered + pathStore.paths.map { URL(fileURLWithPath: $0) })
+            .filter { seen.insert($0.standardizedFileURL.path).inserted }
         guard !roots.isEmpty else { return [] }
 
         let minAge = ScanPolicy.defaultMinimumAgeSeconds(for: category)

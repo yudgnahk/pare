@@ -134,6 +134,8 @@ final class ScanDashboardViewModel: ObservableObject {
         let largeFilesByCategory: [CategoryLargeFiles]
         let toolRollups: [ToolRollupItem]
         let totalReclaimableBytes: Int64
+        /// Human-readable scan warnings (rule failures, unreadable locations — R1.2/R1.3).
+        let scanWarnings: [String]
     }
 
     struct ToolRollupItem: Identifiable, Sendable {
@@ -160,12 +162,14 @@ final class ScanDashboardViewModel: ObservableObject {
         case cleaning
         case done(bytesFreed: Int64, skippedCount: Int)
         case undoing
-        case undone(restoredCount: Int)
+        case undone(restoredCount: Int, failedCount: Int)
         case error(String)
     }
 
     @Published private(set) var state: ScanState = .idle
     @Published private(set) var totalReclaimableBytes: Int64 = 0
+    /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
+    @Published private(set) var scanWarnings: [String] = []
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
     @Published private(set) var largeFilesByCategory: [CategoryLargeFiles] = []
@@ -881,8 +885,24 @@ final class ScanDashboardViewModel: ObservableObject {
             sortedTopFindings: largestItemsSorted(from: findings, limit: 40),
             largeFilesByCategory: makeLargeFileGroups(from: findings),
             toolRollups: makeToolRollups(from: findings),
-            totalReclaimableBytes: report.totalReclaimableBytes
+            totalReclaimableBytes: report.totalReclaimableBytes,
+            scanWarnings: makeScanWarnings(from: report)
         )
+    }
+
+    /// Builds user-facing warnings from the report's error channels (R1.2/R1.3).
+    nonisolated private static func makeScanWarnings(from report: ScanReport) -> [String] {
+        var warnings: [String] = []
+        if !report.unreadableLocations.isEmpty {
+            let count = report.unreadableLocations.count
+            warnings.append(
+                "\(count) location\(count == 1 ? "" : "s") could not be read — grant Full Disk Access to scan everything."
+            )
+        }
+        for failure in report.ruleFailures {
+            warnings.append("\(failure.ruleTitle) failed: \(failure.message)")
+        }
+        return warnings
     }
 
     private func applyPreparedScanResults(
@@ -901,6 +921,7 @@ final class ScanDashboardViewModel: ObservableObject {
         categoryFolderRows = prepared.aggregate.rowsByCategory
         categoryToolGroups = prepared.aggregate.toolGroupsByCategory
         totalReclaimableBytes = prepared.totalReclaimableBytes
+        scanWarnings = prepared.scanWarnings
         summaries = prepared.summaries
         topFindings = prepared.sortedTopFindings
         largeFilesByCategory = prepared.largeFilesByCategory
@@ -1063,10 +1084,11 @@ final class ScanDashboardViewModel: ObservableObject {
         cleanupState = .undoing
 
         Task(priority: .userInitiated) {
-            let (restored, _) = await engine.restore(transaction: tx)
+            let (restored, failed) = await engine.restore(transaction: tx)
             await MainActor.run {
                 lastTransaction = nil
-                cleanupState = .undone(restoredCount: restored.count)
+                // Undo honesty (R0.7): failed restores must never be presented as success.
+                cleanupState = .undone(restoredCount: restored.count, failedCount: failed.count)
                 runScan()
             }
         }
@@ -1081,6 +1103,8 @@ final class ScanDashboardViewModel: ObservableObject {
     func exclude(path: String) {
         let entry = ExclusionEntry(path: path)
         try? ExclusionStore.shared.addEntry(entry)
+        // Capture the finding before removal so totals can be adjusted (R0.6).
+        let excluded = findingsByPath[path] ?? latestFindings.first { $0.path == path }
         latestFindings.removeAll { $0.path == path }
         findingsByPath.removeValue(forKey: path)
         topFindings.removeAll { $0.path == path }
@@ -1099,12 +1123,28 @@ final class ScanDashboardViewModel: ObservableObject {
         safeFolderIdsByCategory = aggregate.safeFolderIdsByCategory
         categoryFolderRows = aggregate.rowsByCategory
         categoryToolGroups = aggregate.toolGroupsByCategory
-        summaries = summaries.map { item in
-            SummaryItem(
+        // Only the excluded finding's category loses bytes/count; `.advanced` findings
+        // were never counted as reclaimable, so they don't reduce totals (R0.6).
+        let excludedBytes = excluded?.sizeBytes ?? 0
+        let countsAsReclaimable = excluded.map { $0.riskLevel != .advanced } ?? false
+        if countsAsReclaimable {
+            totalReclaimableBytes = max(0, totalReclaimableBytes - excludedBytes)
+        }
+        summaries = summaries.compactMap { item in
+            var reclaimable = item.reclaimableBytes
+            var fileCount = item.fileCount
+            if item.category == excluded?.category {
+                fileCount = max(0, fileCount - 1)
+                if countsAsReclaimable {
+                    reclaimable = max(0, reclaimable - excludedBytes)
+                }
+                guard fileCount > 0 else { return nil }
+            }
+            return SummaryItem(
                 summary: ScanCategorySummary(
                     category: item.category,
-                    reclaimableBytes: item.reclaimableBytes,
-                    fileCount: max(0, item.fileCount - 1)
+                    reclaimableBytes: reclaimable,
+                    fileCount: fileCount
                 ),
                 folderCount: categoryFolderRows[item.category]?.count ?? 0
             )

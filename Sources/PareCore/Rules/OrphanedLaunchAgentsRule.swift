@@ -30,7 +30,7 @@ public struct OrphanedLaunchAgentsRule: ScanRule {
             options: [.skipsHiddenFiles]
         )) ?? []
 
-        let thirtyDays: TimeInterval = 30 * 24 * 60 * 60
+        let minAge = ScanPolicy.launchAgentOrphanMinAgeSeconds
         var findings: [ScanFinding] = []
 
         for plist in contents where plist.pathExtension.lowercased() == "plist" {
@@ -39,7 +39,7 @@ public struct OrphanedLaunchAgentsRule: ScanRule {
             ])
 
             guard let effectiveDate = resourceValues.flatMap(ScanPolicy.effectiveAgeDate(from:)),
-                  Date().timeIntervalSince(effectiveDate) >= thirtyDays else {
+                  Date().timeIntervalSince(effectiveDate) >= minAge else {
                 continue
             }
 

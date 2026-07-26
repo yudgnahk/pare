@@ -31,7 +31,6 @@ public enum RuleCatalog {
             BrowserReviewDataRule(),
             InstallerFileRule(),
             StaleAppVersionRule(),
-            ProjectArtifactRule(),
             MobileSyncBackupsRule(),
             ProductivityCachesRule(),
             OrphanedLaunchAgentsRule(),

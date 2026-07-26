@@ -1,6 +1,7 @@
 import Foundation
 
-/// Persists the set of user-configured project root directories used by `ProjectArtifactRule`.
+/// Persists the set of user-configured project root directories folded into
+/// `ProjectArtifactsRule` alongside Spotlight-discovered roots.
 /// Stored as a string array in `UserDefaults` under a fixed key.
 public struct ProjectScanPathStore: Sendable {
     public static let shared = ProjectScanPathStore()

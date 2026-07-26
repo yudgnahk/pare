@@ -40,16 +40,22 @@ public struct ScanRunner: Sendable {
 
         var findings: [ScanFinding] = []
         var grouped: [ScanCategory: (Int64, Int)] = [:]
+        var ruleFailures: [ScanRuleFailure] = []
+        var unreadable: Set<String> = []
         let total = rules.count
 
         for (index, rule) in rules.enumerated() {
             guard !Task.isCancelled else { break }
-            let (ruleFindings, ruleGrouped) = await runRule(rule, traversal: effectiveTraversal)
-            findings.append(contentsOf: ruleFindings)
-            for (category, value) in ruleGrouped {
+            let outcome = await runRule(rule, traversal: effectiveTraversal)
+            findings.append(contentsOf: outcome.findings)
+            for (category, value) in outcome.grouped {
                 let current = grouped[category] ?? (0, 0)
                 grouped[category] = (current.0 + value.0, current.1 + value.1)
             }
+            if let failure = outcome.failure {
+                ruleFailures.append(failure)
+            }
+            unreadable.formUnion(outcome.unreadablePaths)
             onProgress?(index + 1, total, rule.title)
         }
 
@@ -63,28 +69,51 @@ public struct ScanRunner: Sendable {
             }
             .sorted { $0.reclaimableBytes > $1.reclaimableBytes }
 
-        return ScanReport(findings: findings, summaries: summaries)
+        return ScanReport(
+            findings: findings,
+            summaries: summaries,
+            ruleFailures: ruleFailures,
+            unreadableLocations: unreadable.sorted()
+        )
+    }
+
+    private struct RuleOutcome {
+        var findings: [ScanFinding] = []
+        var grouped: [ScanCategory: (Int64, Int)] = [:]
+        var unreadablePaths: Set<String> = []
+        var failure: ScanRuleFailure? = nil
     }
 
     private func runRule(
         _ rule: any ScanRule,
         traversal: any FileTraversing
-    ) async -> ([ScanFinding], [ScanCategory: (Int64, Int)]) {
-        var localFindings: [ScanFinding] = []
-        var localGrouped: [ScanCategory: (Int64, Int)] = [:]
+    ) async -> RuleOutcome {
+        var outcome = RuleOutcome()
 
-        if let customFindings = await rule.customScan(environment: environment) {
-            for finding in customFindings where !exclusionList.isExcluded(finding.path) {
-                localFindings.append(finding)
-                accumulateReclaimable(finding, into: &localGrouped)
+        do {
+            if let customFindings = try await rule.customScanThrowing(environment: environment) {
+                for finding in customFindings where !exclusionList.isExcluded(finding.path) {
+                    outcome.findings.append(finding)
+                    accumulateReclaimable(finding, into: &outcome.grouped)
+                }
+                return outcome
             }
-            return (localFindings, localGrouped)
+        } catch {
+            // R1.2: a throwing rule is a failed rule — report it, never mask it
+            // as "found nothing".
+            outcome.failure = ScanRuleFailure(
+                ruleID: rule.id,
+                ruleTitle: rule.title,
+                message: error.localizedDescription
+            )
+            return outcome
         }
 
         let directories = rule.targetDirectories(environment: environment)
-        let files = await traversal.collectFiles(in: directories)
+        let result = await traversal.collectFilesReportingErrors(in: directories)
+        outcome.unreadablePaths = result.unreadablePaths
 
-        for file in files {
+        for file in result.files {
             guard !Task.isCancelled else { break }
             guard include(file: file, rule: rule) else { continue }
             guard !exclusionList.isExcluded(file.url.path) else { continue }
@@ -98,11 +127,11 @@ public struct ScanRunner: Sendable {
                 lastUsed: file.lastModified,
                 confidence: rule.confidence
             )
-            localFindings.append(finding)
-            accumulateReclaimable(finding, into: &localGrouped)
+            outcome.findings.append(finding)
+            accumulateReclaimable(finding, into: &outcome.grouped)
         }
 
-        return (localFindings, localGrouped)
+        return outcome
     }
 
     /// Category summaries and `totalReclaimableBytes` only include cleanable findings.
