@@ -27,7 +27,7 @@ public struct GoCachesRule: ScanRule {
 
         var findings: [ScanFinding] = []
         for (target, reason) in targets {
-            findings += PackageManagerCachesRule.directoryFindings(
+            findings += ScanFindingBuilder.directoryFindings(
                 at: target,
                 category: category,
                 riskLevel: riskLevel,

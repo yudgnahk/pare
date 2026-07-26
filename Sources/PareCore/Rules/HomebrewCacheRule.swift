@@ -17,7 +17,7 @@ public struct HomebrewCacheRule: ScanRule {
 
     public func customScan(environment: ScanEnvironment) async -> [ScanFinding]? {
         let root = environment.homeDirectory.appending(path: "Library/Caches/Homebrew")
-        return PackageManagerCachesRule.directoryFindings(
+        return ScanFindingBuilder.directoryFindings(
             at: root,
             category: category,
             riskLevel: riskLevel,

@@ -25,7 +25,7 @@ struct PareCLI {
         if !report.findings.isEmpty {
             print("")
             print("Largest items (SAFE then REVIEW):")
-            let topFindings = largestItemsGrouped(findings: report.findings, limit: top)
+            let topFindings = ScanReportPresenter.largestItems(from: report.findings, limit: top)
             var lastRisk: RiskLevel?
             for finding in topFindings {
                 if finding.riskLevel != lastRisk {
@@ -38,7 +38,7 @@ struct PareCLI {
             }
         }
 
-        let largeFileGroups = groupLargeFilesByCategory(findings: report.findings)
+        let largeFileGroups = ScanReportPresenter.largeFileGroups(from: report.findings)
         if !largeFileGroups.isEmpty {
             print("")
             print("Large files by category (> \(format(bytes: ScanPolicy.largeFileThresholdBytes))):")
@@ -100,31 +100,6 @@ struct PareCLI {
         print("────────────────────────────────────────────────────────────────────────")
     }
 
-    private static func groupLargeFilesByCategory(findings: [ScanFinding]) -> [(category: ScanCategory, totalBytes: Int64, files: [ScanFinding])] {
-        let largeFindings = findings.filter { ScanPolicy.isLargeFile($0.sizeBytes) }
-        let grouped = Dictionary(grouping: largeFindings, by: \.category)
-
-        return grouped
-            .map { category, files in
-                // Within each category: SAFE first, then REVIEW, each by size.
-                let safe = files.filter { $0.riskLevel == .safe }.sorted { $0.sizeBytes > $1.sizeBytes }
-                let review = files.filter { $0.riskLevel == .review }.sorted { $0.sizeBytes > $1.sizeBytes }
-                let sortedFiles = safe + review
-                let totalBytes = sortedFiles.reduce(0) { $0 + $1.sizeBytes }
-                return (category: category, totalBytes: totalBytes, files: sortedFiles)
-            }
-            .sorted { $0.totalBytes > $1.totalBytes }
-    }
-
-    /// Top-N by size, then display order SAFE → REVIEW (each still size-sorted).
-    private static func largestItemsGrouped(findings: [ScanFinding], limit: Int) -> [ScanFinding] {
-        let reclaimable = findings.filter { $0.riskLevel != .advanced }
-        let top = reclaimable.sorted { $0.sizeBytes > $1.sizeBytes }.prefix(limit)
-        let safe = top.filter { $0.riskLevel == .safe }
-        let review = top.filter { $0.riskLevel == .review }
-        return Array(safe + review)
-    }
-
     private static func parseProfile(from args: ArraySlice<String>) -> ScanProfile? {
         guard let index = args.firstIndex(of: "--profile") else {
             return nil
@@ -148,17 +123,10 @@ struct PareCLI {
     }
 
     private static func format(bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+        ScanReportPresenter.formatBytes(bytes)
     }
 
     private static func riskTag(_ level: RiskLevel) -> String {
-        switch level {
-        case .safe:     return "[SAFE]"
-        case .review:   return "[REVIEW]"
-        case .advanced: return "[ADVANCED]"
-        }
+        ScanReportPresenter.riskTag(level)
     }
 }

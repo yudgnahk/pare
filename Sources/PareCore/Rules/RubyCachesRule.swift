@@ -46,20 +46,12 @@ public struct RubyCachesRule: ScanRule {
     }
 
     private func appendFinding(for url: URL, to findings: inout [ScanFinding]) {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        let size = FileSystemUtils.directorySize(url: url)
-        guard size > 0 else { return }
-        let lastUsed = try? url
-            .resourceValues(forKeys: [.contentModificationDateKey])
-            .contentModificationDate
-        findings.append(ScanFinding(
+        findings += ScanFindingBuilder.directoryFindings(
+            at: url,
             category: category,
             riskLevel: riskLevel,
             reason: reason,
-            path: url.path,
-            sizeBytes: size,
-            lastUsed: lastUsed,
             confidence: confidence
-        ))
+        )
     }
 }

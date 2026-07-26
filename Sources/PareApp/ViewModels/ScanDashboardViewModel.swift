@@ -60,13 +60,6 @@ final class ScanDashboardViewModel: ObservableObject {
         }
     }
 
-    struct CategoryLargeFiles: Identifiable, Sendable {
-        let id: String
-        let category: ScanCategory
-        let totalBytes: Int64
-        let files: [FindingItem]
-    }
-
     /// Lightweight folder row for the category browser.
     /// **No path lists** — underlying file paths stay private so SwiftUI never holds 10k+ strings per row.
     struct CategoryFolderRow: Identifiable, Equatable, Sendable {
@@ -131,7 +124,6 @@ final class ScanDashboardViewModel: ObservableObject {
         let aggregate: FolderAggregate
         let summaries: [SummaryItem]
         let sortedTopFindings: [FindingItem]
-        let largeFilesByCategory: [CategoryLargeFiles]
         let toolRollups: [ToolRollupItem]
         let totalReclaimableBytes: Int64
         /// Human-readable scan warnings (rule failures, unreadable locations — R1.2/R1.3).
@@ -172,12 +164,10 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var scanWarnings: [String] = []
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
-    @Published private(set) var largeFilesByCategory: [CategoryLargeFiles] = []
     @Published private(set) var perToolRollups: [ToolRollupItem] = []
     @Published private(set) var lastScanDate: Date?
     @Published private(set) var lastScanDuration: TimeInterval?
     @Published private(set) var revealFeedback: String?
-    @Published var resultsVisible = false
 
     // Cleanup-specific state
     @Published private(set) var cleanupState: CleanupState = .idle
@@ -505,11 +495,8 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Largest reclaimable findings by size, then ordered SAFE group → REVIEW group
     /// (each group still size-sorted) so both risk tiers appear when they make the cut.
     nonisolated static func largestItemsSorted(from findings: [ScanFinding], limit: Int) -> [FindingItem] {
-        let reclaimable = findings.filter { $0.riskLevel != .advanced }
-        let top = reclaimable.sorted { $0.sizeBytes > $1.sizeBytes }.prefix(limit)
-        let safe = top.filter { $0.riskLevel == .safe }
-        let review = top.filter { $0.riskLevel == .review }
-        return (safe + review).map(FindingItem.init(finding:))
+        ScanReportPresenter.largestItems(from: findings, limit: limit)
+            .map(FindingItem.init(finding:))
     }
 
     func abbreviatedPath(_ path: String) -> String {
@@ -735,7 +722,6 @@ final class ScanDashboardViewModel: ObservableObject {
         scanTask?.cancel()
         scanTask = nil
         state = .idle
-        resultsVisible = false
         scanRulesCompleted = 0
         scanRulesTotal = 0
         scanStepTitle = ""
@@ -817,11 +803,6 @@ final class ScanDashboardViewModel: ObservableObject {
         scanStepTitle = "Scanning system & app caches…"
         scanRulesCompleted = 0
         scanRulesTotal = 0
-        // Only hide results on the first scan; subsequent scans keep old results
-        // visible so the screen doesn't go blank while scanning.
-        if latestFindings.isEmpty {
-            resultsVisible = false
-        }
         let startedAt = Date()
         let cache = scanCache
 
@@ -883,7 +864,6 @@ final class ScanDashboardViewModel: ObservableObject {
             aggregate: aggregate,
             summaries: summaries,
             sortedTopFindings: largestItemsSorted(from: findings, limit: 40),
-            largeFilesByCategory: makeLargeFileGroups(from: findings),
             toolRollups: makeToolRollups(from: findings),
             totalReclaimableBytes: report.totalReclaimableBytes,
             scanWarnings: makeScanWarnings(from: report)
@@ -924,7 +904,6 @@ final class ScanDashboardViewModel: ObservableObject {
         scanWarnings = prepared.scanWarnings
         summaries = prepared.summaries
         topFindings = prepared.sortedTopFindings
-        largeFilesByCategory = prepared.largeFilesByCategory
         perToolRollups = prepared.toolRollups
         // Default: all SAFE *folders* (dozens of ids) — never 25k file paths.
         selectedFolderIds = prepared.aggregate.safeFolderIds
@@ -937,7 +916,6 @@ final class ScanDashboardViewModel: ObservableObject {
         scanStep = 3
         scanStepTitle = "Scan complete"
         state = .success
-        resultsVisible = true
         // Snapshot FDA at scan finish so later grants can show "rescan needed"
         // instead of a misleading clean-disk empty state.
         fullDiskAccessStatusAtLastScan = FullDiskAccessChecker.status()
@@ -1108,12 +1086,6 @@ final class ScanDashboardViewModel: ObservableObject {
         latestFindings.removeAll { $0.path == path }
         findingsByPath.removeValue(forKey: path)
         topFindings.removeAll { $0.path == path }
-        largeFilesByCategory = largeFilesByCategory.compactMap { group in
-            let filtered = group.files.filter { $0.path != path }
-            guard !filtered.isEmpty else { return nil }
-            let total = filtered.reduce(0) { $0 + $1.sizeBytes }
-            return CategoryLargeFiles(id: group.id, category: group.category, totalBytes: total, files: filtered)
-        }
         // Rebuild private maps + lightweight rows (not on scroll hot path).
         let aggregate = Self.buildFolderAggregate(from: latestFindings)
         pathsByFolderId = aggregate.pathsByFolderId
@@ -1156,10 +1128,7 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     func formattedBytes(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+        ScanReportPresenter.formatBytes(bytes)
     }
 
     func formattedDate(_ date: Date?) -> String {
@@ -1183,21 +1152,4 @@ final class ScanDashboardViewModel: ObservableObject {
         return rollups.map { ToolRollupItem(rollup: $0, total: total) }
     }
 
-    nonisolated private static func makeLargeFileGroups(from findings: [ScanFinding]) -> [CategoryLargeFiles] {
-        let filtered = findings.filter { ScanPolicy.isLargeFile($0.sizeBytes) }
-        let grouped = Dictionary(grouping: filtered, by: \.category)
-
-        return grouped
-            .map { category, files in
-                let sorted = files.sorted { $0.sizeBytes > $1.sizeBytes }
-                let total = sorted.reduce(0) { $0 + $1.sizeBytes }
-                return CategoryLargeFiles(
-                    id: category.rawValue,
-                    category: category,
-                    totalBytes: total,
-                    files: sorted.map(FindingItem.init(finding:))
-                )
-            }
-            .sorted { $0.totalBytes > $1.totalBytes }
-    }
 }

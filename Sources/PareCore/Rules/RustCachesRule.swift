@@ -27,7 +27,7 @@ public struct RustCachesRule: ScanRule {
 
         var findings: [ScanFinding] = []
         for (path, reason) in targets {
-            findings += PackageManagerCachesRule.directoryFindings(
+            findings += ScanFindingBuilder.directoryFindings(
                 at: home.appending(path: path),
                 category: category,
                 riskLevel: riskLevel,

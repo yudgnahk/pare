@@ -187,20 +187,20 @@ final class AppManagerTests: XCTestCase {
         }
     }
 
-    // MARK: - AppInventory.totalAllocatedSize
+    // MARK: - App bundle sizing (FileSystemUtils.directorySize)
 
-    func testTotalAllocatedSizeForNonexistentDir() {
-        let size = AppInventory.totalAllocatedSize(at: URL(fileURLWithPath: "/nonexistent/path/xyz"))
+    func testDirectorySizeForNonexistentDir() {
+        let size = FileSystemUtils.directorySize(url: URL(fileURLWithPath: "/nonexistent/path/xyz"))
         XCTAssertEqual(size, 0)
     }
 
-    func testTotalAllocatedSizeForDirectory() throws {
+    func testDirectorySizeForDirectory() throws {
         let dir = URL(fileURLWithPath: "/private/tmp/AllocSizeTest-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let file = dir.appendingPathComponent("test.bin")
         try Data(repeating: 0x41, count: 4096).write(to: file)
-        let size = AppInventory.totalAllocatedSize(at: dir)
+        let size = FileSystemUtils.directorySize(url: dir)
         XCTAssertGreaterThan(size, 0)
     }
 }

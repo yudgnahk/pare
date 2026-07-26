@@ -26,8 +26,6 @@ public struct AppRollup: Sendable {
 }
 
 public struct ScanReportAnnotator: Sendable {
-    public init() {}
-
     public static func sourceApp(for finding: ScanFinding) -> String {
         sourceApp(forPath: finding.path)
     }

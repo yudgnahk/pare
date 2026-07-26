@@ -115,7 +115,7 @@ public struct MobileSyncBackupsRule: ScanRule {
             }
         }
 
-        return findings.isEmpty ? nil : findings
+        return findings
     }
 
     // MARK: - Helpers
