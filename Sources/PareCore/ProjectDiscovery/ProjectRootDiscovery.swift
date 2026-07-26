@@ -22,7 +22,7 @@ public actor ProjectRootDiscovery {
         let defaultURL: URL = {
             let appSupport = FileManager.default.urls(
                 for: .applicationSupportDirectory, in: .userDomainMask
-            ).first!
+            ).first ?? FileManager.default.temporaryDirectory
             return appSupport.appendingPathComponent("Pare/project-roots.json")
         }()
         let resolvedURL = storeURL ?? defaultURL

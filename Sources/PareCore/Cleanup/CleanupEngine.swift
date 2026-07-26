@@ -69,9 +69,16 @@ public struct CleanupResult: Sendable {
 /// 5. The minimum age threshold from `ScanPolicy.defaultMinimumAgeSeconds` must still be satisfied.
 public actor CleanupEngine {
     private let store: CleanupTransactionStore
+    /// Injectable clock for age re-checks — tests shift this instead of
+    /// back-dating real files. Defaults to the wall clock.
+    private let now: @Sendable () -> Date
 
-    public init(store: CleanupTransactionStore = .shared) {
+    public init(
+        store: CleanupTransactionStore = .shared,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.store = store
+        self.now = now
     }
 
     // MARK: - Quick Clean (safe-risk only)
@@ -173,14 +180,14 @@ public actor CleanupEngine {
                let minAge = ScanPolicy.minimumAgeSeconds(forCleanupPath: url, category: finding.category) {
                 if ScanPolicy.isReconstructibleCachePath(url) {
                     // Reconstructible caches have no multi-day age gate (minAge may be 0).
-                    if minAge > 0, !ScanPolicy.passesUnusedAge(for: url, minimumAgeSeconds: minAge) {
+                    if minAge > 0, !ScanPolicy.passesUnusedAge(for: url, minimumAgeSeconds: minAge, now: now()) {
                         skipped.append((finding.path, "Cache too new"))
                         continue
                     }
                 } else {
                     let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
                     if let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
-                        if Date().timeIntervalSince(date) < minAge {
+                        if now().timeIntervalSince(date) < minAge {
                             skipped.append((finding.path, "File is too new (age < \(Int(minAge / 86400)) days)"))
                             continue
                         }

@@ -88,11 +88,13 @@ public enum ScanPolicy {
 
     /// `true` when the URL's last activity is at least `minimumAgeSeconds` ago.
     /// Prefers **mtime** (updates when the cache is used); falls back to creation date.
-    public static func passesUnusedAge(for url: URL, minimumAgeSeconds: TimeInterval) -> Bool {
+    /// `now` is injectable so tests can shift the reference clock instead of
+    /// back-dating real files.
+    public static func passesUnusedAge(for url: URL, minimumAgeSeconds: TimeInterval, now: Date = Date()) -> Bool {
         let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
         guard let values = try? url.resourceValues(forKeys: keys) else { return true }
         guard let lastUsed = values.contentModificationDate ?? values.creationDate else { return true }
-        return Date().timeIntervalSince(lastUsed) >= minimumAgeSeconds
+        return now.timeIntervalSince(lastUsed) >= minimumAgeSeconds
     }
 
     // AI dotfile markers (e.g. "/.continue/cache", "/.tabnine") are appended from app-catalog.json
@@ -581,10 +583,12 @@ public enum ScanPolicy {
         return candidates.min()
     }
 
-    public static func passesMinimumAge(for resourceValues: URLResourceValues, minimumAgeSeconds: TimeInterval?) -> Bool {
+    /// `now` is injectable so tests can shift the reference clock instead of
+    /// back-dating real files.
+    public static func passesMinimumAge(for resourceValues: URLResourceValues, minimumAgeSeconds: TimeInterval?, now: Date = Date()) -> Bool {
         guard let minimumAgeSeconds else { return true }
         guard let date = effectiveAgeDate(from: resourceValues) else { return true }
-        return Date().timeIntervalSince(date) >= minimumAgeSeconds
+        return now.timeIntervalSince(date) >= minimumAgeSeconds
     }
 
     public static func isLargeFile(_ bytes: Int64) -> Bool {
