@@ -25,6 +25,11 @@ public actor ScanMetadataCache {
     private var manifest: Manifest
     private var fileCache: [String: [ScannedFile]] = [:]
     private let persistURL: URL
+    /// `true` when the manifest has mutations not yet flushed to disk.
+    private var isDirty = false
+    /// Incremented on every manifest mutation. Lets `flush()` detect writes that
+    /// raced with new mutations (actor reentrancy) and keep the dirty flag set.
+    private var generation: UInt64 = 0
 
     // MARK: - Init
 
@@ -47,7 +52,7 @@ public actor ScanMetadataCache {
         guard manifest.profileFingerprint != fingerprint else { return }
         manifest = Manifest(profileFingerprint: fingerprint)
         fileCache = [:]
-        save()
+        markDirty()
     }
 
     // MARK: - Cache API
@@ -64,18 +69,20 @@ public actor ScanMetadataCache {
         fileCache[directory.path]
     }
 
-    /// Records the traversal result and persists the mtime.
+    /// Records the traversal result in memory and marks the manifest dirty.
+    /// The mtime index reaches disk on the next `flush()` — call sites on the
+    /// scan hot path no longer pay a full manifest rewrite per directory.
     public func store(directory: URL, mtime: Date, files: [ScannedFile]) {
         manifest.entries[directory.path] = mtime
         fileCache[directory.path] = files
-        save()
+        markDirty()
     }
 
     /// Clears all cached state — next scan will be a full traversal.
     public func invalidate() {
         manifest = Manifest()
         fileCache = [:]
-        save()
+        markDirty()
     }
 
     // MARK: - Persistence
@@ -88,10 +95,37 @@ public actor ScanMetadataCache {
         return appSupport.appendingPathComponent("Pare/scan-cache.json")
     }
 
-    private func save() {
+    private func markDirty() {
+        isDirty = true
+        generation &+= 1
+    }
+
+    /// Writes the manifest to disk once, if anything changed since the last flush.
+    ///
+    /// Called by `ScanRunner` at the end of each scan (previously every `store`
+    /// rewrote the full manifest — O(N²) bytes per scan). The file write runs on
+    /// a detached task so the actor stays responsive to `isFresh`/`store` calls.
+    public func flush() async {
+        guard isDirty else { return }
         guard let data = try? JSONEncoder().encode(manifest) else { return }
-        let dir = persistURL.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? data.write(to: persistURL)
+
+        let url = persistURL
+        let generationAtEncode = generation
+        let wrote = await Task.detached(priority: .utility) { () -> Bool in
+            do {
+                let dir = url.deletingLastPathComponent()
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try data.write(to: url, options: .atomic)
+                return true
+            } catch {
+                return false
+            }
+        }.value
+
+        // Only clear the dirty flag when the write succeeded AND no mutation
+        // arrived while the actor was suspended on the detached write.
+        if wrote && generation == generationAtEncode {
+            isDirty = false
+        }
     }
 }

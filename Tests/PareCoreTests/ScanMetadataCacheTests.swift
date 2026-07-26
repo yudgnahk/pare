@@ -120,6 +120,7 @@ final class ScanMetadataCacheTests: XCTestCase {
         let cache1 = ScanMetadataCache(persistURL: tempCacheURL)
         await cache1.setProfile("developer")
         await cache1.store(directory: dir, mtime: mtime, files: [])
+        await cache1.flush()
 
         // Simulates app restart — new instance loads from disk
         let cache2 = ScanMetadataCache(persistURL: tempCacheURL)
@@ -132,12 +133,72 @@ final class ScanMetadataCacheTests: XCTestCase {
         XCTAssertNil(filesOnRestart)
     }
 
+    // MARK: - Batched persistence (flush)
+
+    func testStoreDoesNotWriteToDiskUntilFlush() async {
+        let cache = ScanMetadataCache(persistURL: tempCacheURL)
+        let dir = URL(fileURLWithPath: "/tmp/batch-test")
+        let mtime = Date(timeIntervalSinceReferenceDate: 1_000_000)
+
+        await cache.store(directory: dir, mtime: mtime, files: [])
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: tempCacheURL.path),
+            "store must only mark dirty — persistence happens on flush"
+        )
+
+        await cache.flush()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tempCacheURL.path))
+    }
+
+    func testFlushPersistsAllBatchedStores() async {
+        let cache = ScanMetadataCache(persistURL: tempCacheURL)
+        let mtime = Date(timeIntervalSinceReferenceDate: 1_000_000)
+        let dirs = (0 ..< 25).map { URL(fileURLWithPath: "/tmp/batch-\($0)") }
+
+        for dir in dirs {
+            await cache.store(directory: dir, mtime: mtime, files: [])
+        }
+        await cache.flush()
+
+        let restarted = ScanMetadataCache(persistURL: tempCacheURL)
+        for dir in dirs {
+            let fresh = await restarted.isFresh(directory: dir, currentMtime: mtime)
+            XCTAssertTrue(fresh, "\(dir.path) must survive a flush + restart")
+        }
+    }
+
+    func testFlushWithoutChangesIsANoOp() async {
+        let cache = ScanMetadataCache(persistURL: tempCacheURL)
+        await cache.flush()
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: tempCacheURL.path),
+            "flushing a clean cache must not touch disk"
+        )
+    }
+
+    func testInvalidateThenFlushPersistsEmptyManifest() async {
+        let dir = URL(fileURLWithPath: "/tmp/inv-flush")
+        let mtime = Date(timeIntervalSinceReferenceDate: 1_000_000)
+
+        let cache1 = ScanMetadataCache(persistURL: tempCacheURL)
+        await cache1.store(directory: dir, mtime: mtime, files: [])
+        await cache1.flush()
+
+        await cache1.invalidate()
+        await cache1.flush()
+
+        let cache2 = ScanMetadataCache(persistURL: tempCacheURL)
+        let fresh = await cache2.isFresh(directory: dir, currentMtime: mtime)
+        XCTAssertFalse(fresh, "invalidation must survive a restart once flushed")
+    }
+
     func testProfileFingerprintSurvivesRestart() async {
         let cache1 = ScanMetadataCache(persistURL: tempCacheURL)
         await cache1.setProfile("developer")
         let dir = URL(fileURLWithPath: "/tmp/fp-test")
         let mtime = Date(timeIntervalSinceReferenceDate: 1_000_000)
         await cache1.store(directory: dir, mtime: mtime, files: [])
+        await cache1.flush()
 
         let cache2 = ScanMetadataCache(persistURL: tempCacheURL)
         await cache2.setProfile("developer")

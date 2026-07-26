@@ -60,6 +60,9 @@ public struct ScanRunner: Sendable {
             onProgress?(index + 1, total, rule.title)
         }
 
+        // Persist the mtime index once per scan (stores only mark it dirty).
+        await cache?.flush()
+
         let summaries = grouped
             .map { category, value in
                 ScanCategorySummary(
