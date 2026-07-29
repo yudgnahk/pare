@@ -67,6 +67,13 @@ public struct ToolCommandRunner: Sendable {
             process.standardOutput = stdoutPipe
             process.standardError = FileHandle.nullDevice
 
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(returning: nil)
+                return
+            }
+
             // Drain stdout on an OS-managed thread (not the cooperative pool)
             // so a blocking read can never starve the concurrency runtime.
             let drainGroup = DispatchGroup()
@@ -87,14 +94,6 @@ public struct ToolCommandRunner: Sendable {
                 let output = String(data: buffer.data, encoding: .utf8)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 continuation.resume(returning: output)
-            }
-
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                continuation.resume(returning: nil)
-                return
             }
 
             // Timeout: terminate the process; terminationHandler resolves nil.

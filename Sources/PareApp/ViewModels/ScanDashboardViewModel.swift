@@ -514,7 +514,6 @@ final class ScanDashboardViewModel: ObservableObject {
         lastScanDate = finishedAt
         lastScanDuration = finishedAt.timeIntervalSince(startedAt)
         revealFeedback = nil
-        cleanup.resetAfterScan()
         scanStep = 3
         scanStepTitle = "Scan complete"
         state = .success

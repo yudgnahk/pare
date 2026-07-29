@@ -33,6 +33,13 @@ public struct SystemProcessRunner: ProcessRunning {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
+            do {
+                try process.run()
+            } catch {
+                continuation.resume(throwing: error)
+                return
+            }
+
             // Drain both pipes on background OS threads (not the cooperative pool).
             let drainGroup = DispatchGroup()
             let stdoutBuffer = LockedDataBuffer()
@@ -57,12 +64,6 @@ public struct SystemProcessRunner: ProcessRunning {
                     standardError: String(data: stderrBuffer.data, encoding: .utf8) ?? "",
                     exitCode: proc.terminationStatus
                 ))
-            }
-
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: error)
             }
         }
     }

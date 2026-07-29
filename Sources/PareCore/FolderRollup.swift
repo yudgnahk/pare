@@ -137,7 +137,7 @@ public enum FolderRollup {
 
     public static func abbreviatePath(_ path: String) -> String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if path.hasPrefix(home) {
+        if path == home || path.hasPrefix(home.hasSuffix("/") ? home : home + "/") {
             return "~" + path.dropFirst(home.count)
         }
         return path

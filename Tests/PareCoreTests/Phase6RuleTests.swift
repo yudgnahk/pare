@@ -506,9 +506,10 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         try createDirWithContent(at: cache)
         backdateItem(at: cache, days: 10)
 
-        let manualStore = ProjectScanPathStore()
-        let originalPaths = manualStore.paths
-        defer { manualStore.setAll(originalPaths) }
+        let suiteName = "pare.tests.project-scan-paths.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let manualStore = ProjectScanPathStore(defaults: defaults)
         manualStore.setAll([tmp.path])
 
         // Discovery has NO roots — only the manual store points at tmp.

@@ -264,9 +264,9 @@ and deduplicated to one finding per physical directory:
    non-fatal, skipped when uv is not installed; PATH + Homebrew locations,
    never sources shell files) — labelled `uv CLI`
 2. Absolute `UV_CACHE_DIR` — labelled `environment`
-3. XDG root — `XDG_CACHE_HOME` (absolute values only; relative ignored per the
+3. Foundation `.cachesDirectory` — labelled `macOS cache root`
+4. XDG root — `XDG_CACHE_HOME` (absolute values only; relative ignored per the
    XDG spec) or `~/.cache` — labelled `XDG`
-4. Foundation `.cachesDirectory` — labelled `macOS cache root`
 
 Dangerous roots are rejected: `/`, any direct child of `/`, bare home, bare
 `~/Library`, and well-known system prefixes. Tool output is validated
@@ -275,7 +275,7 @@ Dangerous roots are rejected: `/`, any direct child of `/`, bare home, bare
 **Cleanup (clean narrowly):** findings are `.advanced` — `CleanupEngine`
 hard-blocks Trash deletion because uv requires its own cache commands
 (`uv cache prune` / `uv cache clean`) to respect locks and in-use state.
-`/.cache/uv` is deliberately absent from every Trash-cleanup marker list;
+`~/.cache/uv` is deliberately absent from every Trash-cleanup marker list;
 exact-boundary checks use `ScanPolicy.isEqualToOrDescendant(candidate:root:)`
 so `~/.cache/uvicorn` / `~/.cache/uv-backup` can never match. The native
 Maintenance action lands in Phase B of the uv cache plan.

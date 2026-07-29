@@ -102,9 +102,9 @@ extension ScanPolicy {
     public static func isCleanableWrongPlatformPath(_ url: URL) -> Bool {
         if isWrongPlatformBinary(url) { return true }
         guard isUnderWrongPlatformNativeDirectory(url) else { return false }
-        let path = url.path.lowercased()
         return wrongPlatformScanRootRelativePaths.contains { relative in
-            path.contains("/" + relative.lowercased() + "/")
+            let root = FileManager.default.homeDirectoryForCurrentUser.appending(path: relative)
+            return isEqualToOrDescendant(candidate: url, root: root)
         }
     }
 }

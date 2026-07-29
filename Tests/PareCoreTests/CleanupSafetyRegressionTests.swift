@@ -133,9 +133,10 @@ final class CleanupSafetyRegressionTests: XCTestCase {
 
     /// Wrong-platform native dirs under the editor-extension scan roots stay cleanable.
     func testWin32DirUnderEditorExtensionsIsCleanable() async throws {
-        let dir = try makeDirectory(
-            at: root.appending(path: "Documents/.vscode/extensions/pkg/win32-x64")
-        )
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: ".vscode/extensions/pare-test-\(UUID().uuidString)/win32-x64")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
         let engine = makeEngine()
 
         let result = try await engine.clean(
@@ -154,9 +155,9 @@ final class CleanupSafetyRegressionTests: XCTestCase {
             URL(fileURLWithPath: "\(home)/Downloads/Setup.exe")))
         // Native dir under a scanned root — allowed.
         XCTAssertTrue(ScanPolicy.isCleanableWrongPlatformPath(
-            URL(fileURLWithPath: "/Users/t/.vscode/extensions/pkg/win32/lib.dll")))
+            FileManager.default.homeDirectoryForCurrentUser.appending(path: ".vscode/extensions/pkg/win32/lib.dll")))
         XCTAssertTrue(ScanPolicy.isCleanableWrongPlatformPath(
-            URL(fileURLWithPath: "/Users/t/Library/Application Support/JetBrains/GoLand/plugins/p/lib/linux")))
+            FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/JetBrains/GoLand/plugins/p/lib/linux")))
         // Bare platform component elsewhere — blocked.
         XCTAssertFalse(ScanPolicy.isCleanableWrongPlatformPath(
             URL(fileURLWithPath: "/Users/t/Documents/linux/notes.txt")))

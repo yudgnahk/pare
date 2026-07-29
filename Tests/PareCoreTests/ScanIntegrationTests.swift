@@ -272,6 +272,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         try Data(repeating: 0x41, count: 8192).write(to: url)
         let old = Date().addingTimeInterval(-ageSeconds)
         try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: url.path)
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: dir.path)
         return url
     }
 

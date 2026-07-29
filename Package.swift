@@ -55,13 +55,8 @@ let package = Package(
 /// Applied to every target so data-race issues surface at build time ahead of
 /// the Swift 6 language-mode migration.
 ///
-/// Both spellings are passed deliberately: on current toolchains the upcoming-
-/// feature flag alone only enables *targeted* checking under swift-tools 5.9;
-/// the experimental `StrictConcurrency=complete` spelling forces complete
-/// checking (equivalent to `-strict-concurrency=complete`).
 var strictConcurrency: [SwiftSetting] {
     [
         .enableUpcomingFeature("StrictConcurrency"),
-        .enableExperimentalFeature("StrictConcurrency=complete"),
     ]
 }

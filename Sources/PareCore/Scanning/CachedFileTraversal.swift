@@ -52,7 +52,7 @@ struct CachedFileTraversal: FileTraversing {
         let result = await inner.collectFilesReportingErrors(in: directory)
 
         // Only cache complete results — skip if the task was cancelled mid-traversal.
-        if let mtime, !Task.isCancelled {
+        if let mtime, !Task.isCancelled, result.unreadablePaths.isEmpty {
             await cache.store(directory: directory, mtime: mtime, files: result.files)
         }
 

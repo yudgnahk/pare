@@ -40,7 +40,9 @@ struct ScanDashboardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // No global animations on the results tree — they re-run during scroll and lag hard.
-        .sheet(item: $viewModel.pendingCleanup) { pending in
+        .sheet(item: $viewModel.pendingCleanup, onDismiss: {
+            viewModel.cancelPendingCleanup()
+        }) { pending in
             let config: CleanConfirmationSheet.Config = {
                 switch pending {
                 case .quick: return quickCleanConfig
@@ -97,10 +99,10 @@ struct ScanDashboardView: View {
         if !viewModel.scanWarnings.isEmpty {
             GlassCard {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(viewModel.scanWarnings, id: \.self) { warning in
+                    ForEach(Array(viewModel.scanWarnings.enumerated()), id: \.offset) { _, warning in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(scale.font(12, weight: .semibold))
                                 .foregroundStyle(AppTheme.warning)
                             Text(warning)
                                 .font(.system(size: 12, weight: .medium))

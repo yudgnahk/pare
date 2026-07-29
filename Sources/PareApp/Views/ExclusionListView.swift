@@ -36,10 +36,10 @@ struct ExclusionListView: View {
                 if let errorMessage = viewModel.errorMessage {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(scale.font(12, weight: .semibold))
                             .foregroundStyle(AppTheme.warning)
                         Text(errorMessage)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(scale.font(12, weight: .medium))
                             .foregroundStyle(AppTheme.textPrimary)
                             .lineLimit(2)
                         Spacer()

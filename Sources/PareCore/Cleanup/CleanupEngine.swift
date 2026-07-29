@@ -340,6 +340,7 @@ public actor CleanupEngine {
 
         let transaction = makeTransaction(succeeded)
 
+        var resultTransaction: CleanupTransaction? = transaction
         if dryRun {
             do {
                 try store.save(transaction)
@@ -349,6 +350,7 @@ public actor CleanupEngine {
         } else if succeeded.isEmpty {
             // Nothing was trashed — drop the empty placeholder record.
             try? store.delete(id: transactionID)
+            resultTransaction = nil
         } else {
             do {
                 try store.save(transaction)
@@ -361,7 +363,7 @@ public actor CleanupEngine {
         return CleanupResult(
             succeeded: succeeded,
             skipped: skipped,
-            transaction: transaction,
+            transaction: resultTransaction,
             transactionSaveError: transactionSaveError
         )
     }

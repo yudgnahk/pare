@@ -30,7 +30,8 @@ extension ScanPolicy {
     /// Age gate for cleanup re-checks. Reconstructible package caches use a short
     /// floor; other categories keep their default.
     public static func minimumAgeSeconds(forCleanupPath url: URL, category: ScanCategory) -> TimeInterval? {
-        if isReconstructibleCachePath(url) {
+        let path = url.path.lowercased()
+        if reconstructibleCachePathMarkers.contains(where: { $0 != "/library/caches/" && path.contains($0) }) {
             return reconstructibleCacheMinAgeSeconds
         }
         return defaultMinimumAgeSeconds(for: category)

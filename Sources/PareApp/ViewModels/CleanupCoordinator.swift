@@ -61,7 +61,9 @@ final class CleanupCoordinator: ObservableObject {
 
     func cancelPending() {
         pending = nil
-        state = .idle
+        if state == .confirming {
+            state = .idle
+        }
     }
 
     /// Runs the pending cleanup with the findings the owner resolved for it.
@@ -103,7 +105,7 @@ final class CleanupCoordinator: ObservableObject {
 
         Task(priority: .userInitiated) {
             let (restored, failed) = await engine.restore(transaction: tx)
-            lastTransaction = nil
+            lastTransaction = failed.isEmpty ? nil : tx
             // Undo honesty (R0.7): failed restores must never be presented as success.
             state = .undone(restoredCount: restored.count, failedCount: failed.count)
             onCleanupCompleted?()
@@ -114,8 +116,4 @@ final class CleanupCoordinator: ObservableObject {
         state = .idle
     }
 
-    /// Fresh scan results supersede any stale done/error banner.
-    func resetAfterScan() {
-        state = .idle
-    }
 }

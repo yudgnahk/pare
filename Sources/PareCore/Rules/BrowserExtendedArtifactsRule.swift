@@ -133,8 +133,8 @@ public struct BrowserExtendedArtifactsRule: ScanRule {
         let size = sizeIndex.directorySize(url: url)
         guard size > 0 else { return [] }
 
-        let resourceValues = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-        let lastUsed = resourceValues?.contentModificationDate
+        let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey])
+        let lastUsed = resourceValues.flatMap(ScanPolicy.effectiveAgeDate)
 
         if applyAgeGate,
            let date = lastUsed,

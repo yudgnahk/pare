@@ -79,7 +79,8 @@ public final class CleanupTransactionStore: Sendable {
             transactionsDirectory = directory
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-                ?? FileManager.default.temporaryDirectory
+                ?? FileManager.default.homeDirectoryForCurrentUser
+                    .appending(path: "Library/Application Support")
             transactionsDirectory = appSupport
                 .appending(path: "Pare")
                 .appending(path: "transactions")

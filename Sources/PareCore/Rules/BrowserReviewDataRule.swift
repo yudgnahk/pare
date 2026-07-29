@@ -127,12 +127,12 @@ public struct BrowserReviewDataRule: ScanRule {
     ) -> [ScanFinding] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
 
-        let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey])
+        let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey])
         let isDir = resourceValues?.isDirectory ?? false
         let size = isDir ? sizeIndex.directorySize(url: url) : FileSystemUtils.fileSize(url: url)
         guard size > 0 else { return [] }
 
-        let lastUsed = resourceValues?.contentModificationDate
+        let lastUsed = resourceValues.flatMap(ScanPolicy.effectiveAgeDate)
 
         if let date = lastUsed,
            Date().timeIntervalSince(date) < ScanPolicy.browserReviewDataMinAgeSeconds {
