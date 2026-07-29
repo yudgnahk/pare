@@ -47,14 +47,20 @@ struct CleanConfirmationSheet: View {
         ZStack {
             AppBackgroundView()
 
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 18) {
                 header
 
-                if let warningText = config.warningText {
-                    warningBanner(warningText)
-                }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if let warningText = config.warningText {
+                            warningBanner(warningText)
+                        }
 
-                infoList
+                        infoList
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .scrollIndicators(.automatic)
 
                 footer
             }
@@ -160,6 +166,7 @@ struct CleanConfirmationSheet: View {
                 )
                 .buttonStyle(.borderless)
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

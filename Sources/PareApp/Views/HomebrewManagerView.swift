@@ -400,8 +400,8 @@ struct HomebrewManagerView: View {
             if scale.sizeClass != .compact {
                 Text("App").frame(width: scale.scaled(160), alignment: .leading)
                 Text("Installed").frame(width: scale.colDate, alignment: .trailing)
-                Text("Last Used").frame(width: scale.colDate, alignment: .trailing)
             }
+            Text("Last Used").frame(width: scale.colDate, alignment: .trailing)
             Spacer().frame(width: scale.scaled(100))
         }
     }
@@ -680,47 +680,53 @@ private struct HomebrewConfirmationSheet: View {
                 }
             }
 
-            Text(pending.action.operationDescription)
-                .font(scale.font(13))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(pending.action.operationDescription)
+                        .font(scale.font(13))
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Affected")
-                    .font(scale.font(12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text(namesPreview)
-                    .font(scale.font(12, design: .monospaced))
-                    .textSelection(.enabled)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(pending.commands.count > 1 ? "Homebrew commands" : "Homebrew command")
-                    .font(scale.font(12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                if let patternSummary {
-                    Text(patternSummary)
-                        .font(scale.font(12))
-                        .foregroundStyle(.secondary)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(commandLines.enumerated()), id: \.offset) { _, line in
-                        Text(line)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Affected")
+                            .font(scale.font(12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Text(namesPreview)
                             .font(scale.font(12, design: .monospaced))
                             .textSelection(.enabled)
                     }
-                }
-                if pending.commands.count > 1 {
-                    Text("Runs once per item, in the order shown.")
-                        .font(scale.font(11))
-                        .foregroundStyle(.secondary)
-                }
-            }
 
-            if pending.warnsAboutAutoUpdates {
-                Label("One or more selected casks update themselves. Homebrew may replace an open app; save work and expect to relaunch it.", systemImage: "exclamationmark.arrow.circlepath")
-                    .font(scale.font(12))
-                    .foregroundStyle(AppTheme.warning)
-                    .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(pending.commands.count > 1 ? "Homebrew commands" : "Homebrew command")
+                            .font(scale.font(12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        if let patternSummary {
+                            Text(patternSummary)
+                                .font(scale.font(12))
+                                .foregroundStyle(.secondary)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(commandLines.enumerated()), id: \.offset) { _, line in
+                                Text(line)
+                                    .font(scale.font(12, design: .monospaced))
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        if pending.commands.count > 1 {
+                            Text("Runs once per item, in the order shown.")
+                                .font(scale.font(11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    if pending.warnsAboutAutoUpdates {
+                        Label("An affected cask updates itself. Save work: Homebrew may replace an open app.", systemImage: "exclamationmark.arrow.circlepath")
+                            .font(scale.font(12))
+                            .foregroundStyle(AppTheme.warning)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .scrollIndicators(.automatic)
 
             HStack {
                 Spacer()
@@ -738,7 +744,8 @@ private struct HomebrewConfirmationSheet: View {
             }
         }
         .padding(24)
-        .frame(width: AppTheme.Sheet.standardWidth)
+        .frame(minWidth: AppTheme.Sheet.narrowWidth, idealWidth: AppTheme.Sheet.standardWidth, maxWidth: AppTheme.Sheet.standardWidth)
+        .frame(minHeight: 340, idealHeight: AppTheme.Sheet.standardHeight, maxHeight: 560)
         .background(.regularMaterial)
     }
 }
@@ -879,12 +886,13 @@ private struct CaskRow: View {
                     .font(scale.rowMeta)
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(width: scale.colDate, alignment: .trailing)
-
-                Text(cask.isOrphaned ? "Orphaned" : (cask.lastUsed.map { Self.dateFormatter.string(from: $0) } ?? "Never"))
-                    .font(scale.rowMeta)
-                    .foregroundStyle(cask.isOrphaned ? AppTheme.warning : (cask.lastUsed == nil ? AppTheme.textSecondary.opacity(0.5) : AppTheme.textSecondary))
-                    .frame(width: scale.colDate, alignment: .trailing)
             }
+
+            // Always retain Last Used as a table column, even in compact windows.
+            Text(cask.isOrphaned ? "Orphaned" : (cask.lastUsed.map { Self.dateFormatter.string(from: $0) } ?? "Never"))
+                .font(scale.rowMeta)
+                .foregroundStyle(cask.isOrphaned ? AppTheme.warning : (cask.lastUsed == nil ? AppTheme.textSecondary.opacity(0.5) : AppTheme.textSecondary))
+                .frame(width: scale.colDate, alignment: .trailing)
 
             HStack(spacing: 10) {
                 if !cask.isOrphaned {
@@ -949,13 +957,12 @@ private struct LeaveHomebrewConfirmSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                bullet("Keeps the app in Applications — does not delete it")
-                bullet("Removes Homebrew ownership so brew upgrade will not replace it")
-                bullet("Does not wipe preferences or caches (no --zap)")
+                bullet("Keeps the app and its data — nothing is deleted.")
+                bullet("Stops Homebrew from managing future upgrades.")
                 if cask.autoUpdates {
-                    bullet("This app updates itself — recommended if brew upgrade breaks open sessions")
+                    bullet("This app updates itself, which can avoid interrupted sessions.")
                 }
-                bullet("You can re-adopt later from the Migrate tab")
+                bullet("You can re-adopt it later from Migrate.")
             }
 
             Toggle("Force quit the app if it is running", isOn: $forceQuit)
@@ -972,7 +979,8 @@ private struct LeaveHomebrewConfirmSheet: View {
             }
         }
         .padding(24)
-        .frame(width: AppTheme.Sheet.narrowWidth)
+        .frame(minWidth: 400, idealWidth: AppTheme.Sheet.narrowWidth, maxWidth: AppTheme.Sheet.narrowWidth)
+        .fixedSize(horizontal: false, vertical: true)
         .background(.regularMaterial)
     }
 

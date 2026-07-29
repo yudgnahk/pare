@@ -338,9 +338,9 @@ struct AppManagerView: View {
             if scale.sizeClass != .compact {
                 Text("Installed")
                     .frame(width: scale.colDate, alignment: .trailing)
-                Text("Last Used")
-                    .frame(width: scale.colDate, alignment: .trailing)
             }
+            Text("Last Used")
+                .frame(width: scale.colDate, alignment: .trailing)
             Spacer().frame(width: scale.scaled(120))
         }
     }
@@ -435,13 +435,13 @@ private struct AppRow: View {
                     .font(scale.rowMeta)
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(width: scale.colDate, alignment: .trailing)
-
-                // Last used
-                Text(app.lastUsed.map { Self.dateFormatter.string(from: $0) } ?? "Never")
-                    .font(scale.rowMeta)
-                    .foregroundStyle(app.lastUsed == nil ? AppTheme.textSecondary.opacity(0.5) : AppTheme.textSecondary)
-                    .frame(width: scale.colDate, alignment: .trailing)
             }
+
+            // Always retain Last Used as a table column, even in compact windows.
+            Text(app.lastUsed.map { Self.dateFormatter.string(from: $0) } ?? "Never")
+                .font(scale.rowMeta)
+                .foregroundStyle(app.lastUsed == nil ? AppTheme.textSecondary.opacity(0.5) : AppTheme.textSecondary)
+                .frame(width: scale.colDate, alignment: .trailing)
 
             // Actions
             HStack(spacing: 8) {
@@ -578,6 +578,8 @@ struct AppUninstallConfirmSheet: View {
                     Text("Uninstall \(app.name)?")
                         .font(scale.font(18, weight: .bold))
                         .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file) + " will be freed")
                         .font(scale.font(13))
                         .foregroundStyle(.secondary)
@@ -650,7 +652,8 @@ struct AppUninstallConfirmSheet: View {
             }
             .padding(20)
         }
-        .frame(width: AppTheme.Sheet.wideWidth)
+        .frame(minWidth: AppTheme.Sheet.standardWidth, idealWidth: AppTheme.Sheet.wideWidth, maxWidth: AppTheme.Sheet.wideWidth)
+        .frame(minHeight: 340, idealHeight: AppTheme.Sheet.standardHeight, maxHeight: 620)
         .background(.regularMaterial)
     }
 
