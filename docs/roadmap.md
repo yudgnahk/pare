@@ -203,9 +203,12 @@ The Phase 5 implementation hardcodes scan paths. Replace with Spotlight-based pr
 Spec: `docs/features/phase-7-platform-completeness.md`
 
 ### Docker Full Cleanup
-- [x] `DockerStorageRule` (extends/replaces `DockerLogsRule`) — detect Docker VM disk image size (`Docker.raw`), report as `.advanced` finding (detect only; deleting the image is too destructive)
-- [x] Add Docker log paths to existing rule (lifecycle logs, Desktop logs)
-- [x] `docker system prune` action in Maintenance tab (Phase 8) — safest way to reclaim Docker space (implemented: `docker system prune -f`, never `--volumes`)
+- [x] `DockerStorageRule` covers aged Docker Desktop logs only; `Docker.raw` and the entire `Data/vms/` tree are hard-blocked and never emitted as cleanable scan findings
+- [x] Add Docker daemon and Desktop UI log paths to the existing rule
+- [x] Add Docker-native build-cache actions for cache older than 7 days or 1 day
+- [~] Retire the broad `docker system prune -f` action; replace it with individually selected resources in Phase 10
+- [x] Never use bulk volume pruning; Phase 10 may remove only explicitly selected, unused volumes by exact name
+- [~] Full storage diagnosis, per-resource selection, and reclaim preview — continued in Phase 10
 
 ### iOS / iPadOS Backup Management
 - [x] `MobileSyncBackupsRule` (customScan) — enumerate `~/Library/Application Support/MobileSync/Backup/`
@@ -247,7 +250,9 @@ Spec: `docs/features/phase-8-productivity-system.md`
   2. **Rebuild Launch Services** — `lsregister -kill -r -domain local -domain system -domain user`
   3. **Restart Finder** — `killall Finder`
   4. **Vacuum SQLite databases** — Mail (version-scanned), Safari History, Messages
-  5. **Docker system prune** — `docker system prune -f` (shown only if Docker daemon is running)
+  5. **Docker system prune** — current implementation; remove in Phase 10 in favor of explicit resource selection
+  6. **Docker build cache (>7 days)** — routine age-filtered builder prune
+  7. **Docker build cache (>1 day)** — low-disk age-filtered builder prune
 - [x] Actions stream stdout/stderr to an expandable inline log per card (auto-expands on first output)
 - [ ] Validate on macOS 13, 14, 15 before shipping
 
@@ -277,6 +282,90 @@ Aliases (no third-party product names): **App A** = CLI-first cleaner · **App B
 - [x] `scripts/release.sh` — universal binary build → sign → DMG → notarize → staple → verify
 - [x] `make release` target added to Makefile
 - [ ] GitHub release tagged v1.0.0 with signed `.dmg`
+
+---
+
+## Phase 10 — Selective Docker Storage Manager
+
+Replace broad Docker pruning with an explainable, inventory-first workflow. Pare must show what consumes space, what each resource belongs to, and exactly what will be removed. Nothing is selected automatically, and Pare never runs `docker system prune`.
+
+The binding [`Docker safety policy`](features/docker-safety.md) must be updated before implementation to permit targeted removal of an explicitly selected unused volume while continuing to forbid `docker volume prune`, `--volumes`, force removal, and direct deletion of `Docker.raw`. Docker CLI behavior references: [`docker system df`](https://docs.docker.com/reference/cli/docker/system/df/), [`docker buildx du`](https://docs.docker.com/reference/cli/docker/buildx/du/), [`docker buildx prune`](https://docs.docker.com/reference/cli/docker/buildx/prune/), [`docker volume inspect`](https://docs.docker.com/reference/cli/docker/volume/inspect/), and [`docker volume rm`](https://docs.docker.com/reference/cli/docker/volume/rm/).
+
+### Investigation baseline (2026-07-30)
+
+Read-only inspection of the current development machine:
+
+| Storage | Used | Reclaimable now | Interpretation |
+|---------|-----:|----------------:|----------------|
+| `Docker.raw` host allocation | 33 GB | Not directly deletable | Sparse VM disk containing all Docker data |
+| Images | 9.77 GB | 71 MB | Nearly every image is referenced by a container |
+| Containers | 244 MB | 244 MB | 27 stopped containers; removable without touching volumes |
+| Local volumes | 18.47 GB | 244 MB reported unused | Mostly persistent app/database data; never auto-prune |
+| Build cache | 3.50 GB | 2.91 GB | Best safe-reclaim opportunity |
+
+Largest persistent volumes are `data-api_arango_data` (12.61 GB) and `data-api_redis_data` (3.07 GB). This is why a 33–35 GB `Docker.raw` does not imply that 33–35 GB is safe to clean. About 2.91 GB of build cache is currently reclaimable. A materially larger reduction requires the user to identify and explicitly select projects or persistent datasets that are no longer needed.
+
+### 10.1 — Read-only Docker inventory
+
+- [ ] Add `DockerStorageInventory` actor in `PareCore`; run only when the Docker daemon is reachable
+- [ ] Parse `docker system df`, `docker buildx du`, resource lists, and inspect output into typed image, container, volume, and build-cache usage
+- [ ] Report three distinct numbers: `Docker.raw` host allocation, Docker-managed usage, and Docker-reported reclaimable bytes
+- [ ] For every volume, show exact size, name, named/anonymous kind, creation time, driver, labels, Compose project/service, and attached running or stopped containers
+- [ ] Infer a human-readable purpose such as database, dependency cache, or application data from labels, mounts, and owning services; display “Unknown” rather than guessing when evidence is insufficient
+- [ ] Show every image, stopped container, and build-cache record with size, last-used information, ownership clues, and active/in-use state
+- [ ] Build resource relationships so the UI can explain why an image or volume is blocked by a container
+- [ ] Handle Docker absent, daemon stopped, permission denied, command timeout, and unsupported output without failing the normal Pare scan
+- [ ] Cache read-only results briefly and add a manual Refresh action
+
+### 10.2 — Per-resource selection and safety model
+
+- [ ] Add a dedicated Docker card in Disk or Maintenance; do not represent `Docker.raw` as a normal scan finding
+- [ ] Present separate Build Cache, Images, Containers, and Volumes sections with a checkbox on each individually removable row
+- [ ] Default every checkbox to off; provide no “Select all” across resource types and no one-click broad cleanup
+- [ ] Show selected bytes per section and a deduplicated estimated total before cleanup
+- [ ] Label reclaimable build-cache records `.safe`; label stopped containers and unused images `.review`
+- [ ] Label every volume `.advanced` because it may contain irreplaceable database or application data
+- [ ] Block selection for volumes attached to any running or stopped container; show the blocking containers instead of silently removing them
+- [ ] Allow only unused volumes to be selected, require a second confirmation, and require the user to type the volume name when it is named or larger than 1 GB
+- [ ] Never preselect, bulk-prune, force-remove, detach, stop, or cascade-delete another Docker resource
+- [ ] Offer volume backup/export guidance before confirmation
+- [ ] Show the exact resource names, command, and expected consequences in confirmation UI
+
+### 10.3 — Scoped cleanup actions
+
+- [ ] Remove `MaintenanceCatalog.dockerPrune` and the `docker system prune` runner path
+- [ ] Remove selected build-cache records with Buildx ID filters; retain age and storage-budget shortcuts only as selection helpers
+- [ ] Remove selected stopped containers by exact container ID, never with container prune
+- [ ] Remove selected unused images by exact image ID, never with image prune
+- [ ] Remove selected unused volumes one at a time with `docker volume rm <exact-name>`, without `--force`
+- [ ] Validate every selected resource again immediately before execution; skip anything that became active or attached
+- [ ] Continue after an isolated resource failure and report the failed item without widening the command scope
+- [ ] Re-run Docker inventory after each action and report actual reclaimed bytes
+- [ ] Re-measure allocated `Docker.raw` size after cleanup; explain that host compaction may lag Docker-reported deletion
+- [ ] Record command, before/after totals, stdout/stderr, and result in Pare History
+- [ ] Support cancellation and prevent concurrent Docker maintenance actions
+
+### 10.4 — UX and guidance
+
+- [ ] Add a stacked usage view for images, containers, volumes, and build cache, separating active, blocked, selectable, and selected bytes
+- [ ] Add “Why is Docker.raw larger?” help that explains sparse allocation and never suggests deleting the file
+- [ ] Highlight high-return, low-risk recommendations first (currently old build cache), but leave them unselected
+- [ ] For each volume, show “What is this?” ownership evidence, mounts, attached containers, and the likely consequence of removal
+- [ ] Add search and filters for reclaimable, in use, Compose project, resource type, age, and size
+- [ ] Link to Docker Desktop disk-image settings for moving the disk or changing its limit; do not edit Docker Desktop settings directly
+- [ ] Add empty, daemon-offline, low-space, partial-failure, and post-clean states
+
+### 10.5 — Verification and acceptance
+
+- [ ] Unit-test parsers with multiple Docker CLI versions and localized/changed whitespace fixtures
+- [ ] Test that no generated command contains `system prune`, any resource-level `prune` except filtered Buildx cache removal, `--volumes`, volume force removal, or direct `Docker.raw` deletion
+- [ ] Test active resources and volumes attached to stopped containers cannot be selected
+- [ ] Test commands contain only exact IDs/names selected by the user and selection is empty by default
+- [ ] Test volume size, labels, Compose ownership, mounts, attachment state, and unknown-purpose fallback
+- [ ] Integration-test against a disposable Docker fixture with images, stopped/running containers, build cache, named volumes, and Compose labels
+- [ ] Verify before/after accounting and History output
+- [ ] Validate Docker Desktop on Intel and Apple Silicon plus macOS 13, 14, and 15
+- [ ] Acceptance: a user can understand each resource, select only exact items to remove, see selected bytes and consequences, and verify the result without Pare ever running a broad prune
 
 ---
 
