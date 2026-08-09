@@ -67,24 +67,14 @@ public struct ToolCommandRunner: Sendable {
             process.standardOutput = stdoutPipe
             process.standardError = FileHandle.nullDevice
 
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(returning: nil)
-                return
-            }
-
-            // Drain stdout on an OS-managed thread (not the cooperative pool)
-            // so a blocking read can never starve the concurrency runtime.
+            // Register completion before launch so an immediately exiting child
+            // cannot terminate before its handler exists. The setup gate keeps
+            // completion behind pipe-reader installation after a successful run.
             let drainGroup = DispatchGroup()
             let buffer = LockedOutputBuffer()
-            drainGroup.enter()
-            DispatchQueue.global(qos: .utility).async {
-                buffer.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
-                drainGroup.leave()
-            }
-
             let timedOut = LockedFlag()
+            drainGroup.enter()
+
             process.terminationHandler = { proc in
                 drainGroup.wait()
                 guard proc.terminationStatus == 0, !timedOut.value else {
@@ -95,6 +85,24 @@ public struct ToolCommandRunner: Sendable {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 continuation.resume(returning: output)
             }
+
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                drainGroup.leave()
+                continuation.resume(returning: nil)
+                return
+            }
+
+            // Drain stdout on an OS-managed thread (not the cooperative pool)
+            // so a blocking read can never starve the concurrency runtime.
+            drainGroup.enter()
+            DispatchQueue.global(qos: .utility).async {
+                buffer.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
+                drainGroup.leave()
+            }
+            drainGroup.leave()
 
             // Timeout: terminate the process; terminationHandler resolves nil.
             DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {

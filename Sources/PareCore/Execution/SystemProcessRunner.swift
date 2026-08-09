@@ -33,18 +33,33 @@ public struct SystemProcessRunner: ProcessRunning {
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
 
+            // Register completion before launch so an immediately exiting child
+            // cannot terminate before its handler exists. The setup gate keeps
+            // completion behind pipe-reader installation after a successful run.
+            let drainGroup = DispatchGroup()
+            let stdoutBuffer = LockedDataBuffer()
+            let stderrBuffer = LockedDataBuffer()
+            drainGroup.enter()
+
+            process.terminationHandler = { proc in
+                drainGroup.wait()
+                continuation.resume(returning: ProcessResult(
+                    standardOutput: String(data: stdoutBuffer.data, encoding: .utf8) ?? "",
+                    standardError: String(data: stderrBuffer.data, encoding: .utf8) ?? "",
+                    exitCode: proc.terminationStatus
+                ))
+            }
+
             do {
                 try process.run()
             } catch {
+                process.terminationHandler = nil
+                drainGroup.leave()
                 continuation.resume(throwing: error)
                 return
             }
 
             // Drain both pipes on background OS threads (not the cooperative pool).
-            let drainGroup = DispatchGroup()
-            let stdoutBuffer = LockedDataBuffer()
-            let stderrBuffer = LockedDataBuffer()
-
             drainGroup.enter()
             DispatchQueue.global(qos: .utility).async {
                 stdoutBuffer.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
@@ -56,15 +71,7 @@ public struct SystemProcessRunner: ProcessRunning {
                 stderrBuffer.append(stderrPipe.fileHandleForReading.readDataToEndOfFile())
                 drainGroup.leave()
             }
-
-            process.terminationHandler = { proc in
-                drainGroup.wait()
-                continuation.resume(returning: ProcessResult(
-                    standardOutput: String(data: stdoutBuffer.data, encoding: .utf8) ?? "",
-                    standardError: String(data: stderrBuffer.data, encoding: .utf8) ?? "",
-                    exitCode: proc.terminationStatus
-                ))
-            }
+            drainGroup.leave()
         }
     }
 
