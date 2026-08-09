@@ -53,7 +53,8 @@ public struct BrowserExtendedArtifactsRule: ScanRule {
                     at: root.appending(path: suffix),
                     reason: "\(browser) \(label) (regenerated automatically)",
                     riskLevel: .safe,
-                    applyAgeGate: false
+                    applyAgeGate: false,
+                    sizeIndex: environment.sizeIndex
                 )
             }
             // Multi-profile: Default, Profile 1, Guest Profile, …
@@ -64,7 +65,8 @@ public struct BrowserExtendedArtifactsRule: ScanRule {
                         at: profile.appending(path: suffix),
                         reason: "\(browser) \(profileName) \(label)",
                         riskLevel: .safe,
-                        applyAgeGate: false
+                        applyAgeGate: false,
+                        sizeIndex: environment.sizeIndex
                     )
                 }
             }
@@ -87,7 +89,8 @@ public struct BrowserExtendedArtifactsRule: ScanRule {
                         at: profile.appending(path: suffix),
                         reason: "\(browser) \(profileName) \(label)",
                         riskLevel: .review,
-                        applyAgeGate: true
+                        applyAgeGate: true,
+                        sizeIndex: environment.sizeIndex
                     )
                 }
             }
@@ -123,14 +126,15 @@ public struct BrowserExtendedArtifactsRule: ScanRule {
         at url: URL,
         reason: String,
         riskLevel: RiskLevel,
-        applyAgeGate: Bool
+        applyAgeGate: Bool,
+        sizeIndex: DirectorySizeIndex
     ) -> [ScanFinding] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-        let size = FileSystemUtils.directorySize(url: url)
+        let size = sizeIndex.directorySize(url: url)
         guard size > 0 else { return [] }
 
-        let resourceValues = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-        let lastUsed = resourceValues?.contentModificationDate
+        let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey, .creationDateKey, .contentModificationDateKey])
+        let lastUsed = resourceValues.flatMap(ScanPolicy.effectiveAgeDate)
 
         if applyAgeGate,
            let date = lastUsed,

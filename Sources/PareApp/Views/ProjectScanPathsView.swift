@@ -5,6 +5,7 @@ import PareCore
 // MARK: - ProjectScanPathsView
 
 struct ProjectScanPathsView: View {
+    @Environment(\.pareDisplayScale) private var scale
     @StateObject private var viewModel = ProjectScanPathsViewModel()
     @Environment(\.dismiss) private var dismiss
 
@@ -17,17 +18,17 @@ struct ProjectScanPathsView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Project Scan Paths")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .font(scale.font(20, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.textPrimary)
                         Text("Pare looks for local build caches (.cache, .next, dist, target, …) inside these directories. Dependency trees like node_modules and .venv are never marked reclaimable.")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(scale.font(12, weight: .medium))
                             .foregroundStyle(AppTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
                     Button("Done") { dismiss() }
                         .buttonStyle(.borderless)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(scale.font(14, weight: .semibold))
                         .foregroundStyle(AppTheme.accent)
                 }
                 .padding(.horizontal, 24)
@@ -38,7 +39,7 @@ struct ProjectScanPathsView: View {
                 HStack {
                     Button(action: viewModel.addPath) {
                         Label("Add Folder…", systemImage: "folder.badge.plus")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(scale.font(13, weight: .semibold))
                     }
                     .buttonStyle(.bordered)
                     Spacer()
@@ -49,20 +50,11 @@ struct ProjectScanPathsView: View {
                 Divider().opacity(0.15)
 
                 if viewModel.paths.isEmpty {
-                    Spacer()
-                    VStack(spacing: 10) {
-                        Image(systemName: "folder.badge.questionmark")
-                            .font(.system(size: 34, weight: .light))
-                            .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
-                        Text("No project paths yet")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Add your ~/Projects folder to automatically\ndetect build artifacts in future scans.")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    Spacer()
+                    EmptyStateView(
+                        icon: "folder.badge.questionmark",
+                        title: "No project paths yet",
+                        message: "Add your ~/Projects folder to automatically\ndetect build artifacts in future scans."
+                    )
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {
@@ -76,18 +68,18 @@ struct ProjectScanPathsView: View {
                 }
             }
         }
-        .frame(width: 520, height: 420)
+        .frame(width: AppTheme.Sheet.standardWidth, height: AppTheme.Sheet.standardHeight)
     }
 
     private func pathRow(_ path: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "folder.fill")
-                .font(.system(size: 14, weight: .medium))
+                .font(scale.font(14, weight: .medium))
                 .foregroundStyle(AppTheme.accent)
                 .frame(width: 18)
 
             Text(path)
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .font(scale.font(12, weight: .medium, design: .monospaced))
                 .foregroundStyle(AppTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -98,7 +90,7 @@ struct ProjectScanPathsView: View {
                 viewModel.removePath(path)
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(scale.font(11, weight: .semibold))
                     .foregroundStyle(AppTheme.textSecondary)
             }
             .buttonStyle(.borderless)
@@ -106,7 +98,7 @@ struct ProjectScanPathsView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AppTheme.Fill.subtle, in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
     }
 }
 

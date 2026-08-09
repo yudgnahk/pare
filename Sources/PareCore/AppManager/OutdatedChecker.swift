@@ -7,7 +7,13 @@ public struct OutdatedChecker: Sendable {
     private static let masLookupBase = "https://itunes.apple.com/lookup"
     private static let networkTimeout: TimeInterval = 10
 
-    public init() {}
+    /// Injected session — tests pass a `URLSession` whose configuration registers
+    /// a stub `URLProtocol` so update checks run without network access.
+    private let session: URLSession
+
+    public init(session: URLSession = .shared) {
+        self.session = session
+    }
 
     /// Checks all apps for updates. Returns a dictionary of bundleID → UpdateInfo.
     public func checkAll(_ apps: [InstalledApp]) async -> [String: UpdateInfo] {
@@ -37,7 +43,7 @@ public struct OutdatedChecker: Sendable {
 
                 let installed = app.buildVersion
                 group.addTask {
-                    guard let available = await Self.fetchSparkleVersion(feedURL: feedURL) else { return nil }
+                    guard let available = await self.fetchSparkleVersion(feedURL: feedURL) else { return nil }
                     return (bundleID, UpdateInfo(
                         bundleID: bundleID,
                         installedVersion: installed,
@@ -54,10 +60,10 @@ public struct OutdatedChecker: Sendable {
         return results
     }
 
-    private static func fetchSparkleVersion(feedURL: URL) async -> (version: String, downloadURL: URL?)? {
-        var request = URLRequest(url: feedURL, timeoutInterval: networkTimeout)
+    private func fetchSparkleVersion(feedURL: URL) async -> (version: String, downloadURL: URL?)? {
+        var request = URLRequest(url: feedURL, timeoutInterval: Self.networkTimeout)
         request.httpMethod = "GET"
-        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
+        guard let (data, _) = try? await session.data(for: request) else { return nil }
 
         let parser = AppcastParser()
         return parser.parse(data)
@@ -74,7 +80,7 @@ public struct OutdatedChecker: Sendable {
         await withTaskGroup(of: [(String, UpdateInfo)].self) { group in
             for batch in batches {
                 group.addTask {
-                    await Self.fetchMASBatch(batch)
+                    await self.fetchMASBatch(batch)
                 }
             }
             for await batch in group {
@@ -84,19 +90,19 @@ public struct OutdatedChecker: Sendable {
         return results
     }
 
-    private static func fetchMASBatch(_ apps: [InstalledApp]) async -> [(String, UpdateInfo)] {
+    private func fetchMASBatch(_ apps: [InstalledApp]) async -> [(String, UpdateInfo)] {
         let bundleIDs = apps.compactMap { $0.bundleID }
         guard !bundleIDs.isEmpty else { return [] }
 
         let joined = bundleIDs.joined(separator: ",")
-        guard let url = URL(string: "\(masLookupBase)?bundleId=\(joined)&entity=macSoftware&country=us") else {
+        guard let url = URL(string: "\(Self.masLookupBase)?bundleId=\(joined)&entity=macSoftware&country=us") else {
             return []
         }
 
-        var request = URLRequest(url: url, timeoutInterval: networkTimeout)
+        var request = URLRequest(url: url, timeoutInterval: Self.networkTimeout)
         request.httpMethod = "GET"
 
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
+        guard let (data, _) = try? await session.data(for: request),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let resultItems = json["results"] as? [[String: Any]] else {
             return []

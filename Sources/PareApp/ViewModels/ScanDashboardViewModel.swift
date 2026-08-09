@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import SwiftUI
 import AppKit
@@ -11,118 +12,6 @@ final class ScanDashboardViewModel: ObservableObject {
         case success
     }
 
-    /// How to present empty-scan coaching when reclaimable bytes are ~0.
-    enum EmptyScanCoachingStyle: Equatable {
-        /// Live probe still says FDA is denied.
-        case likelyMissingFDA
-        /// Last scan ran without FDA; access is now granted — user must rescan.
-        case permissionsUpdatedNeedsRescan
-        /// Scan had access (or unknown); nothing reclaimable matched.
-        case genuinelyEmpty
-    }
-
-    struct SummaryItem: Identifiable, Sendable {
-        let id: String
-        let category: ScanCategory
-        let reclaimableBytes: Int64
-        let fileCount: Int
-        /// Aggregated folder rows shown in the browser (not raw file count).
-        let folderCount: Int
-
-        init(summary: ScanCategorySummary, folderCount: Int = 0) {
-            self.id = summary.category.rawValue
-            self.category = summary.category
-            self.reclaimableBytes = summary.reclaimableBytes
-            self.fileCount = summary.fileCount
-            self.folderCount = folderCount
-        }
-    }
-
-    struct FindingItem: Identifiable, Sendable {
-        let id: String
-        let path: String
-        let sizeBytes: Int64
-        let category: ScanCategory
-        let riskLevel: RiskLevel
-        let reason: String
-        let confidence: Double
-        let lastUsed: Date?
-
-        init(finding: ScanFinding) {
-            self.id = "\(finding.path)-\(finding.sizeBytes)"
-            self.path = finding.path
-            self.sizeBytes = finding.sizeBytes
-            self.category = finding.category
-            self.riskLevel = finding.riskLevel
-            self.reason = finding.reason
-            self.confidence = finding.confidence
-            self.lastUsed = finding.lastUsed
-        }
-    }
-
-    struct CategoryLargeFiles: Identifiable, Sendable {
-        let id: String
-        let category: ScanCategory
-        let totalBytes: Int64
-        let files: [FindingItem]
-    }
-
-    /// Lightweight folder row for the category browser.
-    /// **No path lists** — underlying file paths stay private so SwiftUI never holds 10k+ strings per row.
-    struct CategoryFolderRow: Identifiable, Equatable, Sendable {
-        let id: String
-        /// Path used for Finder reveal (the rolled-up folder).
-        let folderPath: String
-        /// Full user-visible path (`~/…`).
-        let displayPath: String
-        let totalBytes: Int64
-        /// Number of underlying scan findings rolled into this folder.
-        let itemCount: Int
-        /// Worst risk among members (safe < review < advanced).
-        let riskLevel: RiskLevel
-        let isSelectable: Bool
-        /// Tool/app label (same as donut chart) for nested grouping.
-        let toolName: String
-
-        var isSafeFolder: Bool { riskLevel == .safe }
-    }
-
-    /// Intermediate browser level: category → **tool** (JetBrains, Package Managers, …) → folders.
-    struct CategoryToolGroup: Identifiable, Equatable, Sendable {
-        let id: String
-        let category: ScanCategory
-        let toolName: String
-        let totalBytes: Int64
-        let folderCount: Int
-        let itemCount: Int
-        let riskLevel: RiskLevel
-        /// Folder row ids in this tool group (for bulk select).
-        let folderIds: Set<String>
-        let isSelectable: Bool
-
-        var isSafeGroup: Bool { riskLevel == .safe }
-    }
-
-    /// Precomputed size/count for a folder id (selection metrics without expanding paths).
-    private struct FolderMeta: Sendable {
-        let itemCount: Int
-        let bytes: Int64
-        let reviewCount: Int
-        let isSafe: Bool
-    }
-
-    /// Result of rolling findings into folder rows + private path maps.
-    private struct FolderAggregate: Sendable {
-        var rowsByCategory: [ScanCategory: [CategoryFolderRow]] = [:]
-        var toolGroupsByCategory: [ScanCategory: [CategoryToolGroup]] = [:]
-        /// Private: folder id → finding paths (only used at clean time).
-        var pathsByFolderId: [String: [String]] = [:]
-        var folderIdByPath: [String: String] = [:]
-        var metaByFolderId: [String: FolderMeta] = [:]
-        var safeFolderIds: Set<String> = []
-        var safeFolderIdsByCategory: [ScanCategory: Set<String>] = [:]
-    }
-
     /// Fully prepared scan UI payload. Built off the main actor so large scans
     /// do not freeze the app at finalize (macOS “Not Responding”).
     private struct PreparedScanResults: Sendable {
@@ -131,63 +20,32 @@ final class ScanDashboardViewModel: ObservableObject {
         let aggregate: FolderAggregate
         let summaries: [SummaryItem]
         let sortedTopFindings: [FindingItem]
-        let largeFilesByCategory: [CategoryLargeFiles]
-        let toolRollups: [ToolRollupItem]
+        let toolRollups: [ToolRollup]
+        let candidateStats: CandidateStats
         let totalReclaimableBytes: Int64
+        /// Human-readable scan warnings (rule failures, unreadable locations — R1.2/R1.3).
+        let scanWarnings: [String]
+        /// Rendered paths that existed on disk at scan finish (reveal button state).
+        /// Precomputed here so SwiftUI row bodies never call FileManager.
+        let revealablePaths: Set<String>
+        /// Rendered top-finding paths that are directories (folder icon state).
+        let folderFindingPaths: Set<String>
     }
 
-    struct ToolRollupItem: Identifiable, Sendable {
-        let id: String
-        let app: String
-        let totalBytes: Int64
-        let fileCount: Int
-        let share: Double
-
-        init(rollup: AppRollup, total: Int64) {
-            self.id = rollup.app
-            self.app = rollup.app
-            self.totalBytes = rollup.totalBytes
-            self.fileCount = rollup.fileCount
-            self.share = total > 0 ? Double(rollup.totalBytes) / Double(total) : 0
-        }
-    }
-
-    // MARK: - Cleanup state
-
-    enum CleanupState: Equatable {
-        case idle
-        case confirming
-        case cleaning
-        case done(bytesFreed: Int64, skippedCount: Int)
-        case undoing
-        case undone(restoredCount: Int)
-        case error(String)
-    }
+    // MARK: - Published scan state
 
     @Published private(set) var state: ScanState = .idle
     @Published private(set) var totalReclaimableBytes: Int64 = 0
+    /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
+    @Published private(set) var scanWarnings: [String] = []
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
-    @Published private(set) var largeFilesByCategory: [CategoryLargeFiles] = []
-    @Published private(set) var perToolRollups: [ToolRollupItem] = []
+    @Published private(set) var perToolRollups: [ToolRollup] = []
     @Published private(set) var lastScanDate: Date?
     @Published private(set) var lastScanDuration: TimeInterval?
     @Published private(set) var revealFeedback: String?
-    @Published var resultsVisible = false
-
-    // Cleanup-specific state
-    @Published private(set) var cleanupState: CleanupState = .idle
-    @Published var showCleanConfirmation = false
-    @Published var showDeepCleanConfirmation = false
-    @Published var showSelectedCleanConfirmation = false
-    /// Folder-level selection (dozens of ids — never tens of thousands of file paths).
-    @Published private(set) var selectedFolderIds: Set<String> = []
-    /// Optional individual paths (Largest items only — small, ≤ ~40).
-    @Published private(set) var selectedPaths: Set<String> = []
-    /// Cached selection totals from folder meta + individual paths.
-    @Published private(set) var selectedCandidatesCount: Int = 0
-    @Published private(set) var selectedCandidatesBytes: Int64 = 0
-    @Published private(set) var selectedReviewCount: Int = 0
+    /// Selection domain: folder/path selection, cached totals, expansion state.
+    @Published private(set) var selection = ScanSelectionModel()
     /// Pre-aggregated **lightweight** folder rows per category (built once per scan).
     @Published private(set) var categoryFolderRows: [ScanCategory: [CategoryFolderRow]] = [:]
     /// Tool/app groups under a category (e.g. Developer Package Caches → JetBrains, Package Managers).
@@ -197,78 +55,75 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var scanStepTitle: String = ""
     @Published private(set) var scanRulesCompleted: Int = 0
     @Published private(set) var scanRulesTotal: Int = 0
-    /// Heuristic Full Disk Access status for coaching banners (live probe).
-    @Published private(set) var fullDiskAccessStatus: FullDiskAccessStatus = .unknown
-    /// Show FDA coaching when access looks missing and the user has not dismissed the card.
-    @Published private(set) var showFullDiskAccessBanner: Bool = false
     /// After a successful scan with ~0 reclaimable bytes, coach the user on next steps.
     @Published private(set) var showEmptyScanCoaching: Bool = false
     /// Empty-scan card presentation when `showEmptyScanCoaching` is true.
     @Published private(set) var emptyScanCoachingStyle: EmptyScanCoachingStyle = .genuinelyEmpty
-    /// Most recent transaction, used to offer undo.
-    private var lastTransaction: CleanupTransaction?
-    private static let fdaBannerDismissedKey = "pare.fdaCoaching.dismissed"
-    /// FDA status observed when the last successful scan finished (not live).
-    private var fullDiskAccessStatusAtLastScan: FullDiskAccessStatus = .unknown
+
+    /// Shared FDA state machine (also used by Settings).
+    let permissions = PermissionCoachingModel()
+    /// Cleanup lifecycle (pending sheet + engine calls + undo).
+    let cleanup = CleanupCoordinator()
+
+    /// Cached clean-candidate totals (recomputed per scan / exclusion — not per sheet render).
+    private(set) var candidateStats = CandidateStats()
+
     /// Raw findings kept after scan so cleanup can reference them.
     private var latestFindings: [ScanFinding] = []
     /// O(1) path → finding lookup (not published).
     private var findingsByPath: [String: ScanFinding] = [:]
-    /// Private path expansion maps — never exposed to SwiftUI views.
+    /// Private path expansion map — never exposed to SwiftUI views.
     private var pathsByFolderId: [String: [String]] = [:]
-    private var folderIdByPath: [String: String] = [:]
-    private var folderMetaById: [String: FolderMeta] = [:]
-    private var safeFolderIds: Set<String> = []
-    private var safeFolderIdsByCategory: [ScanCategory: Set<String>] = [:]
-    private let engine = CleanupEngine()
+    /// Precomputed at scan finish (background pass) — see `revealabilityIndex`.
+    private var revealablePaths: Set<String> = []
+    private var folderFindingPaths: Set<String> = []
     private let scanCache = ScanMetadataCache()
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
+    private var cancellables: Set<AnyCancellable> = []
 
-    /// Hard cap on folder rows rendered per category (largest first).
-    /// Higher than before so monorepos (many per-project `.next`/`target`) list as folders, not one root.
-    nonisolated static let maxFolderRowsPerCategory = 120
+    init() {
+        // Child observable objects publish through the dashboard so existing
+        // `@ObservedObject var viewModel` views keep re-rendering.
+        permissions.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        cleanup.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        cleanup.onCleanupCompleted = { [weak self] in self?.runScan() }
+    }
+
+    // MARK: - Derived state
 
     var isScanning: Bool {
         state == .scanning
     }
 
-    var isCleaning: Bool {
-        if case .cleaning = cleanupState { return true }
-        return false
-    }
+    var cleanupState: CleanupCoordinator.CleanupState { cleanup.state }
+    var isCleaning: Bool { cleanup.isCleaning }
+    var isUndoing: Bool { cleanup.isUndoing }
+    var canUndo: Bool { cleanup.canUndo }
 
-    var isUndoing: Bool {
-        if case .undoing = cleanupState { return true }
-        return false
-    }
-
-    var canUndo: Bool {
-        if let tx = lastTransaction, !tx.isDryRun, !tx.items.isEmpty { return true }
-        return false
+    /// Drives the single cleanup confirmation sheet (`.sheet(item:)`).
+    var pendingCleanup: PendingCleanup? {
+        get { cleanup.pending }
+        set { cleanup.pending = newValue }
     }
 
     /// Number of safe-risk findings from the last scan (Quick Clean candidates).
-    var quickCleanCandidatesCount: Int {
-        latestFindings.filter { $0.riskLevel == .safe }.count
-    }
-
-    var quickCleanCandidatesBytes: Int64 {
-        latestFindings.filter { $0.riskLevel == .safe }.reduce(0) { $0 + $1.sizeBytes }
-    }
+    var quickCleanCandidatesCount: Int { candidateStats.safeCount }
+    var quickCleanCandidatesBytes: Int64 { candidateStats.safeBytes }
 
     /// Deep Clean candidates: safe + review-risk findings.
-    var deepCleanCandidatesCount: Int {
-        latestFindings.filter { $0.riskLevel == .safe || $0.riskLevel == .review }.count
-    }
+    var deepCleanCandidatesCount: Int { candidateStats.deepCount }
+    var deepCleanCandidatesBytes: Int64 { candidateStats.deepBytes }
 
-    var deepCleanCandidatesBytes: Int64 {
-        latestFindings.filter { $0.riskLevel == .safe || $0.riskLevel == .review }.reduce(0) { $0 + $1.sizeBytes }
-    }
+    var reviewRiskCandidatesCount: Int { candidateStats.reviewCount }
 
-    var reviewRiskCandidatesCount: Int {
-        latestFindings.filter { $0.riskLevel == .review }.count
-    }
+    var selectedCandidatesCount: Int { selection.selectedCount }
+    var selectedCandidatesBytes: Int64 { selection.selectedBytes }
+    var selectedReviewCount: Int { selection.selectedReviewCount }
 
     /// True when a quick clean is large enough that Spotlight may busy-update for a while.
     var quickCleanMayTriggerSpotlightWork: Bool {
@@ -292,100 +147,48 @@ final class ScanDashboardViewModel: ObservableObject {
         )
     }
 
+    // MARK: - Selection (forwarded to ScanSelectionModel)
+
     func isSelected(path: String) -> Bool {
-        if selectedPaths.contains(path) { return true }
-        if let folderId = folderIdByPath[path], selectedFolderIds.contains(folderId) {
-            return true
-        }
-        return false
+        selection.isSelected(path: path)
     }
 
     func isSelectable(path: String) -> Bool {
-        guard let finding = findingsByPath[path] else { return false }
-        return finding.riskLevel != .advanced
+        selection.isSelectable(path: path)
     }
 
     func riskLevel(for path: String) -> RiskLevel? {
-        findingsByPath[path]?.riskLevel
+        selection.riskLevel(for: path)
     }
 
-    /// Largest-items path toggle. Never materializes folder children into `selectedPaths`.
     func toggleSelection(path: String) {
-        guard isSelectable(path: path) else { return }
-        // If this path is covered by a selected folder, deselect the folder (O(1)).
-        if let folderId = folderIdByPath[path], selectedFolderIds.contains(folderId) {
-            var folders = selectedFolderIds
-            folders.remove(folderId)
-            selectedFolderIds = folders
-            recomputeSelectionMetrics()
-            return
-        }
-        var paths = selectedPaths
-        if paths.contains(path) {
-            paths.remove(path)
-        } else {
-            paths.insert(path)
-        }
-        selectedPaths = paths
-        recomputeSelectionMetrics()
+        selection.togglePath(path)
     }
 
-    /// Toggle one rolled-up folder — O(1) set membership, no path expansion.
     func toggleFolder(_ row: CategoryFolderRow) {
-        guard row.isSelectable else { return }
-        // Reassign so `@Published` fires (in-place Set mutation does not).
-        var next = selectedFolderIds
-        if next.contains(row.id) {
-            next.remove(row.id)
-        } else {
-            next.insert(row.id)
-        }
-        selectedFolderIds = next
-        recomputeSelectionMetrics()
+        selection.toggleFolder(row)
     }
 
     func folderSelectionState(_ row: CategoryFolderRow) -> CategorySelectState {
-        guard row.isSelectable else { return .none }
-        return selectedFolderIds.contains(row.id) ? .all : .none
+        selection.folderSelectionState(row)
     }
 
     /// Toggle every folder under a tool group (e.g. all JetBrains package-cache folders).
     func toggleToolGroup(_ group: CategoryToolGroup) {
-        guard group.isSelectable, !group.folderIds.isEmpty else { return }
-        var next = selectedFolderIds
-        if group.folderIds.isSubset(of: next) {
-            next.subtract(group.folderIds)
-        } else {
-            next.formUnion(group.folderIds)
-        }
-        selectedFolderIds = next
-        recomputeSelectionMetrics()
+        guard group.isSelectable else { return }
+        selection.toggleFolderIds(group.folderIds)
     }
 
     func toolGroupSelectionState(_ group: CategoryToolGroup) -> CategorySelectState {
-        guard !group.folderIds.isEmpty else { return .none }
-        let hit = group.folderIds.intersection(selectedFolderIds).count
-        if hit == 0 { return .none }
-        if hit == group.folderIds.count { return .all }
-        return .partial
+        selection.selectionState(of: group.folderIds)
     }
 
     func selectAllSafe() {
-        selectedFolderIds = safeFolderIds
-        // Drop individual paths that are already covered by safe folders.
-        selectedPaths = Set(selectedPaths.filter { path in
-            guard let fid = folderIdByPath[path] else { return true }
-            return !safeFolderIds.contains(fid)
-        })
-        recomputeSelectionMetrics()
+        selection.selectAllSafe()
     }
 
     func clearSelection() {
-        selectedFolderIds = []
-        selectedPaths = []
-        selectedCandidatesCount = 0
-        selectedCandidatesBytes = 0
-        selectedReviewCount = 0
+        selection.clear()
     }
 
     func toggleCategory(_ category: ScanCategory, includeReview: Bool = false) {
@@ -393,66 +196,53 @@ final class ScanDashboardViewModel: ObservableObject {
         if includeReview {
             folderIds = Set((categoryFolderRows[category] ?? []).filter(\.isSelectable).map(\.id))
         } else {
-            folderIds = safeFolderIdsByCategory[category] ?? []
+            folderIds = selection.safeFolderIds(in: category)
         }
-        guard !folderIds.isEmpty else { return }
-        var next = selectedFolderIds
-        if folderIds.isSubset(of: next) {
-            next.subtract(folderIds)
-        } else {
-            next.formUnion(folderIds)
-        }
-        selectedFolderIds = next
-        recomputeSelectionMetrics()
+        selection.toggleFolderIds(folderIds)
     }
 
     func categorySelectionState(_ category: ScanCategory) -> CategorySelectState {
-        let ids = safeFolderIdsByCategory[category] ?? []
-        guard !ids.isEmpty else { return .none }
-        let hit = ids.intersection(selectedFolderIds).count
-        if hit == 0 { return .none }
-        if hit == ids.count { return .all }
-        return .partial
+        selection.selectionState(of: selection.safeFolderIds(in: category))
     }
 
-    enum CategorySelectState: Equatable {
-        case none, partial, all
+    // MARK: - Browser expansion (absorbed from view-local @State)
+
+    func isCategoryExpanded(_ category: ScanCategory) -> Bool {
+        selection.expandedCategories.contains(category.rawValue)
     }
 
-    /// O(selected folders + individual paths) — never scans all findings.
-    private func recomputeSelectionMetrics() {
-        var count = 0
-        var bytes: Int64 = 0
-        var review = 0
-        for id in selectedFolderIds {
-            guard let meta = folderMetaById[id] else { continue }
-            count += meta.itemCount
-            bytes += meta.bytes
-            review += meta.reviewCount
+    func toggleCategoryExpanded(_ category: ScanCategory) {
+        if !selection.expandedCategories.insert(category.rawValue).inserted {
+            selection.expandedCategories.remove(category.rawValue)
         }
-        for path in selectedPaths {
-            // Skip if already counted via its folder.
-            if let fid = folderIdByPath[path], selectedFolderIds.contains(fid) { continue }
-            guard let finding = findingsByPath[path], finding.riskLevel != .advanced else { continue }
-            count += 1
-            bytes += finding.sizeBytes
-            if finding.riskLevel == .review { review += 1 }
+    }
+
+    func isToolGroupExpanded(_ group: CategoryToolGroup) -> Bool {
+        selection.expandedToolGroups.contains(group.id)
+    }
+
+    func toggleToolGroupExpanded(_ group: CategoryToolGroup) {
+        if !selection.expandedToolGroups.insert(group.id).inserted {
+            selection.expandedToolGroups.remove(group.id)
         }
-        selectedCandidatesCount = count
-        selectedCandidatesBytes = bytes
-        selectedReviewCount = review
+    }
+
+    /// Collapse all expanded browser sections (before Clear/All Safe re-diffs huge views).
+    func collapseBrowserSections() {
+        selection.expandedCategories.removeAll()
+        selection.expandedToolGroups.removeAll()
     }
 
     /// Expand folder ids → findings only when cleaning (not during scroll/UI).
     private func selectedFindingsForClean() -> [ScanFinding] {
         var pathSet = Set<String>()
         pathSet.reserveCapacity(min(selectedCandidatesCount, 65_536))
-        for id in selectedFolderIds {
+        for id in selection.selectedFolderIds {
             if let paths = pathsByFolderId[id] {
                 pathSet.formUnion(paths)
             }
         }
-        pathSet.formUnion(selectedPaths)
+        pathSet.formUnion(selection.selectedPaths)
         return pathSet.compactMap { findingsByPath[$0] }.filter { $0.riskLevel != .advanced }
     }
 
@@ -501,223 +291,12 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Largest reclaimable findings by size, then ordered SAFE group → REVIEW group
     /// (each group still size-sorted) so both risk tiers appear when they make the cut.
     nonisolated static func largestItemsSorted(from findings: [ScanFinding], limit: Int) -> [FindingItem] {
-        let reclaimable = findings.filter { $0.riskLevel != .advanced }
-        let top = reclaimable.sorted { $0.sizeBytes > $1.sizeBytes }.prefix(limit)
-        let safe = top.filter { $0.riskLevel == .safe }
-        let review = top.filter { $0.riskLevel == .review }
-        return (safe + review).map(FindingItem.init(finding:))
+        ScanReportPresenter.largestItems(from: findings, limit: limit)
+            .map(FindingItem.init(finding:))
     }
 
     func abbreviatedPath(_ path: String) -> String {
-        Self.abbreviatePath(path)
-    }
-
-    nonisolated private static func abbreviatePath(_ path: String) -> String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        if path.hasPrefix(home) {
-            return "~" + path.dropFirst(home.count)
-        }
-        return path
-    }
-
-    /// Collapse only **known deep caches** into one row (npm, browser, Library/Caches).
-    ///
-    /// Project trees are different: a monorepo root like
-    /// `/Users/…/Projects/…/akzonobel` is **not** reclaimable as a whole just because
-    /// a few child apps have `.next` / `target` / `.cache`. Those claimable folders
-    /// must stay separate rows with their full paths — never merge into the monorepo root.
-    nonisolated static func rollupFolderPath(for path: String) -> String {
-        let parts = URL(fileURLWithPath: path).pathComponents.filter { $0 != "/" }
-        guard !parts.isEmpty else { return path }
-
-        // Package manager / tool cache roots — one row per root, not per blob.
-        let singleSegmentRoots = [
-            "_cacache", "_npx", "Yarn", "pnpm", "CocoaPods", "org.swift.swiftpm",
-            "pip", "opencode", "Homebrew", "electron", "typescript",
-        ]
-        for root in singleSegmentRoots {
-            if let i = parts.firstIndex(of: root) {
-                return "/" + parts[0...i].joined(separator: "/")
-            }
-        }
-
-        // Cargo / Gradle / Maven trees
-        if let i = parts.firstIndex(of: "registry"), i > 0, parts[i - 1] == ".cargo" {
-            return "/" + parts[0...i].joined(separator: "/")
-        }
-        if let i = parts.firstIndex(of: "git"), i > 0, parts[i - 1] == ".cargo" {
-            return "/" + parts[0...i].joined(separator: "/")
-        }
-        if let i = parts.firstIndex(of: "caches"), i > 0, parts[i - 1] == ".gradle" {
-            return "/" + parts[0...i].joined(separator: "/")
-        }
-        if let i = parts.firstIndex(of: "repository"), i > 0, parts[i - 1] == ".m2" {
-            return "/" + parts[0...i].joined(separator: "/")
-        }
-
-        // ~/Library/Caches/<App> → stop at app name
-        if let i = parts.firstIndex(of: "Caches"),
-           i > 0, parts[i - 1] == "Library",
-           i + 1 < parts.count {
-            return "/" + parts[0...(i + 1)].joined(separator: "/")
-        }
-
-        // Browser Application Support profile trees — stop at profile (Default, Profile 1, …)
-        let browserMarkers = [
-            "Google", "Chromium", "BraveSoftware", "Microsoft Edge",
-            "com.operasoftware.Opera", "Arc", "Firefox", "com.apple.Safari",
-        ]
-        for marker in browserMarkers {
-            if let i = parts.firstIndex(of: marker) {
-                if let def = parts.firstIndex(of: "Default"), def > i {
-                    return "/" + parts[0...def].joined(separator: "/")
-                }
-                if let prof = parts.firstIndex(of: "Profiles"), prof + 1 < parts.count, prof > i {
-                    return "/" + parts[0...(prof + 1)].joined(separator: "/")
-                }
-                let end = min(i + 2, parts.count - 1)
-                return "/" + parts[0...end].joined(separator: "/")
-            }
-        }
-
-        // Project-local reclaimable folders (.next, target, .cache, dist, …):
-        // stop at the artifact segment so each project under a monorepo is its own row.
-        // Example: …/akzonobel/app-a/.next  →  that path, NOT …/akzonobel
-        let artifactNames = ScanPolicy.projectLocalArtifactDirectoryNames
-        if let i = parts.lastIndex(where: { artifactNames.contains($0.lowercased()) }) {
-            return "/" + parts[0...i].joined(separator: "/")
-        }
-
-        // Xcode / IDE style build products often appear as full directory findings.
-        let buildProductNames: Set<String> = [
-            "deriveddata", "archives", "ios device support", "watchos device support",
-            "coresimulator", "modulecache.noindex", "documentationcache",
-        ]
-        if let i = parts.lastIndex(where: { buildProductNames.contains($0.lowercased()) }) {
-            return "/" + parts[0...i].joined(separator: "/")
-        }
-
-        // Default: keep the finding path (or its parent if the leaf looks like a file).
-        // Do **not** apply a shallow depth cap — that merges monorepo children into the root
-        // and falsely presents a large tree as “6 items”.
-        let last = parts[parts.count - 1]
-        let lastLower = last.lowercased()
-        let isArtifactLike = artifactNames.contains(lastLower) || last.hasPrefix(".")
-        if !isArtifactLike, last.contains("."), parts.count > 1 {
-            // e.g. …/Cache/f_000001 → parent folder
-            return "/" + parts.dropLast().joined(separator: "/")
-        }
-        return "/" + parts.joined(separator: "/")
-    }
-
-    nonisolated private static func buildFolderAggregate(from findings: [ScanFinding]) -> FolderAggregate {
-        struct Acc {
-            var bytes: Int64 = 0
-            var count: Int = 0
-            var reviewCount: Int = 0
-            var paths: [String] = []
-            var worstRisk: RiskLevel = .safe
-        }
-
-        var byCategory: [ScanCategory: [String: Acc]] = [:]
-
-        for finding in findings {
-            guard finding.riskLevel != .advanced else { continue }
-            let folderPath = rollupFolderPath(for: finding.path)
-            var catMap = byCategory[finding.category] ?? [:]
-            var acc = catMap[folderPath] ?? Acc()
-            acc.bytes += finding.sizeBytes
-            acc.count += 1
-            acc.paths.append(finding.path)
-            if finding.riskLevel == .review {
-                acc.reviewCount += 1
-                acc.worstRisk = .review
-            }
-            catMap[folderPath] = acc
-            byCategory[finding.category] = catMap
-        }
-
-        var aggregate = FolderAggregate()
-        for (category, map) in byCategory {
-            let sorted = map
-                .map { folderPath, acc -> (String, Acc, String) in
-                    let id = "\(category.rawValue)|\(folderPath)"
-                    return (folderPath, acc, id)
-                }
-                .sorted { $0.1.bytes > $1.1.bytes }
-
-            var rows: [CategoryFolderRow] = []
-            rows.reserveCapacity(min(sorted.count, maxFolderRowsPerCategory))
-
-            for (index, entry) in sorted.enumerated() {
-                let (folderPath, acc, id) = entry
-                // Keep path maps for every aggregate (needed for clean), but only publish top N rows.
-                aggregate.pathsByFolderId[id] = acc.paths
-                for p in acc.paths {
-                    aggregate.folderIdByPath[p] = id
-                }
-                aggregate.metaByFolderId[id] = FolderMeta(
-                    itemCount: acc.count,
-                    bytes: acc.bytes,
-                    reviewCount: acc.reviewCount,
-                    isSafe: acc.worstRisk == .safe
-                )
-                if acc.worstRisk == .safe {
-                    aggregate.safeFolderIds.insert(id)
-                    aggregate.safeFolderIdsByCategory[category, default: []].insert(id)
-                }
-                // Attribute once from the rolled-up folder path (same chart labels).
-                // Majority-vote over every file path was O(files × pattern checks) and
-                // dominated finalize time on large developer caches.
-                let toolName = ScanReportAnnotator.sourceApp(forPath: folderPath)
-                if index < maxFolderRowsPerCategory {
-                    rows.append(
-                        CategoryFolderRow(
-                            id: id,
-                            folderPath: folderPath,
-                            displayPath: abbreviatePath(folderPath),
-                            totalBytes: acc.bytes,
-                            itemCount: acc.count,
-                            riskLevel: acc.worstRisk,
-                            isSelectable: !acc.paths.isEmpty,
-                            toolName: toolName
-                        )
-                    )
-                }
-            }
-            aggregate.rowsByCategory[category] = rows
-            aggregate.toolGroupsByCategory[category] = Self.makeToolGroups(
-                category: category,
-                rows: rows
-            )
-        }
-        return aggregate
-    }
-
-    nonisolated private static func makeToolGroups(
-        category: ScanCategory,
-        rows: [CategoryFolderRow]
-    ) -> [CategoryToolGroup] {
-        let grouped = Dictionary(grouping: rows, by: \.toolName)
-        return grouped.map { toolName, toolRows in
-            let folderIds = Set(toolRows.map(\.id))
-            let totalBytes = toolRows.reduce(Int64(0)) { $0 + $1.totalBytes }
-            let itemCount = toolRows.reduce(0) { $0 + $1.itemCount }
-            let hasReview = toolRows.contains { $0.riskLevel == .review }
-            let selectable = toolRows.contains(where: \.isSelectable)
-            return CategoryToolGroup(
-                id: "\(category.rawValue)|tool|\(toolName)",
-                category: category,
-                toolName: toolName,
-                totalBytes: totalBytes,
-                folderCount: toolRows.count,
-                itemCount: itemCount,
-                riskLevel: hasReview ? .review : .safe,
-                folderIds: folderIds,
-                isSelectable: selectable
-            )
-        }
-        .sorted { $0.totalBytes > $1.totalBytes }
+        FolderRollup.abbreviatePath(path)
     }
 
     var deviceBackupFindings: [FindingItem] {
@@ -727,11 +306,12 @@ final class ScanDashboardViewModel: ObservableObject {
             .map(FindingItem.init)
     }
 
+    // MARK: - Scan lifecycle
+
     func cancelScan() {
         scanTask?.cancel()
         scanTask = nil
         state = .idle
-        resultsVisible = false
         scanRulesCompleted = 0
         scanRulesTotal = 0
         scanStepTitle = ""
@@ -744,38 +324,21 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Re-probe Full Disk Access and update coaching banners.
     /// Safe to call from any Smart Scan surface (hero or results) on activation/appear.
     func refreshPermissionCoaching() {
-        let status = FullDiskAccessChecker.status()
-        fullDiskAccessStatus = status
-
-        if status == .granted {
-            UserDefaults.standard.removeObject(forKey: Self.fdaBannerDismissedKey)
-            showFullDiskAccessBanner = false
-        } else if status == .denied {
-            let dismissed = UserDefaults.standard.bool(forKey: Self.fdaBannerDismissedKey)
-            showFullDiskAccessBanner = !dismissed
-        } else {
-            showFullDiskAccessBanner = false
-        }
-
+        permissions.refresh()
         updateEmptyScanCoaching()
     }
 
+    var fullDiskAccessStatus: FullDiskAccessStatus { permissions.status }
+    var showFullDiskAccessBanner: Bool { permissions.showBanner }
+
     func dismissFullDiskAccessBanner() {
-        UserDefaults.standard.set(true, forKey: Self.fdaBannerDismissedKey)
-        showFullDiskAccessBanner = false
+        permissions.dismissBanner()
         // Empty-scan coaching may still apply once the primary banner is dismissed.
         updateEmptyScanCoaching()
     }
 
-    /// Opens System Settings → Privacy & Security → Full Disk Access (best-effort).
-    /// Clears the dismiss flag so coaching can reappear if the user returns without granting.
     func openFullDiskAccessSettings() {
-        UserDefaults.standard.removeObject(forKey: Self.fdaBannerDismissedKey)
-        for url in FullDiskAccessChecker.systemSettingsURLs {
-            if NSWorkspace.shared.open(url) {
-                return
-            }
-        }
+        permissions.openSystemSettings()
     }
 
     /// Derive empty-scan coaching from live FDA status vs. the status at last scan finish.
@@ -787,20 +350,13 @@ final class ScanDashboardViewModel: ObservableObject {
         }
 
         // Primary FDA banner takes precedence while still visible.
-        if showFullDiskAccessBanner {
+        if permissions.showBanner {
             showEmptyScanCoaching = false
             return
         }
 
         showEmptyScanCoaching = true
-        if fullDiskAccessStatus == .denied {
-            emptyScanCoachingStyle = .likelyMissingFDA
-        } else if fullDiskAccessStatusAtLastScan == .denied, fullDiskAccessStatus == .granted {
-            // Permissions flipped after a zero-byte pre-FDA scan — do not claim disk is clean.
-            emptyScanCoachingStyle = .permissionsUpdatedNeedsRescan
-        } else {
-            emptyScanCoachingStyle = .genuinelyEmpty
-        }
+        emptyScanCoachingStyle = permissions.emptyScanStyle()
     }
 
     func runScan(forceRescan: Bool = false) {
@@ -813,11 +369,6 @@ final class ScanDashboardViewModel: ObservableObject {
         scanStepTitle = "Scanning system & app caches…"
         scanRulesCompleted = 0
         scanRulesTotal = 0
-        // Only hide results on the first scan; subsequent scans keep old results
-        // visible so the screen doesn't go blank while scanning.
-        if latestFindings.isEmpty {
-            resultsVisible = false
-        }
         let startedAt = Date()
         let cache = scanCache
 
@@ -865,7 +416,7 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Pure post-scan aggregation — safe to call from a background task.
     nonisolated private static func prepareScanResults(from report: ScanReport) -> PreparedScanResults {
         let findings = report.findings
-        let aggregate = buildFolderAggregate(from: findings)
+        let aggregate = FolderRollup.buildAggregate(from: findings)
         let pathIndex = Dictionary(findings.map { ($0.path, $0) }, uniquingKeysWith: { _, last in last })
         let summaries: [SummaryItem] = report.summaries.map { summary in
             SummaryItem(
@@ -873,16 +424,66 @@ final class ScanDashboardViewModel: ObservableObject {
                 folderCount: aggregate.rowsByCategory[summary.category]?.count ?? 0
             )
         }
+        let sortedTopFindings = largestItemsSorted(from: findings, limit: 40)
+        let (revealablePaths, folderFindingPaths) = revealabilityIndex(
+            aggregate: aggregate,
+            topFindings: sortedTopFindings
+        )
         return PreparedScanResults(
             findings: findings,
             findingsByPath: pathIndex,
             aggregate: aggregate,
             summaries: summaries,
-            sortedTopFindings: largestItemsSorted(from: findings, limit: 40),
-            largeFilesByCategory: makeLargeFileGroups(from: findings),
-            toolRollups: makeToolRollups(from: findings),
-            totalReclaimableBytes: report.totalReclaimableBytes
+            sortedTopFindings: sortedTopFindings,
+            toolRollups: FolderRollup.makeToolRollups(from: findings),
+            candidateStats: CandidateStats.compute(from: findings),
+            totalReclaimableBytes: report.totalReclaimableBytes,
+            scanWarnings: makeScanWarnings(from: report),
+            revealablePaths: revealablePaths,
+            folderFindingPaths: folderFindingPaths
         )
+    }
+
+    /// Builds user-facing warnings from the report's error channels (R1.2/R1.3).
+    nonisolated private static func makeScanWarnings(from report: ScanReport) -> [String] {
+        var warnings: [String] = []
+        if !report.unreadableLocations.isEmpty {
+            let count = report.unreadableLocations.count
+            warnings.append(
+                "\(count) location\(count == 1 ? "" : "s") could not be read — grant Full Disk Access to scan everything."
+            )
+        }
+        for failure in report.ruleFailures {
+            warnings.append("\(failure.ruleTitle) failed: \(failure.message)")
+        }
+        return warnings
+    }
+
+    /// Stats every rendered path once, off the main actor, so row bodies can use
+    /// set lookups instead of per-render FileManager calls. Bounded work: folder
+    /// rows are capped per category and top findings are capped at 40.
+    nonisolated private static func revealabilityIndex(
+        aggregate: FolderAggregate,
+        topFindings: [FindingItem]
+    ) -> (revealable: Set<String>, folders: Set<String>) {
+        let fm = FileManager.default
+        var revealable: Set<String> = []
+        var folders: Set<String> = []
+
+        for rows in aggregate.rowsByCategory.values {
+            for row in rows where fm.fileExists(atPath: row.folderPath) {
+                revealable.insert(row.folderPath)
+            }
+        }
+        for item in topFindings {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: item.path, isDirectory: &isDir) else { continue }
+            revealable.insert(item.path)
+            if isDir.boolValue {
+                folders.insert(item.path)
+            }
+        }
+        return (revealable, folders)
     }
 
     private func applyPreparedScanResults(
@@ -894,32 +495,31 @@ final class ScanDashboardViewModel: ObservableObject {
         latestFindings = prepared.findings
         findingsByPath = prepared.findingsByPath
         pathsByFolderId = prepared.aggregate.pathsByFolderId
-        folderIdByPath = prepared.aggregate.folderIdByPath
-        folderMetaById = prepared.aggregate.metaByFolderId
-        safeFolderIds = prepared.aggregate.safeFolderIds
-        safeFolderIdsByCategory = prepared.aggregate.safeFolderIdsByCategory
+        revealablePaths = prepared.revealablePaths
+        folderFindingPaths = prepared.folderFindingPaths
         categoryFolderRows = prepared.aggregate.rowsByCategory
         categoryToolGroups = prepared.aggregate.toolGroupsByCategory
         totalReclaimableBytes = prepared.totalReclaimableBytes
+        scanWarnings = prepared.scanWarnings
         summaries = prepared.summaries
         topFindings = prepared.sortedTopFindings
-        largeFilesByCategory = prepared.largeFilesByCategory
         perToolRollups = prepared.toolRollups
+        candidateStats = prepared.candidateStats
         // Default: all SAFE *folders* (dozens of ids) — never 25k file paths.
-        selectedFolderIds = prepared.aggregate.safeFolderIds
-        selectedPaths = []
-        recomputeSelectionMetrics()
+        selection.updateContext(
+            aggregate: prepared.aggregate,
+            findingsByPath: prepared.findingsByPath,
+            resetToSafeSelection: true
+        )
         lastScanDate = finishedAt
         lastScanDuration = finishedAt.timeIntervalSince(startedAt)
         revealFeedback = nil
-        cleanupState = .idle
         scanStep = 3
         scanStepTitle = "Scan complete"
         state = .success
-        resultsVisible = true
         // Snapshot FDA at scan finish so later grants can show "rescan needed"
         // instead of a misleading clean-disk empty state.
-        fullDiskAccessStatusAtLastScan = FullDiskAccessChecker.status()
+        permissions.snapshotStatusAfterScan()
         refreshPermissionCoaching()
     }
 
@@ -934,146 +534,64 @@ final class ScanDashboardViewModel: ObservableObject {
         revealFeedback = nil
     }
 
+    /// Set lookup against the scan-finish snapshot — called from SwiftUI row
+    /// bodies, so it must never touch the filesystem. `revealInFinder` still
+    /// re-checks existence live and surfaces feedback for stale entries.
     func canReveal(path: String) -> Bool {
-        FileManager.default.fileExists(atPath: path)
+        revealablePaths.contains(path)
+    }
+
+    /// Whether a top-finding path was a directory at scan finish (set lookup;
+    /// same no-filesystem-in-body rule as `canReveal`).
+    func isFolderFinding(path: String) -> Bool {
+        folderFindingPaths.contains(path)
     }
 
     // MARK: - Cleanup actions
 
     func requestQuickClean() {
         guard !latestFindings.isEmpty, state == .success else { return }
-        showCleanConfirmation = true
-        cleanupState = .confirming
+        cleanup.request(.quick)
     }
-
-    func confirmQuickClean() {
-        showCleanConfirmation = false
-        guard state == .success else { return }
-        cleanupState = .cleaning
-        let findings = latestFindings
-
-        Task(priority: .userInitiated) {
-            do {
-                let result = try await engine.quickClean(findings: findings, profileName: "all")
-                await MainActor.run {
-                    lastTransaction = result.transaction
-                    cleanupState = .done(
-                        bytesFreed: result.totalBytesFreed,
-                        skippedCount: result.skipped.count
-                    )
-                    // Re-run scan to refresh results after cleanup.
-                    runScan()
-                }
-            } catch {
-                await MainActor.run {
-                    cleanupState = .error(error.localizedDescription)
-                }
-            }
-        }
-    }
-
-    func cancelCleanup() {
-        showCleanConfirmation = false
-        cleanupState = .idle
-    }
-
-    // MARK: - Deep Clean actions
 
     func requestDeepClean() {
         guard !latestFindings.isEmpty, state == .success else { return }
-        showDeepCleanConfirmation = true
-        cleanupState = .confirming
+        cleanup.request(.deep)
     }
-
-    func confirmDeepClean() {
-        showDeepCleanConfirmation = false
-        guard state == .success else { return }
-        cleanupState = .cleaning
-        let findings = latestFindings
-
-        Task(priority: .userInitiated) {
-            do {
-                let result = try await engine.deepClean(
-                    findings: findings,
-                    profileName: "all",
-                    confirmed: true
-                )
-                await MainActor.run {
-                    lastTransaction = result.transaction
-                    cleanupState = .done(
-                        bytesFreed: result.totalBytesFreed,
-                        skippedCount: result.skipped.count
-                    )
-                    runScan()
-                }
-            } catch {
-                await MainActor.run {
-                    cleanupState = .error(error.localizedDescription)
-                }
-            }
-        }
-    }
-
-    func cancelDeepClean() {
-        showDeepCleanConfirmation = false
-        cleanupState = .idle
-    }
-
-    // MARK: - Selected clean
 
     func requestCleanSelected() {
         guard selectedCandidatesCount > 0, state == .success else { return }
-        showSelectedCleanConfirmation = true
-        cleanupState = .confirming
+        cleanup.request(.selected)
     }
 
-    func confirmCleanSelected() {
-        showSelectedCleanConfirmation = false
-        guard state == .success else { return }
-        cleanupState = .cleaning
-        // Expand folder ids → paths only here (background-friendly), not during UI scroll.
-        let findings = selectedFindingsForClean()
-
-        Task(priority: .userInitiated) {
-            do {
-                let result = try await engine.clean(findings: findings, profileName: "all")
-                await MainActor.run {
-                    lastTransaction = result.transaction
-                    cleanupState = .done(
-                        bytesFreed: result.totalBytesFreed,
-                        skippedCount: result.skipped.count
-                    )
-                    runScan()
-                }
-            } catch {
-                await MainActor.run {
-                    cleanupState = .error(error.localizedDescription)
-                }
-            }
+    /// One confirm path for all three cleanup kinds (was three duplicate bodies).
+    func confirmPendingCleanup() {
+        guard let kind = cleanup.pending else { return }
+        guard state == .success else {
+            cleanup.pending = nil
+            return
         }
+        let findings: [ScanFinding]
+        switch kind {
+        case .quick, .deep:
+            findings = latestFindings
+        case .selected:
+            // Expand folder ids → paths only here (background-friendly), not during UI scroll.
+            findings = selectedFindingsForClean()
+        }
+        cleanup.confirm(kind, findings: findings)
     }
 
-    func cancelSelectedClean() {
-        showSelectedCleanConfirmation = false
-        cleanupState = .idle
+    func cancelPendingCleanup() {
+        cleanup.cancelPending()
     }
 
     func undoLastCleanup() {
-        guard let tx = lastTransaction, !tx.isDryRun else { return }
-        cleanupState = .undoing
-
-        Task(priority: .userInitiated) {
-            let (restored, _) = await engine.restore(transaction: tx)
-            await MainActor.run {
-                lastTransaction = nil
-                cleanupState = .undone(restoredCount: restored.count)
-                runScan()
-            }
-        }
+        cleanup.undoLastCleanup()
     }
 
     func dismissCleanupResult() {
-        cleanupState = .idle
+        cleanup.dismissResult()
     }
 
     // MARK: - Exclusion
@@ -1081,45 +599,56 @@ final class ScanDashboardViewModel: ObservableObject {
     func exclude(path: String) {
         let entry = ExclusionEntry(path: path)
         try? ExclusionStore.shared.addEntry(entry)
+        // Capture the finding before removal so totals can be adjusted (R0.6).
+        let excluded = findingsByPath[path] ?? latestFindings.first { $0.path == path }
         latestFindings.removeAll { $0.path == path }
         findingsByPath.removeValue(forKey: path)
         topFindings.removeAll { $0.path == path }
-        largeFilesByCategory = largeFilesByCategory.compactMap { group in
-            let filtered = group.files.filter { $0.path != path }
-            guard !filtered.isEmpty else { return nil }
-            let total = filtered.reduce(0) { $0 + $1.sizeBytes }
-            return CategoryLargeFiles(id: group.id, category: group.category, totalBytes: total, files: filtered)
-        }
         // Rebuild private maps + lightweight rows (not on scroll hot path).
-        let aggregate = Self.buildFolderAggregate(from: latestFindings)
+        let aggregate = FolderRollup.buildAggregate(from: latestFindings)
         pathsByFolderId = aggregate.pathsByFolderId
-        folderIdByPath = aggregate.folderIdByPath
-        folderMetaById = aggregate.metaByFolderId
-        safeFolderIds = aggregate.safeFolderIds
-        safeFolderIdsByCategory = aggregate.safeFolderIdsByCategory
         categoryFolderRows = aggregate.rowsByCategory
         categoryToolGroups = aggregate.toolGroupsByCategory
-        summaries = summaries.map { item in
-            SummaryItem(
+        // Only the excluded finding's category loses bytes/count; `.advanced` findings
+        // were never counted as reclaimable, so they don't reduce totals (R0.6).
+        let excludedBytes = excluded?.sizeBytes ?? 0
+        let countsAsReclaimable = excluded.map { $0.riskLevel != .advanced } ?? false
+        if countsAsReclaimable {
+            totalReclaimableBytes = max(0, totalReclaimableBytes - excludedBytes)
+        }
+        summaries = summaries.compactMap { item in
+            var reclaimable = item.reclaimableBytes
+            var fileCount = item.fileCount
+            if item.category == excluded?.category {
+                fileCount = max(0, fileCount - 1)
+                if countsAsReclaimable {
+                    reclaimable = max(0, reclaimable - excludedBytes)
+                }
+                guard fileCount > 0 else { return nil }
+            }
+            return SummaryItem(
                 summary: ScanCategorySummary(
                     category: item.category,
-                    reclaimableBytes: item.reclaimableBytes,
-                    fileCount: max(0, item.fileCount - 1)
+                    reclaimableBytes: reclaimable,
+                    fileCount: fileCount
                 ),
                 folderCount: categoryFolderRows[item.category]?.count ?? 0
             )
         }
-        selectedPaths.remove(path)
-        selectedFolderIds = selectedFolderIds.intersection(Set(folderMetaById.keys))
-        recomputeSelectionMetrics()
-        perToolRollups = Self.makeToolRollups(from: latestFindings)
+        selection.removePath(path)
+        selection.updateContext(
+            aggregate: aggregate,
+            findingsByPath: findingsByPath,
+            resetToSafeSelection: false
+        )
+        candidateStats = CandidateStats.compute(from: latestFindings)
+        perToolRollups = FolderRollup.makeToolRollups(from: latestFindings)
     }
 
+    // MARK: - Formatting
+
     func formattedBytes(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+        ScanReportPresenter.formatBytes(bytes)
     }
 
     func formattedDate(_ date: Date?) -> String {
@@ -1133,31 +662,5 @@ final class ScanDashboardViewModel: ObservableObject {
     func summaryShare(for bytes: Int64) -> Double {
         guard totalReclaimableBytes > 0 else { return 0 }
         return Double(bytes) / Double(totalReclaimableBytes)
-    }
-
-    nonisolated static func makeToolRollups(from findings: [ScanFinding]) -> [ToolRollupItem] {
-        // Chart is about reclaimable space — exclude advanced (e.g. Docker.raw attribution noise).
-        let reclaimable = findings.filter { $0.riskLevel != .advanced }
-        let rollups = ScanReportAnnotator.appRollups(from: reclaimable)
-        let total = rollups.reduce(0) { $0 + $1.totalBytes }
-        return rollups.map { ToolRollupItem(rollup: $0, total: total) }
-    }
-
-    nonisolated private static func makeLargeFileGroups(from findings: [ScanFinding]) -> [CategoryLargeFiles] {
-        let filtered = findings.filter { ScanPolicy.isLargeFile($0.sizeBytes) }
-        let grouped = Dictionary(grouping: filtered, by: \.category)
-
-        return grouped
-            .map { category, files in
-                let sorted = files.sorted { $0.sizeBytes > $1.sizeBytes }
-                let total = sorted.reduce(0) { $0 + $1.sizeBytes }
-                return CategoryLargeFiles(
-                    id: category.rawValue,
-                    category: category,
-                    totalBytes: total,
-                    files: sorted.map(FindingItem.init(finding:))
-                )
-            }
-            .sorted { $0.totalBytes > $1.totalBytes }
     }
 }

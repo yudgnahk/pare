@@ -43,22 +43,14 @@ public struct JavaBuildCachesRule: ScanRule {
 
         var findings: [ScanFinding] = []
         for target in targets {
-            let url = home.appending(path: target.path)
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            let size = FileSystemUtils.directorySize(url: url)
-            guard size > 0 else { continue }
-            let lastUsed = try? url
-                .resourceValues(forKeys: [.contentModificationDateKey])
-                .contentModificationDate
-            findings.append(ScanFinding(
+            findings += ScanFindingBuilder.directoryFindings(
+                at: home.appending(path: target.path),
                 category: category,
                 riskLevel: target.risk,
                 reason: target.reason,
-                path: url.path,
-                sizeBytes: size,
-                lastUsed: lastUsed,
-                confidence: confidence
-            ))
+                confidence: confidence,
+                sizeIndex: environment.sizeIndex
+            )
         }
         return findings
     }

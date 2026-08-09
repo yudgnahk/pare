@@ -91,12 +91,14 @@ The app runs a single unified scan using `RuleCatalog.all`; the CLI retains prof
 
 Reconstructible package/toolchain caches are reported as **whole folders** with no multi-day age gate (`ScanPolicy.reconstructibleCacheMinAgeSeconds` = 0): `~/.npm/_npx` (per extract), `~/.npm/_cacache`, Yarn/pnpm/CocoaPods/SwiftPM/Bun, `go-build`, `go/pkg/mod/cache`, Cargo registry/git, rustup downloads, Homebrew cache, AI tool caches (e.g. OpenCode). Wrong-platform native folders are only scanned under installed editor/IDE trees (not under fully reclaimable package caches) to avoid double-counting.
 
+**uv cache (report-only, Phase A):** `UvCacheRule` discovers uv's cache via `CacheRootResolver` — platform cache root (Foundation `.cachesDirectory`), XDG root (`XDG_CACHE_HOME` absolute-only, else `~/.cache`), `UV_CACHE_DIR`, and `uv cache dir` (timeout-bounded, non-fatal, skipped when uv is absent) — canonicalized and deduplicated, one whole-folder finding per physical root. Findings are `.advanced` so `CleanupEngine` hard-blocks Trash deletion; reclaim arrives in Phase B as a native `uv cache prune/clean` Maintenance action. `~/.cache/uv` is deliberately **not** in `developerPackageCacheMarkers` or `reconstructibleCachePathMarkers`; new cache policies use exact `ScanPolicy.isEqualToOrDescendant(candidate:root:)` component matching, never `path.contains` (which would match `uvicorn`/`uv-backup`). `ToolCacheDescriptor` carries relative child names + discovery/cleanup metadata for uv, pip, Poetry, pyenv (only uv is wired to a rule so far). uv is excluded from `PythonCachesRule` and `UserCachesRule` so no `.safe` finding can double-report it.
+
 `WrongPlatformBinariesRule` (developer profile) detects non-macOS content as **whole folders** when possible: (1) `.exe`/`.msi`/`.dll`/`.deb`/`.rpm`/`.AppImage` files at the top level of `~/Downloads` (`.safe`, `downloadsMinBytes` = 512 KB); (2) multi-platform native trees under npm/npx, Yarn, pnpm, Bun, VS Code/Cursor/Windsurf extensions, and JetBrains — e.g. `win32/`, `linux/`, `win32-x64/`, `linux-arm64/` reported as one finding each (`.safe`, `.developerPackageCaches`), not individual `*.dll` files. Simple names (`win32`, `linux`) require a macOS sibling (`darwin`/`macos`/…) except under JetBrains plugins; compound names (`win32-x64`) always match. `PackageManagerCachesRule` skips files under those platform dirs to avoid double-counting. Platform name sets and scan roots live in `ScanPolicy`. `CleanupEngine` uses `isWrongPlatformPath` (downloads top-level **or** under a non-mac platform dir) for path allow + age exemption.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **pare** (758 symbols, 762 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **pare** (876 symbols, 882 relationships, 0 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

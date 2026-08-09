@@ -40,7 +40,8 @@ public struct WrongPlatformBinariesRule: ScanRule {
             findings += findPlatformStubDirs(
                 under: root.url,
                 label: root.label,
-                requireMacSiblingForSimpleNames: root.requireMacSiblingForSimpleNames
+                requireMacSiblingForSimpleNames: root.requireMacSiblingForSimpleNames,
+                sizeIndex: environment.sizeIndex
             )
         }
 
@@ -135,7 +136,8 @@ public struct WrongPlatformBinariesRule: ScanRule {
     private func findPlatformStubDirs(
         under root: URL,
         label: String,
-        requireMacSiblingForSimpleNames: Bool
+        requireMacSiblingForSimpleNames: Bool,
+        sizeIndex: DirectorySizeIndex
     ) -> [ScanFinding] {
         let fm = FileManager.default
         guard fm.fileExists(atPath: root.path) else { return [] }
@@ -175,7 +177,7 @@ public struct WrongPlatformBinariesRule: ScanRule {
 
             enumerator.skipDescendants()
 
-            let size = FileSystemUtils.directorySize(url: url)
+            let size = sizeIndex.directorySize(url: url)
             guard size > 0 else { continue }
 
             let modDate = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate

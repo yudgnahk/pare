@@ -2,8 +2,8 @@ import SwiftUI
 import PareCore
 
 struct DiskAnalyzerView: View {
-    @StateObject private var viewModel = DiskAnalyzerViewModel()
-    @Environment(\.displayScale) private var scale
+    @ObservedObject var viewModel: DiskAnalyzerViewModel
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         ZStack {
@@ -79,23 +79,10 @@ struct DiskAnalyzerView: View {
     // MARK: Error
 
     private func errorBanner(_ message: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(AppTheme.warning)
-            Text(message)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(AppTheme.textPrimary)
-            Spacer()
-            Button {
-                viewModel.errorMessage = nil
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(AppTheme.textSecondary)
-            }
-            .buttonStyle(.borderless)
+        ErrorBanner(message: message) {
+            viewModel.errorMessage = nil
         }
-        .padding(.horizontal, 28)
+        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
         .padding(.bottom, 10)
     }
 
@@ -107,7 +94,7 @@ struct DiskAnalyzerView: View {
             ProgressView()
                 .scaleEffect(1.2)
             Text("Analyzing disk usage…")
-                .font(.system(size: 14, weight: .medium))
+                .font(scale.font(14, weight: .medium))
                 .foregroundStyle(AppTheme.textSecondary)
             Spacer()
         }
@@ -116,21 +103,12 @@ struct DiskAnalyzerView: View {
     // MARK: Empty
 
     private var emptyBody: some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "externaldrive.badge.questionmark")
-                .font(.system(size: 40, weight: .light))
-                .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
-            Text("No directory selected")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(AppTheme.textPrimary)
-            Text("Click \u{201C}Choose Directory\u{201D} to explore disk usage with a sortable, size-aware tree.")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(AppTheme.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
-            Spacer()
-        }
+        EmptyStateView(
+            icon: "externaldrive.badge.questionmark",
+            title: "No directory selected",
+            message: "Click \u{201C}Choose Directory\u{201D} to explore disk usage with a sortable, size-aware tree.",
+            maxTextWidth: 380
+        )
     }
 
     // MARK: Tree
@@ -158,7 +136,7 @@ private struct DiskNodeRow: View {
     let formatBytes: (Int64) -> String
     let onReveal: () -> Void
     let onTrash: () -> Void
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     @State private var isHovered = false
 
@@ -178,7 +156,7 @@ private struct DiskNodeRow: View {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
-                            .fill(Color.white.opacity(0.07))
+                            .fill(AppTheme.Fill.subtle)
                             .frame(height: 3)
                         RoundedRectangle(cornerRadius: 2, style: .continuous)
                             .fill(barColor)
@@ -199,7 +177,7 @@ private struct DiskNodeRow: View {
                 HStack(spacing: 4) {
                     Button(action: onReveal) {
                         Image(systemName: "arrow.right.circle")
-                            .font(.system(size: 13))
+                            .font(scale.font(13))
                             .foregroundStyle(AppTheme.accent)
                     }
                     .buttonStyle(.borderless)
@@ -207,7 +185,7 @@ private struct DiskNodeRow: View {
 
                     Button(action: onTrash) {
                         Image(systemName: "trash")
-                            .font(.system(size: 13))
+                            .font(scale.font(13))
                             .foregroundStyle(AppTheme.review)
                     }
                     .buttonStyle(.borderless)

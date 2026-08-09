@@ -157,7 +157,7 @@ final class Phase7RuleTests: XCTestCase {
         let findings = await rule.customScan(environment: env)
 
         // With only 5 days old, neither should be flagged (30-day gate)
-        XCTAssertNil(findings, "Backups younger than 30 days should not be flagged")
+        XCTAssertEqual(findings?.count, 0, "Backups younger than 30 days should not be flagged")
     }
 
     func testMobileSyncBackupsRuleMissingInfoPlistFallback() async throws {
@@ -173,8 +173,8 @@ final class Phase7RuleTests: XCTestCase {
         let findings = await rule.customScan(environment: env)
 
         // No Info.plist → entry created with fallback, but no other backups to compare against
-        // and age is < 180 days → should be nil (no findings)
-        XCTAssertNil(findings)
+        // and age is < 180 days → empty findings (custom scan ran, nothing flagged)
+        XCTAssertEqual(findings?.count, 0)
     }
 
     func testMobileSyncBackupsRuleSingleOldBackup() async throws {

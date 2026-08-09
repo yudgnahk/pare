@@ -105,7 +105,12 @@ final class ScanIntegrationTests: XCTestCase {
 
     private func makeRunner(exclusionList: ExclusionList = .empty) -> ScanRunner {
         ScanRunner(
-            environment: ScanEnvironment(homeDirectory: fakeHome),
+            // No system application roots: the fake home is the whole world for
+            // these tests, so results never depend on what the host has installed.
+            environment: ScanEnvironment(
+                homeDirectory: fakeHome,
+                systemApplicationDirectories: []
+            ),
             traversal: FileSystemTraversal(),
             exclusionList: exclusionList
         )
@@ -267,6 +272,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         try Data(repeating: 0x41, count: 8192).write(to: url)
         let old = Date().addingTimeInterval(-ageSeconds)
         try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: url.path)
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: dir.path)
         return url
     }
 
@@ -283,7 +289,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         let cacheFolder = file1.deletingLastPathComponent()
 
         let runner = ScanRunner(
-            environment: ScanEnvironment(homeDirectory: fakeHome),
+            environment: ScanEnvironment(homeDirectory: fakeHome, systemApplicationDirectories: []),
             traversal: FileSystemTraversal()
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
@@ -314,7 +320,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         let cacheFolder = file1.deletingLastPathComponent()
 
         let runner = ScanRunner(
-            environment: ScanEnvironment(homeDirectory: fakeHome),
+            environment: ScanEnvironment(homeDirectory: fakeHome, systemApplicationDirectories: []),
             traversal: FileSystemTraversal()
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
@@ -352,7 +358,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         let file1 = try makeCacheFile(name: "dryrun-int.bin")
 
         let runner = ScanRunner(
-            environment: ScanEnvironment(homeDirectory: fakeHome),
+            environment: ScanEnvironment(homeDirectory: fakeHome, systemApplicationDirectories: []),
             traversal: FileSystemTraversal()
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
@@ -400,7 +406,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
     func testTransactionIsLoadableAfterCleanup() async throws {
         let file1 = try makeCacheFile(name: "tx-persist.bin")
         let runner = ScanRunner(
-            environment: ScanEnvironment(homeDirectory: fakeHome),
+            environment: ScanEnvironment(homeDirectory: fakeHome, systemApplicationDirectories: []),
             traversal: FileSystemTraversal()
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
@@ -605,7 +611,7 @@ final class ScanCancellationTests: XCTestCase {
 
     func testCancelledScanProducesNoResults() async {
         let runner = ScanRunner(
-            environment: ScanEnvironment(homeDirectory: fakeHome),
+            environment: ScanEnvironment(homeDirectory: fakeHome, systemApplicationDirectories: []),
             traversal: FileSystemTraversal()
         )
 
@@ -629,7 +635,7 @@ final class ScanCancellationTests: XCTestCase {
 
     func testScanRunsNormallyWithoutCancellation() async {
         let runner = ScanRunner(
-            environment: ScanEnvironment(homeDirectory: fakeHome),
+            environment: ScanEnvironment(homeDirectory: fakeHome, systemApplicationDirectories: []),
             traversal: FileSystemTraversal()
         )
         let report = await runner.run(rules: RuleCatalog.baseline)

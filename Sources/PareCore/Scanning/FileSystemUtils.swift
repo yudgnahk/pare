@@ -4,17 +4,28 @@ public enum FileSystemUtils {
     /// Compares two dot-separated version strings component-by-component.
     /// Non-numeric or missing components are treated as 0.
     public static func compareVersionStrings(_ a: String, _ b: String) -> ComparisonResult {
-        let partsA = a.split(separator: ".").map { Int($0) ?? 0 }
-        let partsB = b.split(separator: ".").map { Int($0) ?? 0 }
-        let count = max(partsA.count, partsB.count)
+        compareVersionComponents(
+            a.split(separator: ".").map { Int($0) ?? 0 },
+            b.split(separator: ".").map { Int($0) ?? 0 }
+        )
+    }
+
+    /// Compares numeric version component arrays; missing components are 0.
+    /// The single comparison loop backing every version check (rules parse
+    /// their own components, e.g. VS Code extension directory names).
+    public static func compareVersionComponents(_ a: [Int], _ b: [Int]) -> ComparisonResult {
+        let count = max(a.count, b.count)
         for i in 0..<count {
-            let va = i < partsA.count ? partsA[i] : 0
-            let vb = i < partsB.count ? partsB[i] : 0
+            let va = i < a.count ? a[i] : 0
+            let vb = i < b.count ? b[i] : 0
             if va < vb { return .orderedAscending }
             if va > vb { return .orderedDescending }
         }
         return .orderedSame
     }
+
+    /// Entries between cooperative `Task.isCancelled` checks while sizing a directory.
+    private static let cancellationCheckInterval = 256
 
     public static func directorySize(url: URL) -> Int64 {
         let fm = FileManager.default
@@ -24,7 +35,15 @@ public enum FileSystemUtils {
             options: [.skipsHiddenFiles]
         ) else { return 0 }
         var total: Int64 = 0
+        var checkedCount = 0
         for case let fileURL as URL in enumerator {
+            // Cooperative cancellation: this walk is synchronous, so check
+            // `Task.isCancelled` periodically to let an aborted scan bail out
+            // instead of finishing a potentially huge tree.
+            checkedCount += 1
+            if checkedCount % cancellationCheckInterval == 0, Task.isCancelled {
+                break
+            }
             if let vals = try? fileURL.resourceValues(
                 forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey]
             ),

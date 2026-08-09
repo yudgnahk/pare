@@ -5,8 +5,9 @@ import PareCore
 
 struct HistoryView: View {
     @ObservedObject var viewModel: HistoryViewModel
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @State private var expandedIDs: Set<UUID> = []
+    @State private var exportError: String?
 
     var body: some View {
         ModuleChrome(
@@ -28,17 +29,17 @@ struct HistoryView: View {
                                     Image(systemName: "square.and.arrow.up")
                                     Text("Export")
                                 }
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(scale.font(12, weight: .semibold))
                                 .foregroundStyle(AppTheme.textPrimary)
                                 .padding(.horizontal, 12)
                                 .frame(height: AppTheme.Control.secondaryHeight)
                                 .background(
                                     Capsule(style: .continuous)
-                                        .fill(Color.white.opacity(0.10))
+                                        .fill(AppTheme.Fill.hover)
                                 )
                                 .overlay(
                                     Capsule(style: .continuous)
-                                        .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                                        .strokeBorder(AppTheme.Hairline.strong, lineWidth: 1)
                                 )
                             }
                             .menuStyle(.borderlessButton)
@@ -60,40 +61,19 @@ struct HistoryView: View {
                 .padding(.bottom, AppTheme.Spacing.md)
 
                 if let error = viewModel.errorMessage {
-                    HStack(spacing: 10) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(AppTheme.warning)
-                        Text(error)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Spacer()
-                        Button {
-                            viewModel.errorMessage = nil
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-                        .buttonStyle(.borderless)
+                    ErrorBanner(message: error) {
+                        viewModel.errorMessage = nil
                     }
                     .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
                     .padding(.bottom, 12)
                 }
 
                 if viewModel.transactions.isEmpty {
-                    Spacer()
-                    VStack(spacing: 10) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 36, weight: .light))
-                            .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
-                        Text("No cleanup history")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text("Run a Quick Clean or Deep Clean to create a history record.")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                    Spacer()
+                    EmptyStateView(
+                        icon: "clock.arrow.circlepath",
+                        title: "No cleanup history",
+                        message: "Run a Quick Clean or Deep Clean to create a history record."
+                    )
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 12) {
@@ -125,6 +105,17 @@ struct HistoryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { viewModel.load() }
+        .alert(
+            "Export Failed",
+            isPresented: Binding(
+                get: { exportError != nil },
+                set: { if !$0 { exportError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { exportError = nil }
+        } message: {
+            Text(exportError ?? "")
+        }
     }
 
     // MARK: Export
@@ -135,11 +126,16 @@ struct HistoryView: View {
         panel.nameFieldStringValue = "pare-history.json"
         panel.message = "Choose where to save the cleanup history"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(viewModel.transactions) else { return }
-        try? data.write(to: url, options: .atomicWrite)
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(viewModel.transactions)
+            try data.write(to: url, options: .atomicWrite)
+        } catch {
+            // R0.9: export failures must be visible, not silently dropped.
+            exportError = "Could not export JSON: \(error.localizedDescription)"
+        }
     }
 
     private func exportCSV() {
@@ -156,13 +152,18 @@ struct HistoryView: View {
             }
         }
         let csv = rows.joined(separator: "\n")
-        try? csv.data(using: .utf8)?.write(to: url, options: .atomicWrite)
+        do {
+            try Data(csv.utf8).write(to: url, options: .atomicWrite)
+        } catch {
+            exportError = "Could not export CSV: \(error.localizedDescription)"
+        }
     }
 }
 
 // MARK: - TransactionCard
 
 private struct TransactionCard: View {
+    @Environment(\.pareDisplayScale) private var scale
     let transaction: CleanupTransaction
     let isExpanded: Bool
     let restoringItemID: String?
@@ -180,14 +181,14 @@ private struct TransactionCard: View {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(spacing: 8) {
                                 Image(systemName: "trash.fill")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(scale.font(13, weight: .semibold))
                                     .foregroundStyle(AppTheme.success)
                                 Text(formatDate(transaction.timestamp))
-                                    .font(.system(size: 14, weight: .bold))
+                                    .font(scale.font(14, weight: .bold))
                                     .foregroundStyle(AppTheme.textPrimary)
                                 if transaction.isDryRun {
                                     Text("DRY RUN")
-                                        .font(.system(size: 10, weight: .bold))
+                                        .font(scale.font(10, weight: .bold))
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
                                         .background(AppTheme.warning.opacity(0.2), in: Capsule())
@@ -195,18 +196,18 @@ private struct TransactionCard: View {
                                 }
                             }
                             Text("\(transaction.items.count) item\(transaction.items.count == 1 ? "" : "s") · \(transaction.profileName) profile")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(scale.font(12, weight: .medium))
                                 .foregroundStyle(AppTheme.textSecondary)
                         }
 
                         Spacer()
 
                         Text(formatBytes(transaction.totalBytesCandidates))
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(scale.font(15, weight: .bold, design: .rounded))
                             .foregroundStyle(AppTheme.textPrimary)
 
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(scale.font(12, weight: .semibold))
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                 }
@@ -237,6 +238,7 @@ private struct TransactionCard: View {
 // MARK: - CleanupItemRow
 
 private struct CleanupItemRow: View {
+    @Environment(\.pareDisplayScale) private var scale
     let item: CleanupItem
     let isRestoring: Bool
     let formatBytes: (Int64) -> String
@@ -245,17 +247,17 @@ private struct CleanupItemRow: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "doc.fill")
-                .font(.system(size: 11, weight: .medium))
+                .font(scale.font(11, weight: .medium))
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
                 .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text((item.originalPath as NSString).lastPathComponent)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(scale.font(12, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
                 Text(item.originalPath)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(scale.font(10, weight: .medium, design: .monospaced))
                     .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -264,7 +266,7 @@ private struct CleanupItemRow: View {
             Spacer()
 
             Text(formatBytes(item.sizeBytes))
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(scale.font(11, weight: .bold, design: .rounded))
                 .foregroundStyle(AppTheme.textSecondary)
 
             if item.trashedPath != nil {
@@ -273,7 +275,7 @@ private struct CleanupItemRow: View {
                         ProgressView().scaleEffect(0.7)
                     } else {
                         Text("Restore")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(scale.font(12, weight: .semibold))
                             .foregroundStyle(AppTheme.accent)
                     }
                 }
@@ -283,6 +285,6 @@ private struct CleanupItemRow: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(AppTheme.Hairline.faint, in: RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous))
     }
 }

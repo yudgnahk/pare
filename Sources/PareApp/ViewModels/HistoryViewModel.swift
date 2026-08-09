@@ -21,11 +21,13 @@ final class HistoryViewModel: ObservableObject {
 
     func restoreItem(_ item: CleanupItem) async {
         restoringItemID = item.originalPath
-        let success = await engine.restoreItem(item)
-        restoringItemID = nil
-        if !success {
-            errorMessage = "Could not restore \((item.originalPath as NSString).lastPathComponent) — the Trash item may no longer exist."
+        do {
+            try await engine.restoreItem(item)
+        } catch {
+            // Undo honesty (R0.7): surface the real failure reason, never swallow it.
+            errorMessage = error.localizedDescription
         }
+        restoringItemID = nil
     }
 
     func clearAll() {
@@ -41,9 +43,6 @@ final class HistoryViewModel: ObservableObject {
     }
 
     func formattedBytes(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: bytes)
+        ScanReportPresenter.formatBytes(bytes)
     }
 }

@@ -8,38 +8,55 @@ struct CachedFileTraversal: FileTraversing {
     let cache: ScanMetadataCache
 
     func collectFiles(in directories: [URL]) async -> [ScannedFile] {
-        await withTaskGroup(of: [ScannedFile].self) { group in
+        await collectFilesReportingErrors(in: directories).files
+    }
+
+    func collectFilesReportingErrors(in directories: [URL]) async -> TraversalResult {
+        await withTaskGroup(of: TraversalResult.self) { group in
             for directory in directories {
                 guard !Task.isCancelled else { break }
                 group.addTask {
-                    await self.collectFiles(in: directory)
+                    await self.collect(in: directory)
                 }
             }
 
             var allFiles: [ScannedFile] = []
-            for await files in group {
-                allFiles.append(contentsOf: files)
+            var unreadable: Set<String> = []
+            for await result in group {
+                allFiles.append(contentsOf: result.files)
+                unreadable.formUnion(result.unreadablePaths)
             }
-            return allFiles
+            return TraversalResult(files: allFiles, unreadablePaths: unreadable)
         }
     }
 
-    private func collectFiles(in directory: URL) async -> [ScannedFile] {
+    func collectFiles(in directory: URL) async -> [ScannedFile] {
+        await collect(in: directory).files
+    }
+
+    func collectFilesReportingErrors(in directory: URL) async -> TraversalResult {
+        await collect(in: directory)
+    }
+
+    private func collect(in directory: URL) async -> TraversalResult {
         let mtime = directoryMtime(directory)
         if let mtime, await cache.isFresh(directory: directory, currentMtime: mtime),
            let cached = await cache.cachedFiles(for: directory) {
-            return cached
+            // Cache hit — the directory was readable when cached.
+            return TraversalResult(files: cached)
         }
 
-        // Inner traversal is called with a single-element array so results stay per-directory.
-        let files = await inner.collectFiles(in: [directory])
+        // Single-directory call keeps results per-directory without the inner
+        // traversal spinning up a task group for exactly one child, while still
+        // reporting unreadable paths (R1.3).
+        let result = await inner.collectFilesReportingErrors(in: directory)
 
         // Only cache complete results — skip if the task was cancelled mid-traversal.
-        if let mtime, !Task.isCancelled {
-            await cache.store(directory: directory, mtime: mtime, files: files)
+        if let mtime, !Task.isCancelled, result.unreadablePaths.isEmpty {
+            await cache.store(directory: directory, mtime: mtime, files: result.files)
         }
 
-        return files
+        return result
     }
 
     private func directoryMtime(_ directory: URL) -> Date? {

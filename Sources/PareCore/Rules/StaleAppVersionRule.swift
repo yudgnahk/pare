@@ -20,11 +20,11 @@ public struct StaleAppVersionRule: ScanRule {
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool { false }
 
     /// Directories scanned at depth 1 for `.app` bundles.
+    /// System roots come from the environment so an injected (test) environment is
+    /// never bypassed — see `ScanEnvironment.systemApplicationDirectories`.
     public func scanDirectories(environment: ScanEnvironment) -> [URL] {
-        [
-            URL(fileURLWithPath: "/Applications"),
-            environment.homeDirectory.appending(path: "Applications")
-        ]
+        environment.systemApplicationDirectories
+            + [environment.homeDirectory.appending(path: "Applications")]
     }
 
     public func customScan(environment: ScanEnvironment) async -> [ScanFinding]? {
@@ -74,7 +74,7 @@ public struct StaleAppVersionRule: ScanRule {
             for older in sorted.dropFirst() {
                 let res = try? older.url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
                 let modDate = res?.contentModificationDate
-                let size = FileSystemUtils.directorySize(url: older.url)
+                let size = environment.sizeIndex.directorySize(url: older.url)
                 findings.append(ScanFinding(
                     category: category,
                     riskLevel: riskLevel,

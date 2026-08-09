@@ -64,10 +64,12 @@ public struct VSCodeDuplicateExtensionsRule: ScanRule {
         // For each group with duplicates, keep the newest, flag the rest.
         var findings: [ScanFinding] = []
         for (_, versions) in grouped where versions.count > 1 {
-            let sorted = versions.sorted { compareVersion($0.version, $1.version) == .orderedDescending }
+            let sorted = versions.sorted {
+                FileSystemUtils.compareVersionComponents($0.version, $1.version) == .orderedDescending
+            }
             // sorted[0] is the newest — skip it, flag the rest.
             for older in sorted.dropFirst() {
-                let size = FileSystemUtils.directorySize(url: older.url)
+                let size = environment.sizeIndex.directorySize(url: older.url)
                 let lastModified = (try? older.url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
 
                 // Honour minimum age — don't flag dirs modified within 3 days.
@@ -130,16 +132,4 @@ public struct VSCodeDuplicateExtensionsRule: ScanRule {
 
         return ExtDir(url: url, extensionID: extID, version: Array(components), versionString: verStr)
     }
-
-    private func compareVersion(_ a: [Int], _ b: [Int]) -> ComparisonResult {
-        let maxLen = max(a.count, b.count)
-        for i in 0 ..< maxLen {
-            let av = i < a.count ? a[i] : 0
-            let bv = i < b.count ? b[i] : 0
-            if av < bv { return .orderedAscending }
-            if av > bv { return .orderedDescending }
-        }
-        return .orderedSame
-    }
-
 }

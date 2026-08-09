@@ -91,7 +91,9 @@ public final class ExclusionStore: Sendable {
         if let fileURL {
             self.fileURL = fileURL
         } else {
-            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser
+                    .appending(path: "Library/Application Support")
             self.fileURL = appSupport
                 .appending(path: "Pare")
                 .appending(path: "exclusions.json")

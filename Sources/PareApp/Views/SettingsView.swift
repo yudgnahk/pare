@@ -4,11 +4,12 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var textZoom: TextZoomController
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
     @StateObject private var exclusionVM = ExclusionListViewModel()
+    /// Shared FDA state machine (same implementation the scan dashboard uses).
+    @StateObject private var permissions = PermissionCoachingModel()
     @State private var showExclusions = false
     @State private var showProjectPaths = false
-    @State private var fullDiskAccessStatus: FullDiskAccessStatus = .unknown
 
     var body: some View {
         ModuleChrome(
@@ -100,9 +101,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showProjectPaths) {
             ProjectScanPathsView()
         }
-        .onAppear { refreshFullDiskAccessStatus() }
+        .onAppear { permissions.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            refreshFullDiskAccessStatus()
+            permissions.refresh()
         }
     }
 
@@ -110,7 +111,7 @@ struct SettingsView: View {
         GlassCard {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                         .fill(fdaAccent.opacity(0.14))
                         .frame(width: 36, height: 36)
                     Image(systemName: "lock.shield")
@@ -130,16 +131,14 @@ struct SettingsView: View {
                     title: "Open Settings",
                     role: .accent
                 ) {
-                    for url in FullDiskAccessChecker.systemSettingsURLs {
-                        if NSWorkspace.shared.open(url) { return }
-                    }
+                    permissions.openSystemSettings()
                 }
             }
         }
     }
 
     private var fdaAccent: Color {
-        switch fullDiskAccessStatus {
+        switch permissions.status {
         case .granted: return AppTheme.success
         case .denied: return AppTheme.warning
         case .unknown: return AppTheme.accent
@@ -147,7 +146,7 @@ struct SettingsView: View {
     }
 
     private var fdaDetail: String {
-        switch fullDiskAccessStatus {
+        switch permissions.status {
         case .granted:
             return "Granted — Pare can read protected caches and developer folders."
         case .denied:
@@ -155,10 +154,6 @@ struct SettingsView: View {
         case .unknown:
             return "Status unclear on this Mac. If scans look empty, grant Full Disk Access."
         }
-    }
-
-    private func refreshFullDiskAccessStatus() {
-        fullDiskAccessStatus = FullDiskAccessChecker.status()
     }
 
     private func settingsCard(
@@ -171,7 +166,7 @@ struct SettingsView: View {
         GlassCard {
             HStack(alignment: .center, spacing: 14) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                         .fill(AppTheme.accent.opacity(0.14))
                         .frame(width: 36, height: 36)
                     Image(systemName: icon)

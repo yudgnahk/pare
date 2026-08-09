@@ -1,11 +1,13 @@
 import Foundation
 
 /// Detects project-**local** build/cache directories (`.cache`, `target`, `.parcel-cache`, …)
-/// inside project roots discovered automatically by Spotlight (via `ProjectRootDiscovery`).
+/// inside project roots discovered automatically by Spotlight (via `ProjectRootDiscovery`)
+/// **plus** any manually configured scan paths (`ProjectScanPathStore`).
 ///
-/// This replaces the Phase 5 path-based `ProjectArtifactRule` for developer and `all` profiles.
-/// Unlike the Phase 5 rule, no manual path configuration is required — roots are found
-/// automatically and presented to the user for opt-out.
+/// This is the single project-artifact rule (the Phase 5 path-only `ProjectArtifactRule`
+/// was unregistered and removed in R0.5 — both rules registered together double-counted
+/// every artifact). Manual paths are folded in here so users who configured them keep
+/// their coverage.
 ///
 /// Walk strategy:
 ///   - Descend up to 8 levels below each confirmed root.
@@ -25,9 +27,11 @@ public struct ProjectArtifactsRule: ScanRule {
     public let confidence: Double = 0.93
 
     private let discovery: ProjectRootDiscovery
+    private let pathStore: ProjectScanPathStore
 
-    public init(discovery: ProjectRootDiscovery = .shared) {
+    public init(discovery: ProjectRootDiscovery = .shared, pathStore: ProjectScanPathStore = .shared) {
         self.discovery = discovery
+        self.pathStore = pathStore
     }
 
     public func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
@@ -35,7 +39,11 @@ public struct ProjectArtifactsRule: ScanRule {
 
     public func customScan(environment: ScanEnvironment) async -> [ScanFinding]? {
         await discovery.discoverIfNeeded()
-        let roots = await discovery.confirmedRoots()
+        let discovered = await discovery.confirmedRoots()
+        // Fold in manually configured scan paths (Phase 5 store), deduplicated by path.
+        var seen = Set<String>()
+        let roots = (discovered + pathStore.paths.map { URL(fileURLWithPath: $0) })
+            .filter { seen.insert($0.standardizedFileURL.path).inserted }
         guard !roots.isEmpty else { return [] }
 
         let minAge = ScanPolicy.defaultMinimumAgeSeconds(for: category)
@@ -43,7 +51,14 @@ public struct ProjectArtifactsRule: ScanRule {
 
         for root in roots {
             if Task.isCancelled { break }
-            await walk(directory: root, depth: 0, maxDepth: 8, minAge: minAge, findings: &findings)
+            await walk(
+                directory: root,
+                depth: 0,
+                maxDepth: 8,
+                minAge: minAge,
+                sizeIndex: environment.sizeIndex,
+                findings: &findings
+            )
         }
 
         return findings
@@ -56,6 +71,7 @@ public struct ProjectArtifactsRule: ScanRule {
         depth: Int,
         maxDepth: Int,
         minAge: TimeInterval?,
+        sizeIndex: DirectorySizeIndex,
         findings: inout [ScanFinding]
     ) async {
         guard depth < maxDepth, !Task.isCancelled else { return }
@@ -89,7 +105,7 @@ public struct ProjectArtifactsRule: ScanRule {
                     if let date = effectiveDate, Date().timeIntervalSince(date) < minAge { continue }
                 }
 
-                let size = FileSystemUtils.directorySize(url: item)
+                let size = sizeIndex.directorySize(url: item)
                 guard size > 0 else { continue }
 
                 let reviewNames: Set<String> = ["dist", "build"]
@@ -110,7 +126,14 @@ public struct ProjectArtifactsRule: ScanRule {
                 // Do not recurse into matched artifact directories.
             } else if !name.hasPrefix(".") {
                 // Recurse into visible directories; skip hidden dirs that aren't artifacts.
-                await walk(directory: item, depth: depth + 1, maxDepth: maxDepth, minAge: minAge, findings: &findings)
+                await walk(
+                    directory: item,
+                    depth: depth + 1,
+                    maxDepth: maxDepth,
+                    minAge: minAge,
+                    sizeIndex: sizeIndex,
+                    findings: &findings
+                )
             }
         }
     }

@@ -7,18 +7,18 @@ struct ModuleChrome<Content: View>: View {
     var systemImage: String? = nil
     @ViewBuilder var content: () -> Content
 
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
                 if let systemImage {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
                             .fill(AppTheme.accent.opacity(0.14))
                             .frame(width: 40, height: 40)
                         Image(systemName: systemImage)
-                            .font(.system(size: 17, weight: .semibold))
+                            .font(scale.font(17, weight: .semibold))
                             .foregroundStyle(AppTheme.accent)
                     }
                     .transition(.scale.combined(with: .opacity))

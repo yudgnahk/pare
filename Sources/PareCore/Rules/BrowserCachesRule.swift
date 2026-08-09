@@ -25,7 +25,9 @@ public struct BrowserCachesRule: ScanRule {
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
         let path = fileURL.path.lowercased()
 
-        if path.contains("bookmarks") || path.contains("login") || path.contains("history") {
+        // Central sensitive-marker policy (R1.4) — the previous inline copy
+        // missed session/cookies/keychain.
+        if ScanPolicy.containsSensitiveDataMarker(fileURL) {
             return false
         }
 

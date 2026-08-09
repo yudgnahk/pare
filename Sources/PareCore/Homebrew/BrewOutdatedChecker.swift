@@ -3,11 +3,15 @@ import Foundation
 /// Checks for outdated Homebrew packages via `brew outdated --json=v2 --greedy`.
 public struct BrewOutdatedChecker: Sendable {
 
-    public init() {}
+    private let runner: BrewRunner
+
+    public init(runner: BrewRunner = .shared) {
+        self.runner = runner
+    }
 
     /// Returns all outdated packages. Pinned packages are included but marked.
     public func check() async throws -> [BrewOutdatedPackage] {
-        let output = try await BrewRunner.shared.run(["outdated", "--json=v2", "--greedy"])
+        let output = try await runner.run(["outdated", "--json=v2", "--greedy"])
         guard let data = output.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return []

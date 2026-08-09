@@ -3,7 +3,7 @@ import SwiftUI
 /// Always-visible left navigation — fixed column, not collapsible SplitView.
 struct SidebarView: View {
     @Binding var selection: AppDestination
-    @Environment(\.displayScale) private var scale
+    @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -28,7 +28,7 @@ struct SidebarView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             Divider()
-                .background(Color.white.opacity(0.08))
+                .background(AppTheme.Fill.control)
                 .padding(.horizontal, 12)
 
             footerHint
@@ -79,7 +79,7 @@ struct SidebarView: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: destination.systemImage)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(scale.font(14, weight: .semibold))
                     .frame(width: 20, alignment: .center)
                     .foregroundStyle(selected ? AppTheme.accent : AppTheme.textSecondary)
 
@@ -99,17 +99,17 @@ struct SidebarView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                     .fill(selected ? AppTheme.sidebarSelected : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
                     .strokeBorder(
                         selected ? AppTheme.accent.opacity(0.4) : Color.clear,
                         lineWidth: 1
                     )
             )
-            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
         }
         .buttonStyle(.plain)
         .animation(AppTheme.Motion.quick, value: selected)

@@ -1,6 +1,30 @@
 import XCTest
 @testable import PareCore
 
+/// Lock-guarded recorder for values written from `@Sendable` injection closures.
+/// Capturing a local `var` in those closures is a strict-concurrency error on the
+/// Swift toolchains used by the macOS 13/14 CI legs.
+private final class Recorder<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Value
+
+    init(_ initial: Value) {
+        storage = initial
+    }
+
+    var value: Value {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func mutate(_ body: (inout Value) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        body(&storage)
+    }
+}
+
 final class HomebrewTests: XCTestCase {
 
     // MARK: - BrewRunner
@@ -791,11 +815,11 @@ final class HomebrewTests: XCTestCase {
     }
 
     func testLeaveOrphanedCaskOnlyUninstalls() async throws {
-        var uninstalled: [String] = []
+        let uninstalled = Recorder<[String]>([])
         let leaver = CaskLeaveHomebrew(
             applicationSearchPaths: ["/tmp/nonexistent-pare-apps"],
             fileManager: .default,
-            uninstall: { token in uninstalled.append(token) },
+            uninstall: { token in uninstalled.mutate { $0.append(token) } },
             runningAppPaths: { [] }
         )
         let cask = BrewCask(
@@ -807,7 +831,7 @@ final class HomebrewTests: XCTestCase {
             isOrphaned: true
         )
         let result = try await leaver.leave(cask: cask)
-        XCTAssertEqual(uninstalled, ["missing-app"])
+        XCTAssertEqual(uninstalled.value, ["missing-app"])
         XCTAssertTrue(result.preservedAppPaths.isEmpty)
         XCTAssertEqual(result.token, "missing-app")
     }
@@ -822,12 +846,12 @@ final class HomebrewTests: XCTestCase {
         try "keep-me".write(to: marker, atomically: true, encoding: .utf8)
         defer { try? fm.removeItem(at: root) }
 
-        var uninstalled: [String] = []
+        let uninstalled = Recorder<[String]>([])
         let leaver = CaskLeaveHomebrew(
             applicationSearchPaths: [appsDir.path],
             fileManager: fm,
             uninstall: { token in
-                uninstalled.append(token)
+                uninstalled.mutate { $0.append(token) }
                 // Mimic brew uninstall removing the app from Applications.
                 try? fm.removeItem(at: original)
             },
@@ -841,7 +865,7 @@ final class HomebrewTests: XCTestCase {
             installDate: nil
         )
         let result = try await leaver.leave(cask: cask)
-        XCTAssertEqual(uninstalled, ["demo-app"])
+        XCTAssertEqual(uninstalled.value, ["demo-app"])
         XCTAssertEqual(result.preservedAppPaths, [original.path])
         XCTAssertTrue(fm.fileExists(atPath: original.path))
         XCTAssertEqual(try String(contentsOf: marker, encoding: .utf8), "keep-me")
@@ -855,11 +879,11 @@ final class HomebrewTests: XCTestCase {
         try? fm.createDirectory(at: original, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: root) }
 
-        var uninstallCalled = false
+        let uninstallCalled = Recorder<Bool>(false)
         let leaver = CaskLeaveHomebrew(
             applicationSearchPaths: [appsDir.path],
             fileManager: fm,
-            uninstall: { _ in uninstallCalled = true },
+            uninstall: { _ in uninstallCalled.mutate { $0 = true } },
             runningAppPaths: { [original.path] }
         )
         let cask = BrewCask(
@@ -879,7 +903,7 @@ final class HomebrewTests: XCTestCase {
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
-        XCTAssertFalse(uninstallCalled)
+        XCTAssertFalse(uninstallCalled.value)
         XCTAssertTrue(fm.fileExists(atPath: original.path))
     }
 

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # One job on the macOS version Pare is actually developed on (macOS 26 /
+  # Swift 6.3). Build, test and coverage share a single compile.
+  #
+  # Deliberately not a version matrix: Pare ships as a compiled binary, so no
+  # user's machine ever compiles it — only this one does. A 13/14/15 matrix cost
+  # ~45 job-minutes per run, saturated the 5-concurrent-macOS-job limit that free
+  # public repos get, and made each push cancel the previous run. If a toolchain
+  # question ever needs answering, restore the matrix from git history and run it
+  # via workflow_dispatch.
+  build-test:
+    name: Build, test & coverage (macOS 26)
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build (all targets)
+        run: swift build --build-tests
+
+      - name: Test with coverage
+        run: swift test --enable-code-coverage
+
+      - name: Coverage summary
+        run: |
+          BIN_PATH="$(swift build --show-bin-path)"
+          PROFDATA="$BIN_PATH/codecov/default.profdata"
+          TEST_BINARY="$(find "$BIN_PATH" -name 'ParePackageTests' -type f -path '*.xctest*' | head -n 1)"
+          if [[ -z "$TEST_BINARY" || ! -f "$PROFDATA" ]]; then
+            echo "Coverage artifacts not found (bin: $BIN_PATH)" >&2
+            exit 1
+          fi
+          xcrun llvm-cov report \
+            "$TEST_BINARY" \
+            -instr-profile="$PROFDATA" \
+            -ignore-filename-regex='(Tests|\.build)/' \
+            | tee coverage-summary.txt
+
+      - name: Upload coverage summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage-summary.txt

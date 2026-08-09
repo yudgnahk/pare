@@ -19,7 +19,7 @@ public struct JetBrainsStaleVersionRule: ScanRule {
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.88
 
-    private static let minimumAgeSeconds: TimeInterval = 90 * 24 * 60 * 60
+    private static let minimumAgeSeconds = ScanPolicy.jetBrainsStaleVersionMinAgeSeconds
 
     public init() {}
 
@@ -73,7 +73,11 @@ public struct JetBrainsStaleVersionRule: ScanRule {
             }
             // sorted[0] is the newest — flag everything else.
             for older in sorted.dropFirst() {
-                if let finding = makeStaleFinding(older: older, newest: sorted[0]) {
+                if let finding = makeStaleFinding(
+                    older: older,
+                    newest: sorted[0],
+                    sizeIndex: environment.sizeIndex
+                ) {
                     findings.append(finding)
                 }
             }
@@ -94,7 +98,7 @@ public struct JetBrainsStaleVersionRule: ScanRule {
             if let d = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
                 guard Date().timeIntervalSince(d) >= Self.minimumAgeSeconds else { continue }
             }
-            let size = FileSystemUtils.directorySize(url: unversionedURL)
+            let size = environment.sizeIndex.directorySize(url: unversionedURL)
             guard size > 0 else { continue }
             findings.append(ScanFinding(
                 category: category,
@@ -119,7 +123,11 @@ public struct JetBrainsStaleVersionRule: ScanRule {
         let minor: Int
     }
 
-    private func makeStaleFinding(older: VersionedDir, newest: VersionedDir) -> ScanFinding? {
+    private func makeStaleFinding(
+        older: VersionedDir,
+        newest: VersionedDir,
+        sizeIndex: DirectorySizeIndex
+    ) -> ScanFinding? {
         let res = try? older.url.resourceValues(forKeys: [
             .contentModificationDateKey, .creationDateKey, .isDirectoryKey
         ])
@@ -127,7 +135,7 @@ public struct JetBrainsStaleVersionRule: ScanRule {
         if let d = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
             guard Date().timeIntervalSince(d) >= Self.minimumAgeSeconds else { return nil }
         }
-        let size = FileSystemUtils.directorySize(url: older.url)
+        let size = sizeIndex.directorySize(url: older.url)
         return ScanFinding(
             category: category,
             riskLevel: riskLevel,

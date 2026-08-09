@@ -78,7 +78,9 @@ public final class CleanupTransactionStore: Sendable {
         if let directory {
             transactionsDirectory = directory
         } else {
-            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                ?? FileManager.default.homeDirectoryForCurrentUser
+                    .appending(path: "Library/Application Support")
             transactionsDirectory = appSupport
                 .appending(path: "Pare")
                 .appending(path: "transactions")
@@ -114,6 +116,13 @@ public final class CleanupTransactionStore: Sendable {
             guard let data = try? Data(contentsOf: url) else { return nil }
             return try? decoder.decode(CleanupTransaction.self, from: data)
         }.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    /// Removes a single transaction record (no-op when absent).
+    public func delete(id: UUID) throws {
+        let file = transactionsDirectory.appending(path: "\(id.uuidString).json")
+        guard FileManager.default.fileExists(atPath: file.path) else { return }
+        try FileManager.default.removeItem(at: file)
     }
 
     public func deleteAll() throws {

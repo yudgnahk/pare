@@ -19,10 +19,8 @@ public struct JetBrainsReviewRequiredRule: ScanRule {
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
         let path = fileURL.path.lowercased()
 
-        let isPluginPath = path.contains("/goland") && path.contains("/plugins/")
-            || path.contains("/datagrip") && path.contains("/plugins/")
-        let isDataGripDriverPath = path.contains("/datagrip") && path.contains("/jdbc-drivers/")
-        guard isPluginPath || isDataGripDriverPath else {
+        // Marker pairs live in ScanPolicy (R1.4).
+        guard ScanPolicy.isJetBrainsReviewRequiredPath(fileURL) else {
             return false
         }
 

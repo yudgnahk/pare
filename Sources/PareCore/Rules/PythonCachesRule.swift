@@ -1,8 +1,9 @@
 import Foundation
 
 /// Removes reconstructible download caches written by Python package managers.
-/// Targets pip, Poetry, uv (under ~/Library/Caches/) and pyenv's build-time cache (~/.pyenv/cache/).
+/// Targets pip, Poetry (under ~/Library/Caches/) and pyenv's build-time cache (~/.pyenv/cache/).
 /// Does NOT touch ~/.pyenv/versions/ (installed Python runtimes) or any site-packages/ directory.
+/// uv is owned by `UvCacheRule` (multi-root discovery, report-only) — not listed here.
 public struct PythonCachesRule: ScanRule {
     public let id = "python-caches"
     public let title = "Python Package Manager Caches"
@@ -22,27 +23,19 @@ public struct PythonCachesRule: ScanRule {
         let targets: [URL] = [
             lib.appending(path: "pip"),
             lib.appending(path: "pypoetry"),
-            lib.appending(path: "uv"),
             home.appending(path: ".pyenv/cache"),
         ]
 
         var findings: [ScanFinding] = []
         for target in targets {
-            guard FileManager.default.fileExists(atPath: target.path) else { continue }
-            let size = FileSystemUtils.directorySize(url: target)
-            guard size > 0 else { continue }
-            let lastUsed = try? target
-                .resourceValues(forKeys: [.contentModificationDateKey])
-                .contentModificationDate
-            findings.append(ScanFinding(
+            findings += ScanFindingBuilder.directoryFindings(
+                at: target,
                 category: category,
                 riskLevel: riskLevel,
                 reason: reason,
-                path: target.path,
-                sizeBytes: size,
-                lastUsed: lastUsed,
-                confidence: confidence
-            ))
+                confidence: confidence,
+                sizeIndex: environment.sizeIndex
+            )
         }
         return findings
     }

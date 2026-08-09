@@ -20,10 +20,16 @@ public enum MaintenanceError: Error, LocalizedError {
 }
 
 /// Executes maintenance actions and streams output lines as they arrive.
-/// Mirrors the `BrewRunner.stream()` pattern — pipes drained with `FileHandle.bytes.lines`.
+/// Subprocess execution goes through an injected `ProcessRunning` seam
+/// (real `SystemProcessRunner` by default; tests inject a stub).
 public struct MaintenanceRunner: Sendable {
     public static let shared = MaintenanceRunner()
-    public init() {}
+
+    private let processRunner: any ProcessRunning
+
+    public init(processRunner: any ProcessRunning = SystemProcessRunner()) {
+        self.processRunner = processRunner
+    }
 
     // MARK: - Docker availability
 
@@ -35,18 +41,12 @@ public struct MaintenanceRunner: Sendable {
     /// Returns `true` when the Docker daemon is reachable (`docker info` exit 0).
     public func isDockerRunning() async -> Bool {
         guard let docker = dockerExecutable else { return false }
-        return await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: docker)
-            process.arguments = ["info"]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            process.standardInput = FileHandle.nullDevice
-            process.terminationHandler = { p in
-                continuation.resume(returning: p.terminationStatus == 0)
-            }
-            do { try process.run() } catch { continuation.resume(returning: false) }
-        }
+        let result = try? await processRunner.run(
+            executablePath: docker,
+            arguments: ["info"],
+            environment: nil
+        )
+        return result?.exitCode == 0
     }
 
     // MARK: - Dispatch
@@ -156,7 +156,7 @@ public struct MaintenanceRunner: Sendable {
                         continuation.yield("  ✓ \(label) done.")
                     } catch let err as MaintenanceError {
                         // sqlite3 VACUUM on a locked db exits non-zero; treat as warning
-                        continuation.yield("  ⚠ \(label): \(err.localizedDescription ?? "")")
+                        continuation.yield("  ⚠ \(label): \(err.localizedDescription)")
                     }
                 }
 
@@ -267,67 +267,34 @@ public struct MaintenanceRunner: Sendable {
         }
     }
 
-    /// Runs an executable and streams stdout+stderr lines, mirroring `BrewRunner.stream()`.
+    /// Runs an executable and streams stdout lines through the injected runner.
+    /// stderr is collected by the runner and surfaced on a non-zero exit.
     private func shellStream(_ executable: String, _ args: [String]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             Task {
-                guard FileManager.default.fileExists(atPath: executable) else {
-                    continuation.finish(throwing: MaintenanceError.executableNotFound(executable))
-                    return
-                }
-
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: executable)
-                process.arguments = args
-                process.standardInput = FileHandle.nullDevice
-
-                let stdoutPipe = Pipe()
-                let stderrPipe = Pipe()
-                process.standardOutput = stdoutPipe
-                process.standardError = stderrPipe
-
-                do { try process.run() } catch {
-                    continuation.finish(throwing: error)
-                    return
-                }
-
-                let stderrBuffer = LockedBuffer()
-
-                await withTaskGroup(of: Void.self) { group in
-                    group.addTask {
-                        do {
-                            for try await line in stdoutPipe.fileHandleForReading.bytes.lines {
-                                continuation.yield(line)
-                            }
-                        } catch {}
+                do {
+                    let lines = processRunner.streamLines(
+                        executablePath: executable,
+                        arguments: args,
+                        environment: nil
+                    )
+                    for try await line in lines {
+                        if case .stdout(let text) = line {
+                            continuation.yield(text)
+                        }
                     }
-                    group.addTask {
-                        do {
-                            for try await line in stderrPipe.fileHandleForReading.bytes.lines {
-                                stderrBuffer.append(line + "\n")
-                            }
-                        } catch {}
-                    }
-                }
-
-                process.waitUntilExit()
-                let status = process.terminationStatus
-                if status != 0 {
-                    let errText = stderrBuffer.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    continuation.finish(throwing: MaintenanceError.nonZeroExit(status, errText))
-                } else {
                     continuation.finish()
+                } catch let error as ProcessRunnerError {
+                    switch error {
+                    case .executableNotFound(let path):
+                        continuation.finish(throwing: MaintenanceError.executableNotFound(path))
+                    case .nonZeroExit(let code, let stderr):
+                        continuation.finish(throwing: MaintenanceError.nonZeroExit(code, stderr))
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
                 }
             }
         }
     }
-}
-
-// Thread-safe text buffer for draining stderr across DispatchQueue threads.
-private final class LockedBuffer: @unchecked Sendable {
-    private var _text = ""
-    private let lock = NSLock()
-
-    func append(_ s: String) { lock.withLock { _text += s } }
-    var text: String { lock.withLock { _text } }
 }

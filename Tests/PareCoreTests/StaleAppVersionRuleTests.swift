@@ -88,6 +88,16 @@ final class StaleAppVersionRuleTests: XCTestCase {
         XCTAssertTrue(dirs.contains { $0.path == tempDir.appending(path: "Applications").path })
     }
 
+    /// System roots must come from the environment, so an injected environment is
+    /// never bypassed by a hardcoded absolute path.
+    func testSystemApplicationRootsComeFromEnvironment() {
+        let isolated = ScanEnvironment(homeDirectory: tempDir, systemApplicationDirectories: [])
+        let dirs = rule.scanDirectories(environment: isolated)
+        XCTAssertFalse(dirs.contains { $0.path == "/Applications" },
+                       "an injected environment must not be able to reach the real /Applications")
+        XCTAssertEqual(dirs.map(\.path), [tempDir.appending(path: "Applications").path])
+    }
+
     // MARK: Same bundle ID — older flagged
 
     func testFlagsOlderVersionForSameBundleID() async throws {

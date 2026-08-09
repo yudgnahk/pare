@@ -11,30 +11,60 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case advancedRiskBlocked(String)
     /// Docker VM disk / volume data — never delete as a filesystem path.
     case dockerNeverDelete(String)
+    /// The path is excluded by the user's exclusion list.
+    case excludedByUser(String)
+    /// Search-index-sensitive path — cleaning would force Spotlight/media reindexing.
+    case searchIndexProtected(String)
+    /// File attributes could not be read — age gates fail closed.
+    case attributesUnreadable(String)
+    /// The undo transaction record could not be persisted before trashing.
+    case undoRecordUnavailable(String)
     /// The file does not exist on disk when cleanup is attempted.
     case fileNotFound(String)
     /// The Trash move failed with an underlying system error.
     case trashFailed(String, Error)
-    /// Undo failed because the Trash item no longer exists.
+    /// Undo failed — the associated value describes what went wrong.
     case restoreFailed(String)
 
     public var errorDescription: String? {
         switch self {
         case .unsafePath(let path):
-            return "Unsafe path blocked: \(path)"
+            return "Path no longer passes safety policy: \(path)"
         case .tooNew(let path):
             return "File is too new to clean: \(path)"
         case .advancedRiskBlocked(let path):
             return "ADVANCED-risk file blocked from direct deletion: \(path). Use the app's native cleanup flow instead."
         case .dockerNeverDelete(let path):
             return "Docker VM disk/volume data blocked: \(path). Use docker system prune (never --volumes)."
+        case .excludedByUser(let path):
+            return "Excluded by user: \(path)"
+        case .searchIndexProtected(let path):
+            return "Search-index path protected — cleaning would force Spotlight/media reindexing: \(path)"
+        case .attributesUnreadable(let path):
+            return "File attributes unreadable — blocked for safety: \(path)"
+        case .undoRecordUnavailable(let detail):
+            return "Could not persist undo record — cleanup aborted (\(detail))"
         case .fileNotFound(let path):
             return "File not found: \(path)"
         case .trashFailed(let path, let error):
             return "Failed to move to Trash: \(path) — \(error.localizedDescription)"
-        case .restoreFailed(let path):
-            return "Cannot restore — Trash item no longer exists: \(path)"
+        case .restoreFailed(let reason):
+            return "Cannot restore — \(reason)"
         }
+    }
+}
+
+/// One skipped cleanup item with its typed reason (R1.1).
+public struct CleanupSkippedItem: Sendable {
+    public let path: String
+    public let error: CleanupError
+
+    /// Human-readable reason — kept for presentation and log output.
+    public var reason: String { error.localizedDescription }
+
+    public init(path: String, error: CleanupError) {
+        self.path = path
+        self.error = error
     }
 }
 
@@ -44,10 +74,25 @@ public enum CleanupError: Error, LocalizedError, Sendable {
 public struct CleanupResult: Sendable {
     /// Successfully moved items (or dry-run candidates).
     public let succeeded: [CleanupItem]
-    /// Items that were skipped because of a safety check failure, paired with the reason.
-    public let skipped: [(path: String, reason: String)]
+    /// Items that were skipped because of a safety check failure, with typed reasons.
+    public let skipped: [CleanupSkippedItem]
     /// The persisted transaction record (nil for dry-run that explicitly opts out of persistence).
     public let transaction: CleanupTransaction?
+    /// Non-nil when the undo transaction could not be (fully) persisted to disk.
+    /// Files may already have been moved to Trash — surfaced here instead of throwing.
+    public let transactionSaveError: String?
+
+    init(
+        succeeded: [CleanupItem],
+        skipped: [CleanupSkippedItem],
+        transaction: CleanupTransaction?,
+        transactionSaveError: String? = nil
+    ) {
+        self.succeeded = succeeded
+        self.skipped = skipped
+        self.transaction = transaction
+        self.transactionSaveError = transactionSaveError
+    }
 
     public var totalBytesFreed: Int64 {
         succeeded.reduce(0) { $0 + $1.sizeBytes }
@@ -69,9 +114,35 @@ public struct CleanupResult: Sendable {
 /// 5. The minimum age threshold from `ScanPolicy.defaultMinimumAgeSeconds` must still be satisfied.
 public actor CleanupEngine {
     private let store: CleanupTransactionStore
+    /// Supplies the registered project scan roots (Spotlight-discovered + manual) used by
+    /// the fail-closed project-artifact re-verification gate. Injectable for tests.
+    private let projectRootsProvider: @Sendable () async -> [String]
+    /// Supplies the user's exclusion list at cleanup time (scan-time filtering alone is
+    /// not enough — exclusions added after a scan must still block cleanup). Injectable.
+    private let exclusionsProvider: @Sendable () -> ExclusionList
+    /// Injectable clock for age re-checks — tests shift this instead of
+    /// back-dating real files. Defaults to the wall clock.
+    private let now: @Sendable () -> Date
 
-    public init(store: CleanupTransactionStore = .shared) {
+    /// Persist the undo record every N successful trash moves so a crash mid-cleanup
+    /// loses at most this many items from the record.
+    private static let incrementalSaveInterval = 20
+
+    public init(
+        store: CleanupTransactionStore = .shared,
+        projectRootsProvider: (@Sendable () async -> [String])? = nil,
+        exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.store = store
+        self.projectRootsProvider = projectRootsProvider ?? {
+            let discovered = await ProjectRootDiscovery.shared.confirmedRoots().map(\.path)
+            return discovered + ProjectScanPathStore.shared.paths
+        }
+        self.exclusionsProvider = exclusionsProvider ?? {
+            (try? ExclusionStore.shared.load()) ?? .empty
+        }
+        self.now = now
     }
 
     // MARK: - Quick Clean (safe-risk only)
@@ -120,48 +191,89 @@ public actor CleanupEngine {
         dryRun: Bool = false
     ) async throws -> CleanupResult {
         var succeeded: [CleanupItem] = []
-        var skipped: [(path: String, reason: String)] = []
+        var skipped: [CleanupSkippedItem] = []
+
+        // Resolved once per run — project-artifact re-verification needs the registered roots,
+        // and exclusions must be honored at cleanup time (not only at scan time).
+        let projectRootPaths = await projectRootsProvider()
+        let exclusions = exclusionsProvider()
+
+        // Durable-undo guarantee: for real runs, the transaction record is written
+        // BEFORE anything is trashed and re-written incrementally during the loop.
+        // If the initial record cannot be persisted, abort — never delete without
+        // a durable undo record.
+        let transactionID = UUID()
+        let transactionTimestamp = Date()
+        var transactionSaveError: String?
+
+        func makeTransaction(_ items: [CleanupItem]) -> CleanupTransaction {
+            CleanupTransaction(
+                id: transactionID,
+                timestamp: transactionTimestamp,
+                profileName: profileName,
+                isDryRun: dryRun,
+                items: items
+            )
+        }
+
+        if !dryRun, !findings.isEmpty {
+            do {
+                try store.save(makeTransaction([]))
+            } catch {
+                let detail = error.localizedDescription
+                return CleanupResult(
+                    succeeded: [],
+                    skipped: findings.map {
+                        CleanupSkippedItem(path: $0.path, error: .undoRecordUnavailable(detail))
+                    },
+                    transaction: nil,
+                    transactionSaveError: detail
+                )
+            }
+        }
 
         for finding in findings {
             let url = URL(fileURLWithPath: finding.path)
 
+            // User exclusions always win — even if the finding predates the exclusion.
+            if exclusions.isExcluded(finding.path) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .excludedByUser(finding.path)))
+                continue
+            }
+
             // Path-level ban: Docker VM disk / volume data — independent of risk label.
             // Mis-tagged findings must still never trash Docker.raw or the vms tree.
             if ScanPolicy.isDockerNeverDeletePath(url) {
-                skipped.append((
-                    finding.path,
-                    "Docker VM disk/volume data — never delete; use docker system prune without --volumes"
-                ))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .dockerNeverDelete(finding.path)))
                 continue
             }
 
             // Spotlight / Core Spotlight / Help / media analysis — deleting these
             // forces a costly reindex. Never trash even if a rule mis-reports them.
             if ScanPolicy.isSearchIndexSensitivePath(url) {
-                skipped.append((
-                    finding.path,
-                    "Search-index path protected — cleaning would force Spotlight/media reindexing"
-                ))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .searchIndexProtected(finding.path)))
                 continue
             }
 
             // ADVANCED findings must never be deleted directly.
             if finding.riskLevel == .advanced {
-                skipped.append((finding.path, "ADVANCED-risk finding — use app-native cleanup"))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .advancedRiskBlocked(finding.path)))
                 continue
             }
 
-            // Re-verify the path is still considered safe by policy.
+            // Re-verify the path is still considered safe by policy. Fail-closed variants:
+            // wrong-platform matches only inside the scanned trees; project artifacts only
+            // with project-root evidence or under a registered project scan root.
             guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
-                    || ScanPolicy.isWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
-                    || ScanPolicy.isProjectArtifact(url) else {
-                skipped.append((finding.path, "Path no longer passes safety policy"))
+                    || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
+                    || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                 continue
             }
 
             // Verify the file still exists.
             guard FileManager.default.fileExists(atPath: finding.path) else {
-                skipped.append((finding.path, "File no longer exists"))
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .fileNotFound(finding.path)))
                 continue
             }
 
@@ -169,21 +281,25 @@ public actor CleanupEngine {
             // Wrong-platform binaries/dirs are exempted: a Windows installer in ~/Downloads
             // or a win32/ native tree is inert on macOS from day zero — age is irrelevant.
             // Reconstructible package caches use a short floor (active download safety).
-            if !ScanPolicy.isWrongPlatformPath(url),
+            if !ScanPolicy.isCleanableWrongPlatformPath(url),
                let minAge = ScanPolicy.minimumAgeSeconds(forCleanupPath: url, category: finding.category) {
                 if ScanPolicy.isReconstructibleCachePath(url) {
                     // Reconstructible caches have no multi-day age gate (minAge may be 0).
-                    if minAge > 0, !ScanPolicy.passesUnusedAge(for: url, minimumAgeSeconds: minAge) {
-                        skipped.append((finding.path, "Cache too new"))
+                    if minAge > 0, !ScanPolicy.passesUnusedAge(for: url, minimumAgeSeconds: minAge, now: now()) {
+                        skipped.append(CleanupSkippedItem(path: finding.path, error: .tooNew(finding.path)))
                         continue
                     }
                 } else {
+                    // Fail-closed: unreadable attributes / missing dates block cleanup —
+                    // never assume the age gate is satisfied when age is unknowable.
                     let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
-                    if let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) {
-                        if Date().timeIntervalSince(date) < minAge {
-                            skipped.append((finding.path, "File is too new (age < \(Int(minAge / 86400)) days)"))
-                            continue
-                        }
+                    guard let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) else {
+                        skipped.append(CleanupSkippedItem(path: finding.path, error: .attributesUnreadable(finding.path)))
+                        continue
+                    }
+                    if now().timeIntervalSince(date) < minAge {
+                        skipped.append(CleanupSkippedItem(path: finding.path, error: .tooNew(finding.path)))
+                        continue
                     }
                 }
             }
@@ -207,23 +323,49 @@ public actor CleanupEngine {
                         reason: finding.reason,
                         riskLevel: finding.riskLevel
                     ))
+                    // Incremental persistence: bound how many trashed items a crash can
+                    // drop from the undo record.
+                    if succeeded.count % Self.incrementalSaveInterval == 0 {
+                        do {
+                            try store.save(makeTransaction(succeeded))
+                        } catch {
+                            transactionSaveError = error.localizedDescription
+                        }
+                    }
                 } catch {
-                    skipped.append((finding.path, "Trash move failed: \(error.localizedDescription)"))
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .trashFailed(finding.path, error)))
                 }
             }
         }
 
-        let transaction = CleanupTransaction(
-            profileName: profileName,
-            isDryRun: dryRun,
-            items: succeeded
-        )
+        let transaction = makeTransaction(succeeded)
 
-        if !succeeded.isEmpty || dryRun {
-            try store.save(transaction)
+        var resultTransaction: CleanupTransaction? = transaction
+        if dryRun {
+            do {
+                try store.save(transaction)
+            } catch {
+                transactionSaveError = error.localizedDescription
+            }
+        } else if succeeded.isEmpty {
+            // Nothing was trashed — drop the empty placeholder record.
+            try? store.delete(id: transactionID)
+            resultTransaction = nil
+        } else {
+            do {
+                try store.save(transaction)
+                transactionSaveError = nil  // final save supersedes any incremental failure
+            } catch {
+                transactionSaveError = error.localizedDescription
+            }
         }
 
-        return CleanupResult(succeeded: succeeded, skipped: skipped, transaction: transaction)
+        return CleanupResult(
+            succeeded: succeeded,
+            skipped: skipped,
+            transaction: resultTransaction,
+            transactionSaveError: transactionSaveError
+        )
     }
 
     // MARK: - Undo / Restore
@@ -231,92 +373,89 @@ public actor CleanupEngine {
     /// Restores all items from a previously recorded transaction by moving them
     /// out of the Trash back to their original locations.
     ///
-    /// Items where the Trash path no longer exists are reported in `skipped`.
-    public func restore(transaction: CleanupTransaction) async -> (restored: [String], skipped: [String]) {
+    /// Items that could not be restored are reported in `failed`, each with a reason
+    /// (undo honesty — callers must not present a failed restore as success).
+    public func restore(
+        transaction: CleanupTransaction
+    ) async -> (restored: [String], failed: [(path: String, reason: String)]) {
         guard !transaction.isDryRun else {
-            return ([], transaction.items.map(\.originalPath))
+            return ([], transaction.items.map { ($0.originalPath, "Dry-run transaction — nothing was trashed") })
         }
 
         var restored: [String] = []
-        var skipped: [String] = []
+        var failed: [(path: String, reason: String)] = []
 
         for item in transaction.items {
-            guard let trashedPath = item.trashedPath else {
-                skipped.append(item.originalPath)
-                continue
-            }
-
-            let trashURL = URL(fileURLWithPath: trashedPath)
-            let destinationURL = URL(fileURLWithPath: item.originalPath)
-
-            guard FileManager.default.fileExists(atPath: trashedPath) else {
-                skipped.append(item.originalPath)
-                continue
-            }
-
-            // Create parent directory if needed.
-            let parentDir = destinationURL.deletingLastPathComponent()
-            try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
-
             do {
-                try FileManager.default.moveItem(at: trashURL, to: destinationURL)
+                try restoreFromTrash(item)
                 restored.append(item.originalPath)
             } catch {
-                skipped.append(item.originalPath)
+                failed.append((item.originalPath, error.localizedDescription))
             }
         }
 
-        return (restored, skipped)
+        return (restored, failed)
     }
 
     // MARK: - Single-item restore
 
     /// Restores one item from the Trash to its original path.
-    /// Returns `true` when the move succeeded.
-    public func restoreItem(_ item: CleanupItem) async -> Bool {
-        guard let trashedPath = item.trashedPath else { return false }
+    /// Throws `CleanupError.restoreFailed` with the underlying reason on failure.
+    public func restoreItem(_ item: CleanupItem) async throws {
+        try restoreFromTrash(item)
+    }
+
+    /// Shared restore primitive — moves one trashed item back to its original path.
+    private func restoreFromTrash(_ item: CleanupItem) throws {
+        guard let trashedPath = item.trashedPath else {
+            throw CleanupError.restoreFailed("No Trash location was recorded for \(item.originalPath)")
+        }
         let trashURL = URL(fileURLWithPath: trashedPath)
         let destinationURL = URL(fileURLWithPath: item.originalPath)
 
-        guard FileManager.default.fileExists(atPath: trashedPath) else { return false }
+        guard FileManager.default.fileExists(atPath: trashedPath) else {
+            throw CleanupError.restoreFailed("Trash item no longer exists for \(item.originalPath)")
+        }
 
+        // Create parent directory if needed — a failure here surfaces via the move below.
         let parentDir = destinationURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
 
         do {
             try FileManager.default.moveItem(at: trashURL, to: destinationURL)
-            return true
         } catch {
-            return false
+            throw CleanupError.restoreFailed("\(item.originalPath): \(error.localizedDescription)")
         }
     }
 
     // MARK: - Private helpers
+
+    /// All persona marker sets, concatenated once (~250 elements). Built lazily on
+    /// first use instead of per cleaned item — `clean` calls `isPersonaPath` for
+    /// every candidate path.
+    private static let allPersonaMarkers: [String] = ScanPolicy.designerSafePathMarkers
+        + ScanPolicy.designerReviewPathMarkers
+        + ScanPolicy.videoBuilderSafePathMarkers
+        + ScanPolicy.videoBuilderReviewPathMarkers
+        + ScanPolicy.developerSafePathMarkers
+        + ScanPolicy.developerReviewPathMarkers
+        + ScanPolicy.developerDockerReviewPathMarkers
+        + ScanPolicy.developerDockerSafePathMarkers
+        + ScanPolicy.developerPackageCacheMarkers
+        + ScanPolicy.aiToolSafePathMarkers
+        + ScanPolicy.browserExtendedSafePathMarkers
+        + ScanPolicy.browserExtendedReviewPathMarkers
+        + ScanPolicy.browserReviewDataPathMarkers
+        + ScanPolicy.mobileSyncBackupPathMarkers
+        + ScanPolicy.productivitySafePathMarkers
+        + ScanPolicy.productivityReviewPathMarkers
+        + ScanPolicy.launchAgentPathMarkers
 
     /// A path passes persona policy if it matches any of the known persona marker sets.
     /// Docker advanced / VM disk markers are intentionally **not** included — those paths
     /// are hard-blocked via `isDockerNeverDeletePath` and must never become cleanable.
     private func isPersonaPath(_ url: URL) -> Bool {
         if ScanPolicy.isDockerNeverDeletePath(url) { return false }
-
-        let allPersonaMarkers = ScanPolicy.designerSafePathMarkers
-            + ScanPolicy.designerReviewPathMarkers
-            + ScanPolicy.videoBuilderSafePathMarkers
-            + ScanPolicy.videoBuilderReviewPathMarkers
-            + ScanPolicy.developerSafePathMarkers
-            + ScanPolicy.developerReviewPathMarkers
-            + ScanPolicy.developerDockerReviewPathMarkers
-            + ScanPolicy.developerDockerSafePathMarkers
-            + ScanPolicy.developerPackageCacheMarkers
-            + ScanPolicy.aiToolSafePathMarkers
-            + ScanPolicy.browserExtendedSafePathMarkers
-            + ScanPolicy.browserExtendedReviewPathMarkers
-            + ScanPolicy.browserReviewDataPathMarkers
-            + ScanPolicy.mobileSyncBackupPathMarkers
-            + ScanPolicy.productivitySafePathMarkers
-            + ScanPolicy.productivityReviewPathMarkers
-            + ScanPolicy.launchAgentPathMarkers
-
-        return ScanPolicy.matchesPersonaPath(url, allowedMarkers: allPersonaMarkers)
+        return ScanPolicy.matchesPersonaPath(url, allowedMarkers: Self.allPersonaMarkers)
     }
 }

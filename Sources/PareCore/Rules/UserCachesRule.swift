@@ -12,21 +12,10 @@ public struct UserCachesRule: ScanRule {
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.95
 
-    /// Top-level Library/Caches names (or path markers) owned by other rules
-    /// or never-clean search-index stores (Spotlight / Help).
-    private static let excludedTopLevelNames: Set<String> = Set([
-        "google",           // Chrome — BrowserCachesRule
-        "com.apple.safari",
-        "firefox",
-        "bravesoftware",
-        "yarn",
-        "pnpm",
-        "cocoapods",
-        "org.swift.swiftpm",
-        "homebrew",
-        "go-build",
-        "com.microsoft.vscode.shipit",
-    ]).union(ScanPolicy.searchIndexSensitiveCacheFolderNames)
+    /// Rule-ownership policy lives in `ScanPolicy` (single source of truth):
+    /// top-level Library/Caches names owned by other rules or never-clean
+    /// search-index stores (Spotlight / Help).
+    private static let excludedTopLevelNames = ScanPolicy.userCachesExcludedTopLevelFolderNames
 
     public init() {}
 
@@ -38,7 +27,7 @@ public struct UserCachesRule: ScanRule {
         var findings: [ScanFinding] = []
 
         let cachesRoot = home.appending(path: "Library/Caches")
-        findings += scanTopLevelCacheFolders(in: cachesRoot)
+        findings += scanTopLevelCacheFolders(in: cachesRoot, sizeIndex: environment.sizeIndex)
 
         // Container app caches commonly reclaimable (parity with common cleaners).
         // Intentionally omit mediaanalysisd and Library/Suggestions — deleting them
@@ -47,19 +36,20 @@ public struct UserCachesRule: ScanRule {
             "Library/Containers/com.apple.wallpaper.agent/Data/Library/Caches/com.apple.wallpaper.caches",
         ]
         for relative in containerCaches {
-            findings += PackageManagerCachesRule.directoryFindings(
+            findings += ScanFindingBuilder.directoryFindings(
                 at: home.appending(path: relative),
                 category: category,
                 riskLevel: riskLevel,
                 reason: "User app cache — reconstructible",
-                confidence: confidence
+                confidence: confidence,
+                sizeIndex: environment.sizeIndex
             )
         }
 
         return findings
     }
 
-    private func scanTopLevelCacheFolders(in root: URL) -> [ScanFinding] {
+    private func scanTopLevelCacheFolders(in root: URL, sizeIndex: DirectorySizeIndex) -> [ScanFinding] {
         let fm = FileManager.default
         guard fm.fileExists(atPath: root.path) else { return [] }
 
@@ -93,12 +83,13 @@ public struct UserCachesRule: ScanRule {
             if Self.excludedTopLevelNames.contains(name) { continue }
             if name.hasPrefix("com.google.") || name.hasPrefix("org.mozilla.") { continue }
 
-            findings += PackageManagerCachesRule.directoryFindings(
+            findings += ScanFindingBuilder.directoryFindings(
                 at: child,
                 category: category,
                 riskLevel: riskLevel,
                 reason: "User app cache (\(child.lastPathComponent)) — reconstructible",
-                confidence: confidence
+                confidence: confidence,
+                sizeIndex: sizeIndex
             )
         }
         return findings

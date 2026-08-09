@@ -10,7 +10,13 @@ public actor MigrationAdvisor {
     private static let cacheFilename = "brew_cask_catalog.json"
     private static let cacheTTL: TimeInterval = 86_400  // 24 hours
 
-    public init() {}
+    /// Injected session — tests pass a `URLSession` whose configuration registers
+    /// a stub `URLProtocol` so catalog fetches run without network access.
+    private let session: URLSession
+
+    public init(session: URLSession = .shared) {
+        self.session = session
+    }
 
     /// Returns apps that can be migrated to Homebrew Cask management.
     /// - Parameter installedApps: All installed apps (from AppInventory).
@@ -113,7 +119,7 @@ public actor MigrationAdvisor {
     private func fetchCatalog() async -> [[String: Any]]? {
         if let cached = loadCachedCatalog() { return cached }
 
-        guard let (data, _) = try? await URLSession.shared.data(from: Self.catalogURL),
+        guard let (data, _) = try? await session.data(from: Self.catalogURL),
               let parsed = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             return nil
         }
@@ -123,7 +129,8 @@ public actor MigrationAdvisor {
     }
 
     private func cacheFileURL() -> URL {
-        let support = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let support = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         return support.appendingPathComponent(Self.cacheFilename)
     }
 

@@ -247,3 +247,39 @@ Sources/PareCore/
 | `ProjectArtifactsRuleTests` — age gate | Artifact < 7 days old not emitted |
 | `ProjectArtifactsRuleTests` — no double-count | `node_modules/` inside `node_modules/` not emitted twice |
 | `ProjectArtifactsRuleTests` — dist is review | `dist/` emits `.review` not `.safe` |
+
+---
+
+## uv Cache Discovery (Phase A — report-only)
+
+Modern Homebrew `uv` defaults to the XDG cache layout (`~/.cache/uv`), not
+`~/Library/Caches/uv`, so the original `PythonCachesRule` target missed real
+multi-GB caches. `UvCacheRule` now owns uv end-to-end:
+
+**Discovery roots (discover broadly):** resolved by `CacheRootResolver`, in
+explanatory-confidence order, canonicalized (standardized + symlink-resolved)
+and deduplicated to one finding per physical directory:
+
+1. `uv cache dir` output (`ToolCommandRunner`: short timeout, null stdin,
+   non-fatal, skipped when uv is not installed; PATH + Homebrew locations,
+   never sources shell files) — labelled `uv CLI`
+2. Absolute `UV_CACHE_DIR` — labelled `environment`
+3. Foundation `.cachesDirectory` — labelled `macOS cache root`
+4. XDG root — `XDG_CACHE_HOME` (absolute values only; relative ignored per the
+   XDG spec) or `~/.cache` — labelled `XDG`
+
+Dangerous roots are rejected: `/`, any direct child of `/`, bare home, bare
+`~/Library`, and well-known system prefixes. Tool output is validated
+(single-line, absolute, no NUL, bounded length) before use.
+
+**Cleanup (clean narrowly):** findings are `.advanced` — `CleanupEngine`
+hard-blocks Trash deletion because uv requires its own cache commands
+(`uv cache prune` / `uv cache clean`) to respect locks and in-use state.
+`~/.cache/uv` is deliberately absent from every Trash-cleanup marker list;
+exact-boundary checks use `ScanPolicy.isEqualToOrDescendant(candidate:root:)`
+so `~/.cache/uvicorn` / `~/.cache/uv-backup` can never match. The native
+Maintenance action lands in Phase B of the uv cache plan.
+
+`ToolCacheDescriptor` records relative child names, native discovery commands,
+and cleanup posture for uv, pip, Poetry, and pyenv; only uv is wired to a rule
+in Phase A.

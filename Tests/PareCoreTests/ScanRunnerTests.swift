@@ -38,8 +38,8 @@ final class ScanRunnerTests: XCTestCase {
     }
 
     func testBaselineRuleIncludesKnownRules() {
-        let rules = [any ScanRule].baseline
-        XCTAssertEqual(rules.count, 12, "Baseline includes core + Phase 5–8 additions")
+        let rules = RuleCatalog.baseline
+        XCTAssertEqual(rules.count, 11, "Baseline includes core + Phase 5–8 additions")
         XCTAssertTrue(rules.contains(where: { $0.id == "user-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "temporary-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "logs-crash-reports" }))
@@ -48,7 +48,8 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "browser-review-data" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "installer-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "stale-app-version" }))
-        XCTAssertTrue(rules.contains(where: { $0.id == "project-artifacts" }))
+        XCTAssertFalse(rules.contains(where: { $0.id == "project-artifacts" }),
+                       "Phase 5 project-artifacts was removed in R0.5 (double-counted with v2)")
         XCTAssertTrue(rules.contains(where: { $0.id == "mobile-sync-backups" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "productivity-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "orphaned-launch-agents" }))
@@ -79,6 +80,18 @@ final class ScanRunnerTests: XCTestCase {
                 resourceValues: values
             )
         )
+
+        // R1.4 regression: the rule now uses ScanPolicy's full sensitive-marker
+        // set — the old inline copy missed session/cookies/keychain.
+        for sensitive in ["Session Cache", "Cookies Cache", "keychain-cache"] {
+            XCTAssertFalse(
+                rule.include(
+                    fileURL: URL(fileURLWithPath: "/Users/test/Library/Caches/Google/Chrome/Default/\(sensitive)/data"),
+                    resourceValues: values
+                ),
+                "\(sensitive) must be blocked by the sensitive-data policy"
+            )
+        }
     }
 
     func testTemporaryRuleRequiresMinimumAge() {
@@ -131,7 +144,7 @@ final class ScanRunnerTests: XCTestCase {
     }
 
     func testDeveloperRuleCatalogIncludesPersonaRules() {
-        let rules = [any ScanRule].developer
+        let rules = RuleCatalog.developer
         XCTAssertTrue(rules.contains(where: { $0.id == "xcode-derived-data" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "xcode-archives" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "package-manager-caches" }))
@@ -149,7 +162,7 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-vm-data-advanced" }))
         // Orphaned logs-only rule is not registered; DockerStorageRule covers logs + VM visibility.
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-logs-review-required" }))
-        XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
+        XCTAssertTrue(rules.count > RuleCatalog.baseline.count)
     }
 
     func testVSCodeCachesRuleIncludesOnlySafeDeveloperMarkers() {
@@ -256,17 +269,17 @@ final class ScanRunnerTests: XCTestCase {
     }
 
     func testDesignerRuleCatalogIncludesPersonaRules() {
-        let rules = [any ScanRule].designer
+        let rules = RuleCatalog.designer
         XCTAssertTrue(rules.contains(where: { $0.id == "designer-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "designer-review-required-media" }))
-        XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
+        XCTAssertTrue(rules.count > RuleCatalog.baseline.count)
     }
 
     func testVideoBuilderRuleCatalogIncludesPersonaRules() {
-        let rules = [any ScanRule].videoBuilder
+        let rules = RuleCatalog.videoBuilder
         XCTAssertTrue(rules.contains(where: { $0.id == "video-builder-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "video-builder-review-required-media" }))
-        XCTAssertTrue(rules.count > [any ScanRule].baseline.count)
+        XCTAssertTrue(rules.count > RuleCatalog.baseline.count)
     }
 
     func testDesignerRulesRespectPathAndRiskPolicy() {
@@ -444,32 +457,121 @@ final class ScanRunnerTests: XCTestCase {
         )
     }
 
-    func testDockerLogsReviewRuleIncludesDockerLogPathsOnly() {
-        let rule = DockerLogsReviewRequiredRule()
-        let values = URLResourceValues()
+    // MARK: - R1.2: per-rule error channel
+
+    private struct ThrowingRule: ScanRule {
+        struct Boom: LocalizedError {
+            var errorDescription: String? { "boom" }
+        }
+        let id = "throwing-rule"
+        let title = "Throwing Rule"
+        let reason = "Always fails"
+        let category: ScanCategory = .userCaches
+        let riskLevel: RiskLevel = .safe
+        let confidence = 1.0
+
+        func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
+        func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool { false }
+        func customScanThrowing(environment: ScanEnvironment) async throws -> [ScanFinding]? {
+            throw Boom()
+        }
+    }
+
+    func testRuleFailureIsReportedAndOtherRulesStillRun() async {
+        let cacheDir = URL(fileURLWithPath: "/tmp/cache")
+        let traversal = MockTraversal(filesByDirectory: [
+            cacheDir.path: [
+                ScannedFile(url: cacheDir.appendingPathComponent("a.cache"), sizeBytes: 100, lastModified: nil)
+            ]
+        ])
+        let runner = ScanRunner(
+            environment: ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test")),
+            traversal: traversal
+        )
+        let rules: [any ScanRule] = [
+            ThrowingRule(),
+            TestRule(id: "cache", title: "Cache", category: .userCaches, targets: [cacheDir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.ruleFailures.count, 1, "rule failed must be reported, not masked")
+        XCTAssertEqual(report.ruleFailures.first?.ruleID, "throwing-rule")
+        XCTAssertEqual(report.ruleFailures.first?.message, "boom")
+        XCTAssertEqual(report.findings.count, 1, "other rules must still contribute findings")
+    }
+
+    // MARK: - R1.3: unreadable locations surface on the report
+
+    func testTraversalReportsUnreadableDirectory() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appending(path: "pare_unreadable_\(UUID().uuidString)")
+        let locked = tmp.appending(path: "locked")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        try Data(repeating: 0x1, count: 16).write(to: locked.appending(path: "hidden-from-scan.bin"))
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+            try? FileManager.default.removeItem(at: tmp)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+
+        let result = await FileSystemTraversal().collectFilesReportingErrors(in: [tmp])
 
         XCTAssertTrue(
-            rule.include(
-                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/log/host/docker.log"),
-                resourceValues: values
-            )
+            result.unreadablePaths.contains { $0.hasSuffix("locked") },
+            "permission-denied directory must be reported, got: \(result.unreadablePaths)"
         )
+    }
 
-        XCTAssertFalse(
-            rule.include(
-                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.docker.docker/Data/vms/0/data/Docker.raw"),
-                resourceValues: values
-            )
+    func testUnreadableRootDirectoryIsReported() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appending(path: "pare_unreadable_root_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tmp.path)
+            try? FileManager.default.removeItem(at: tmp)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: tmp.path)
+
+        let result = await FileSystemTraversal().collectFilesReportingErrors(in: [tmp])
+
+        XCTAssertEqual(result.unreadablePaths, [tmp.path])
+        XCTAssertTrue(result.files.isEmpty)
+    }
+
+    // MARK: - FileTraversing single-directory overload
+
+    func testSingleDirectoryOverloadDefaultsToArrayOverload() async {
+        let dir = URL(fileURLWithPath: "/Users/test/Library/Caches")
+        let traversal: any FileTraversing = MockTraversal(filesByDirectory: [
+            dir.path: [
+                ScannedFile(url: dir.appendingPathComponent("a.bin"), sizeBytes: 42, lastModified: nil)
+            ]
+        ])
+
+        // MockTraversal only implements the array overload — the protocol
+        // default must forward the single-directory call to it.
+        let files = await traversal.collectFiles(in: dir)
+        XCTAssertEqual(files.map(\.sizeBytes), [42])
+    }
+
+    func testFileSystemTraversalSingleDirectoryMatchesArrayOverload() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("traversal-overload-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try Data(repeating: 1, count: 1024).write(to: tempDir.appendingPathComponent("f.bin"))
+
+        let traversal = FileSystemTraversal()
+        let single = await traversal.collectFiles(in: tempDir)
+        let viaArray = await traversal.collectFiles(in: [tempDir])
+
+        XCTAssertEqual(
+            single.map(\.url.path).sorted(),
+            viaArray.map(\.url.path).sorted(),
+            "direct single-directory path must return the same files as the task-group overload"
         )
-
-        XCTAssertFalse(
-            rule.include(
-                fileURL: URL(fileURLWithPath: "/Users/test/Library/Containers/com.example.app/Data/log/app.log"),
-                resourceValues: values
-            )
-        )
-
-        XCTAssertEqual(rule.riskLevel, .review)
+        XCTAssertEqual(single.count, 1)
     }
 
 }
