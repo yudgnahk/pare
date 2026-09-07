@@ -8,13 +8,13 @@ final class HistoryViewModelTests: XCTestCase {
     private var storeDir: URL!
     private var store: CleanupTransactionStore!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         storeDir = FileManager.default.temporaryDirectory
             .appending(path: "HistoryViewModelTests-\(UUID().uuidString)")
         store = CleanupTransactionStore(directory: storeDir)
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         try? FileManager.default.removeItem(at: storeDir)
     }
 

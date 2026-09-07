@@ -123,7 +123,6 @@ final class ExclusionListTests: XCTestCase {
     // MARK: - ScanRunner exclusion integration
 
     func testScanRunnerRespectsExclusionList() async {
-        let targetDir = URL(fileURLWithPath: "/tmp/exclusion-runner-test")
         let includedFile = ScannedFile(url: URL(fileURLWithPath: "/tmp/exclusion-runner-test/keep.bin"),
                                        sizeBytes: 1000, lastModified: nil)
         let excludedFile = ScannedFile(url: URL(fileURLWithPath: "/tmp/exclusion-runner-test/skip.bin"),
