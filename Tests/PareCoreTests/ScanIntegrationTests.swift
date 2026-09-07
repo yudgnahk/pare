@@ -151,7 +151,7 @@ final class ScanIntegrationTests: XCTestCase {
     // MARK: - Developer profile: dev-tooling files found additionally
 
     func testDeveloperScanFindsVSCodeAndJetBrainsFiles() async throws {
-        try builder.buildBaseline()
+        _ = try builder.buildBaseline()
         let devFiles = try builder.buildDeveloperExtras()
         let runner = makeRunner()
         let report = await runner.run(rules: RuleCatalog.developer)
@@ -167,7 +167,7 @@ final class ScanIntegrationTests: XCTestCase {
     // MARK: - Category summaries are consistent with findings
 
     func testCategorySummaryTotalsMatchFindingsSums() async throws {
-        try builder.buildBaseline()
+        _ = try builder.buildBaseline()
         let runner = makeRunner()
         let report = await runner.run(rules: RuleCatalog.baseline)
 
@@ -209,7 +209,7 @@ final class ScanIntegrationTests: XCTestCase {
     // MARK: - Risk labels are propagated correctly
 
     func testAllBaselineFindingsAreSafeRisk() async throws {
-        try builder.buildBaseline()
+        _ = try builder.buildBaseline()
         let runner = makeRunner()
         let report = await runner.run(rules: RuleCatalog.baseline)
 
@@ -223,8 +223,8 @@ final class ScanIntegrationTests: XCTestCase {
     // MARK: - Reason field is non-empty for every finding
 
     func testEveryFindingHasNonEmptyReason() async throws {
-        try builder.buildBaseline()
-        try builder.buildDeveloperExtras()
+        _ = try builder.buildBaseline()
+        _ = try builder.buildDeveloperExtras()
         let runner = makeRunner()
         let report = await runner.run(rules: RuleCatalog.developer)
 
@@ -237,7 +237,7 @@ final class ScanIntegrationTests: XCTestCase {
     // MARK: - Total reclaimable is sum of non-advanced finding sizes
 
     func testTotalReclaimableBytesIsConsistent() async throws {
-        try builder.buildBaseline()
+        _ = try builder.buildBaseline()
         let runner = makeRunner()
         let report = await runner.run(rules: RuleCatalog.baseline)
 
@@ -404,7 +404,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
     // MARK: - Transaction store persists and loads after cleanup
 
     func testTransactionIsLoadableAfterCleanup() async throws {
-        let file1 = try makeCacheFile(name: "tx-persist.bin")
+        _ = try makeCacheFile(name: "tx-persist.bin")
         let runner = ScanRunner(
             environment: ScanEnvironment(homeDirectory: fakeHome, systemApplicationDirectories: []),
             traversal: FileSystemTraversal()

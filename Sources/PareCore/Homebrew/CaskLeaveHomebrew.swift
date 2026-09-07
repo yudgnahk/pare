@@ -225,7 +225,7 @@ public struct CaskLeaveHomebrew {
         if !running.isEmpty {
             if forceQuitRunning {
                 onProgress("Force-quitting: \(running.joined(separator: ", "))…")
-                await quitApps(at: appPaths)
+                await Self.quitApps(at: appPaths)
                 // Re-check after quit attempt.
                 let stillRunning = Self.runningApps(
                     among: appPaths,
@@ -302,7 +302,7 @@ public struct CaskLeaveHomebrew {
     // MARK: - Private
 
     @MainActor
-    private func quitApps(at paths: [URL]) async {
+    private static func quitApps(at paths: [URL]) async {
         let targets = Set(paths.map { $0.standardizedFileURL.path })
         let apps = NSWorkspace.shared.runningApplications.filter { app in
             guard let path = app.bundleURL?.standardizedFileURL.path else { return false }

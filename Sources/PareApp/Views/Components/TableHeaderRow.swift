@@ -22,13 +22,18 @@ struct TableHeaderRow<Content: View>: View {
     }
 }
 
-#Preview("TableHeaderRow") {
-    TableHeaderRow {
-        Text("Name").frame(maxWidth: .infinity, alignment: .leading)
-        Text("Version").frame(width: 100, alignment: .leading)
-        Text("Size").frame(width: 90, alignment: .trailing)
-        Spacer().frame(width: 50)
+#if DEBUG
+struct TableHeaderRow_Previews: PreviewProvider {
+    static var previews: some View {
+        TableHeaderRow {
+            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
+            Text("Version").frame(width: 100, alignment: .leading)
+            Text("Size").frame(width: 90, alignment: .trailing)
+            Spacer().frame(width: 50)
+        }
+        .frame(width: 520)
+        .background(AppTheme.base)
+        .previewDisplayName("TableHeaderRow")
     }
-    .frame(width: 520)
-    .background(AppTheme.base)
 }
+#endif

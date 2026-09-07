@@ -853,7 +853,7 @@ final class HomebrewTests: XCTestCase {
             uninstall: { token in
                 uninstalled.mutate { $0.append(token) }
                 // Mimic brew uninstall removing the app from Applications.
-                try? fm.removeItem(at: original)
+                try? FileManager.default.removeItem(at: original)
             },
             runningAppPaths: { [] }
         )
@@ -921,7 +921,7 @@ final class HomebrewTests: XCTestCase {
             applicationSearchPaths: [appsDir.path],
             fileManager: fm,
             uninstall: { _ in
-                try? fm.removeItem(at: original)
+                try? FileManager.default.removeItem(at: original)
                 throw BrewError.failed(exitCode: 1, stderr: "boom")
             },
             runningAppPaths: { [] }

@@ -66,6 +66,8 @@ make test         # must pass
 make run-app      # launch the SwiftUI app and exercise the changed feature manually
 ```
 
+**Command Line Tools-only machines (no Xcode.app):** `make build` and `make run-app` work, but `make test` fails with `no such module 'XCTest'` because Apple's Command Line Tools do not ship XCTest. This is an environment limitation, not a regression. To run tests locally, install Xcode or a swift.org toolchain (e.g. via `swiftly`), which bundles XCTest; otherwise rely on CI (`macos-26` runner with Xcode).
+
 ## Priorities
 
 **The SwiftUI app (`PareApp`) is the primary deliverable.** The CLI is a secondary diagnostic/fast-testing tool. When implementing features, focus on the app experience first. CLI updates are optional and only warranted when trivial (e.g. already using a shared core utility).
@@ -78,6 +80,8 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 - Shared filesystem utilities (e.g. `directorySize`) live in `FileSystemUtils` — don't duplicate them in individual rules.
 - `CleanupEngine` is an `actor`; `ScanDashboardViewModel` is `@MainActor`. All core types are `Sendable`.
 - Tests use `MockTraversal: FileTraversing` and `TestRule: ScanRule` to inject deterministic file lists without hitting the filesystem.
+- SwiftUI previews use `struct <Name>_Previews: PreviewProvider`, never the `#Preview` macro. The macro needs the `PreviewsMacros` compiler plugin that only ships inside Xcode.app, so `swift build` breaks on Command Line Tools-only machines.
+- Wrap preview structs — and any helper type that exists only to back a preview — in `#if DEBUG` / `#endif` so they stay out of release builds.
 
 ## Known State
 
