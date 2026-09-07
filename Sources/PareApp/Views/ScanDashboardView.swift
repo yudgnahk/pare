@@ -777,7 +777,7 @@ private struct CategoryFolderRowView: View, Equatable {
     let onReveal: () -> Void
     @Environment(\.pareDisplayScale) private var scale
 
-    static func == (lhs: CategoryFolderRowView, rhs: CategoryFolderRowView) -> Bool {
+    nonisolated static func == (lhs: CategoryFolderRowView, rhs: CategoryFolderRowView) -> Bool {
         lhs.row == rhs.row
             && lhs.sizeText == rhs.sizeText
             && lhs.selectionState == rhs.selectionState
