@@ -69,32 +69,35 @@ struct EmptyStateView: View {
     }
 }
 
-#Preview("Expanded") {
-    EmptyStateView(
-        icon: "clock.arrow.circlepath",
-        title: "No cleanup history",
-        message: "Run a Quick Clean or Deep Clean to create a history record."
-    )
-    .frame(width: 480, height: 260)
-    .background(AppTheme.base)
-}
+struct EmptyStateView_Previews: PreviewProvider {
+    static var previews: some View {
+        Group {
+            EmptyStateView(
+                icon: "clock.arrow.circlepath",
+                title: "No cleanup history",
+                message: "Run a Quick Clean or Deep Clean to create a history record."
+            )
+            .frame(width: 480, height: 260)
+            .background(AppTheme.base)
+            .previewDisplayName("Expanded")
 
-#Preview("Expanded — no title") {
-    EmptyStateView(
-        icon: "shippingbox",
-        message: "No formulae match the current filters"
-    )
-    .frame(width: 480, height: 200)
-    .background(AppTheme.base)
-}
+            EmptyStateView(
+                icon: "shippingbox",
+                message: "No formulae match the current filters"
+            )
+            .frame(width: 480, height: 200)
+            .background(AppTheme.base)
+            .previewDisplayName("Expanded — no title")
 
-#Preview("Inline") {
-    EmptyStateView(
-        icon: "tray",
-        title: "No scan results yet",
-        message: "Start a scan to browse reclaimable storage by category.",
-        layout: .inline
-    )
-    .padding(24)
-    .background(AppTheme.base)
+            EmptyStateView(
+                icon: "tray",
+                title: "No scan results yet",
+                message: "Start a scan to browse reclaimable storage by category.",
+                layout: .inline
+            )
+            .padding(24)
+            .background(AppTheme.base)
+            .previewDisplayName("Inline")
+        }
+    }
 }

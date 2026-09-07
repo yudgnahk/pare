@@ -107,41 +107,44 @@ struct DisclosureSelectRow<Leading: View>: View {
     }
 }
 
-#Preview("Category + tool rows") {
-    VStack(spacing: 8) {
-        DisclosureSelectRow(
-            style: .category,
-            title: "Developer Package Caches",
-            badgeText: "6 tools",
-            sizeText: "12.4 GB",
-            isExpanded: false,
-            selection: .partial,
-            selectHelp: "Toggle all SAFE folders in this category",
-            onToggleSelect: {},
-            onToggleExpand: {}
-        ) {
-            Circle()
-                .fill(CategoryStyle.sky)
-                .frame(width: 8, height: 8)
-        }
+struct DisclosureSelectRow_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 8) {
+            DisclosureSelectRow(
+                style: .category,
+                title: "Developer Package Caches",
+                badgeText: "6 tools",
+                sizeText: "12.4 GB",
+                isExpanded: false,
+                selection: .partial,
+                selectHelp: "Toggle all SAFE folders in this category",
+                onToggleSelect: {},
+                onToggleExpand: {}
+            ) {
+                Circle()
+                    .fill(CategoryStyle.sky)
+                    .frame(width: 8, height: 8)
+            }
 
-        DisclosureSelectRow(
-            style: .tool,
-            title: "JetBrains",
-            badgeText: "4 folders",
-            sizeText: "3.1 GB",
-            isExpanded: true,
-            selection: .all,
-            selectHelp: "Select all folders under JetBrains",
-            onToggleSelect: {},
-            onToggleExpand: {}
-        ) {
-            Image(systemName: "j.circle.fill")
-                .foregroundStyle(AppTheme.accent)
-                .frame(width: 18)
+            DisclosureSelectRow(
+                style: .tool,
+                title: "JetBrains",
+                badgeText: "4 folders",
+                sizeText: "3.1 GB",
+                isExpanded: true,
+                selection: .all,
+                selectHelp: "Select all folders under JetBrains",
+                onToggleSelect: {},
+                onToggleExpand: {}
+            ) {
+                Image(systemName: "j.circle.fill")
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(width: 18)
+            }
         }
+        .padding(24)
+        .background(AppTheme.base)
+        .frame(width: 560)
+        .previewDisplayName("Category + tool rows")
     }
-    .padding(24)
-    .background(AppTheme.base)
-    .frame(width: 560)
 }

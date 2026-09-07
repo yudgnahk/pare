@@ -170,64 +170,68 @@ struct CleanConfirmationSheet: View {
     }
 }
 
-#Preview("Quick Clean") {
-    CleanConfirmationSheet(
-        config: .init(
-            title: "Quick Clean",
-            subtitle: "Safe-risk findings only",
-            headerIcon: "trash.fill",
-            headerTint: AppTheme.success,
-            infoLines: [
-                .init(
-                    icon: "checkmark.shield.fill",
-                    color: AppTheme.success,
-                    text: "128 safe-risk files will be moved to Trash."
+struct CleanConfirmationSheet_Previews: PreviewProvider {
+    static var previews: some View {
+        Group {
+            CleanConfirmationSheet(
+                config: .init(
+                    title: "Quick Clean",
+                    subtitle: "Safe-risk findings only",
+                    headerIcon: "trash.fill",
+                    headerTint: AppTheme.success,
+                    infoLines: [
+                        .init(
+                            icon: "checkmark.shield.fill",
+                            color: AppTheme.success,
+                            text: "128 safe-risk files will be moved to Trash."
+                        ),
+                        .init(
+                            icon: "exclamationmark.triangle",
+                            color: AppTheme.warning,
+                            text: "Review and Advanced findings are never touched."
+                        ),
+                        .init(
+                            icon: "arrow.uturn.backward",
+                            color: AppTheme.accent,
+                            text: "You can undo immediately after cleanup via the Undo button."
+                        )
+                    ]
                 ),
-                .init(
-                    icon: "exclamationmark.triangle",
-                    color: AppTheme.warning,
-                    text: "Review and Advanced findings are never touched."
-                ),
-                .init(
-                    icon: "arrow.uturn.backward",
-                    color: AppTheme.accent,
-                    text: "You can undo immediately after cleanup via the Undo button."
-                )
-            ]
-        ),
-        onCancel: {},
-        onConfirm: {}
-    )
-}
-
-#Preview("Deep Clean") {
-    CleanConfirmationSheet(
-        config: .init(
-            title: "Deep Clean",
-            subtitle: "Safe + Review-risk findings",
-            subtitleColor: AppTheme.review,
-            headerIcon: "bolt.fill",
-            headerTint: AppTheme.review,
-            warningText: "Deep Clean includes REVIEW-risk items. Proceed only if you have reviewed them.",
-            infoLines: [
-                .init(
-                    icon: "bolt.fill",
-                    color: AppTheme.review,
-                    text: "212 files will be moved to Trash (34 review-risk)."
-                )
-            ],
-            confirmTint: AppTheme.review,
-            confirmForeground: .white,
-            size: .init(
-                minWidth: 420,
-                idealWidth: 480,
-                maxWidth: AppTheme.Sheet.wideWidth,
-                minHeight: 380,
-                idealHeight: 420,
-                maxHeight: 560
+                onCancel: {},
+                onConfirm: {}
             )
-        ),
-        onCancel: {},
-        onConfirm: {}
-    )
+            .previewDisplayName("Quick Clean")
+
+            CleanConfirmationSheet(
+                config: .init(
+                    title: "Deep Clean",
+                    subtitle: "Safe + Review-risk findings",
+                    subtitleColor: AppTheme.review,
+                    headerIcon: "bolt.fill",
+                    headerTint: AppTheme.review,
+                    warningText: "Deep Clean includes REVIEW-risk items. Proceed only if you have reviewed them.",
+                    infoLines: [
+                        .init(
+                            icon: "bolt.fill",
+                            color: AppTheme.review,
+                            text: "212 files will be moved to Trash (34 review-risk)."
+                        )
+                    ],
+                    confirmTint: AppTheme.review,
+                    confirmForeground: .white,
+                    size: .init(
+                        minWidth: 420,
+                        idealWidth: 480,
+                        maxWidth: AppTheme.Sheet.wideWidth,
+                        minHeight: 380,
+                        idealHeight: 420,
+                        maxHeight: 560
+                    )
+                ),
+                onCancel: {},
+                onConfirm: {}
+            )
+            .previewDisplayName("Deep Clean")
+        }
+    }
 }

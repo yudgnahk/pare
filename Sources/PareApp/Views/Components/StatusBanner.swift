@@ -151,39 +151,43 @@ extension StatusBanner where Accessory == EmptyView {
     }
 }
 
-#Preview("Card states") {
-    VStack(spacing: 12) {
-        StatusBanner(kind: .progress, title: "Moving files to Trash…")
-        StatusBanner(
-            kind: .success,
-            title: "Cleaned 1.2 GB",
-            detail: "3 items skipped (policy check).",
-            onDismiss: {}
-        ) {
-            Button("Undo") {}
-                .buttonStyle(.borderless)
-                .foregroundStyle(AppTheme.accent)
-        }
-        StatusBanner(
-            kind: .warning,
-            title: "2 files restored.",
-            icon: "arrow.uturn.backward.circle.fill",
-            onDismiss: {}
-        )
-        StatusBanner(kind: .error, title: "Cleanup failed: permission denied.", onDismiss: {})
-    }
-    .padding(24)
-    .background(AppTheme.base)
-    .frame(width: 560)
-}
+struct StatusBanner_Previews: PreviewProvider {
+    static var previews: some View {
+        Group {
+            VStack(spacing: 12) {
+                StatusBanner(kind: .progress, title: "Moving files to Trash…")
+                StatusBanner(
+                    kind: .success,
+                    title: "Cleaned 1.2 GB",
+                    detail: "3 items skipped (policy check).",
+                    onDismiss: {}
+                ) {
+                    Button("Undo") {}
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(AppTheme.accent)
+                }
+                StatusBanner(
+                    kind: .warning,
+                    title: "2 files restored.",
+                    icon: "arrow.uturn.backward.circle.fill",
+                    onDismiss: {}
+                )
+                StatusBanner(kind: .error, title: "Cleanup failed: permission denied.", onDismiss: {})
+            }
+            .padding(24)
+            .background(AppTheme.base)
+            .frame(width: 560)
+            .previewDisplayName("Card states")
 
-#Preview("Inline warning") {
-    StatusBanner(
-        kind: .warning,
-        title: "Finder could not reveal that path.",
-        style: .inline
-    )
-    .padding(24)
-    .background(AppTheme.base)
-    .frame(width: 480)
+            StatusBanner(
+                kind: .warning,
+                title: "Finder could not reveal that path.",
+                style: .inline
+            )
+            .padding(24)
+            .background(AppTheme.base)
+            .frame(width: 480)
+            .previewDisplayName("Inline warning")
+        }
+    }
 }

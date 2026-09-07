@@ -58,11 +58,14 @@ private struct HoverableRowPreviewHost: View {
     }
 }
 
-#Preview("HoverableRow") {
-    VStack(spacing: 4) {
-        HoverableRowPreviewHost()
-        HoverableRowPreviewHost()
+struct HoverableRow_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 4) {
+            HoverableRowPreviewHost()
+            HoverableRowPreviewHost()
+        }
+        .padding(24)
+        .background(AppTheme.base)
+        .previewDisplayName("HoverableRow")
     }
-    .padding(24)
-    .background(AppTheme.base)
 }
