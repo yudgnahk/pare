@@ -43,6 +43,7 @@ extension View {
     }
 }
 
+#if DEBUG
 private struct HoverableRowPreviewHost: View {
     @State private var isHovered = false
 
@@ -69,3 +70,4 @@ struct HoverableRow_Previews: PreviewProvider {
         .previewDisplayName("HoverableRow")
     }
 }
+#endif

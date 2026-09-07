@@ -151,6 +151,7 @@ extension StatusBanner where Accessory == EmptyView {
     }
 }
 
+#if DEBUG
 struct StatusBanner_Previews: PreviewProvider {
     static var previews: some View {
         Group {
@@ -191,3 +192,4 @@ struct StatusBanner_Previews: PreviewProvider {
         }
     }
 }
+#endif

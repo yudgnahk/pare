@@ -32,12 +32,14 @@ struct ErrorBanner: View {
     }
 }
 
+#if DEBUG
 struct ErrorBanner_Previews: PreviewProvider {
     static var previews: some View {
         ErrorBanner(message: "Could not load cleanup history.", onDismiss: {})
             .padding(24)
             .background(AppTheme.base)
             .frame(width: 480)
-        .previewDisplayName("ErrorBanner")
+            .previewDisplayName("ErrorBanner")
     }
 }
+#endif

@@ -19,6 +19,7 @@ struct Badge: View {
     }
 }
 
+#if DEBUG
 struct Badge_Previews: PreviewProvider {
     static var previews: some View {
         HStack(spacing: 8) {
@@ -33,3 +34,4 @@ struct Badge_Previews: PreviewProvider {
         .previewDisplayName("Badges")
     }
 }
+#endif

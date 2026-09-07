@@ -22,6 +22,7 @@ struct TableHeaderRow<Content: View>: View {
     }
 }
 
+#if DEBUG
 struct TableHeaderRow_Previews: PreviewProvider {
     static var previews: some View {
         TableHeaderRow {
@@ -35,3 +36,4 @@ struct TableHeaderRow_Previews: PreviewProvider {
         .previewDisplayName("TableHeaderRow")
     }
 }
+#endif

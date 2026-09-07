@@ -81,6 +81,7 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 - `CleanupEngine` is an `actor`; `ScanDashboardViewModel` is `@MainActor`. All core types are `Sendable`.
 - Tests use `MockTraversal: FileTraversing` and `TestRule: ScanRule` to inject deterministic file lists without hitting the filesystem.
 - SwiftUI previews use `struct <Name>_Previews: PreviewProvider`, never the `#Preview` macro. The macro needs the `PreviewsMacros` compiler plugin that only ships inside Xcode.app, so `swift build` breaks on Command Line Tools-only machines.
+- Wrap preview structs — and any helper type that exists only to back a preview — in `#if DEBUG` / `#endif` so they stay out of release builds.
 
 ## Known State
 

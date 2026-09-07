@@ -69,6 +69,7 @@ struct EmptyStateView: View {
     }
 }
 
+#if DEBUG
 struct EmptyStateView_Previews: PreviewProvider {
     static var previews: some View {
         Group {
@@ -101,3 +102,4 @@ struct EmptyStateView_Previews: PreviewProvider {
         }
     }
 }
+#endif

@@ -170,6 +170,7 @@ struct CleanConfirmationSheet: View {
     }
 }
 
+#if DEBUG
 struct CleanConfirmationSheet_Previews: PreviewProvider {
     static var previews: some View {
         Group {
@@ -235,3 +236,4 @@ struct CleanConfirmationSheet_Previews: PreviewProvider {
         }
     }
 }
+#endif

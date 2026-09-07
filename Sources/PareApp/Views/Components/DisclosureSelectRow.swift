@@ -107,6 +107,7 @@ struct DisclosureSelectRow<Leading: View>: View {
     }
 }
 
+#if DEBUG
 struct DisclosureSelectRow_Previews: PreviewProvider {
     static var previews: some View {
         VStack(spacing: 8) {
@@ -148,3 +149,4 @@ struct DisclosureSelectRow_Previews: PreviewProvider {
         .previewDisplayName("Category + tool rows")
     }
 }
+#endif
