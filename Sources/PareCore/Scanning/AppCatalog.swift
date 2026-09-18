@@ -35,7 +35,8 @@ public struct AppCatalog: Decodable, Sendable {
 
     /// Process-lifetime singleton — JSON is parsed once and cached.
     public static let shared: AppCatalog = {
-        guard let url = Bundle.module.url(forResource: "app-catalog", withExtension: "json"),
+        guard let bundle = ResourceBundle.pareCore,
+              let url = bundle.url(forResource: "app-catalog", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let catalog = try? JSONDecoder().decode(AppCatalog.self, from: data) else {
             return AppCatalog(version: 1, entries: [])
