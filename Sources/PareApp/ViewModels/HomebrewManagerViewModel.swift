@@ -345,10 +345,7 @@ final class HomebrewManagerViewModel: ObservableObject {
                 let result = try await leaver.leave(
                     cask: cask,
                     forceQuitRunning: forceQuit
-                ) { [weak self] line in
-                    // Bind before the inner Task: capturing the weak `self` var
-                    // directly is a strict-concurrency error on older toolchains.
-                    guard let self else { return }
+                ) { [self] line in
                     Task { @MainActor in
                         self.appendLog(line)
                     }
