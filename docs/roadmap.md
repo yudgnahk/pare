@@ -185,6 +185,12 @@ Spec: `docs/features/phase-6-developer-breadth.md`
 - [x] `RustCachesRule` — Cargo registry cache + src, git checkouts, rustup downloads
 - [x] `GoCachesRule` — Go build cache (`~/Library/Caches/go-build/`), module download cache
 - [x] Register all in `RuleCatalog` (developer profile + `all`)
+- [ ] `GoCachesRule` — reclassify go-build from `.safe` (2026-09-11 audit)
+  - Go self-trims `go-build` (entries unused >5 days removed, checked every 24h via `$GOCACHE/trim.txt`); one machine showed 6.1 GB / 50k files / 0 files >5 days old — it's the active working set, wiping it just forces a full rebuild that refills it
+  - Treat as self-managed working set (informational or `.review`); only suggest deletion if Go looks unused or a size threshold is exceeded. `go/pkg/mod/cache` (download cache) stays `.safe`.
+- [ ] Extend `PackageManagerCachesRule` to flag orphaned pnpm store versions (2026-09-11 audit)
+  - Target: versions under `~/Library/pnpm/store/` other than the active one from `pnpm store path` (e.g. `v3` at 1.6 GB, `v10`, while active was `v11`)
+  - Risk: `.safe` (old store versions are reconstructible)
 
 ### Project Artifact Purge v2 — Smart Discovery
 The Phase 5 implementation hardcodes scan paths. Replace with Spotlight-based project discovery:
@@ -195,6 +201,9 @@ The Phase 5 implementation hardcodes scan paths. Replace with Spotlight-based pr
 - [x] `ProjectArtifactsRule` (customScan) — scan confirmed roots for artifact patterns; 7-day age gate per artifact directory
 - [x] Artifact patterns: `node_modules/`, `target/`, `venv/`/`.venv/`, `__pycache__/`, `.gradle/`, `.bundle/`, `.next/`, `.nuxt/`, `.parcel-cache/`, `.turbo/`, `.nx/`, `dist/`
 - [x] UI: "Project Roots" card in Scan tab — discovered roots with checkboxes (opt-out), "Rescan" button, "Add folder…" for manual addition
+- [ ] Spotlight exclusion guidance for developer roots (2026-09-11 audit)
+  - Detect discovered project roots (`node_modules`, `.venv`, build caches) still indexed by Spotlight and guide the user to add them under Spotlight Privacy; today Pare only *uses* Spotlight for discovery, it doesn't check exclusion
+  - Informational/guidance only, no file changes; don't claim `.metadata_never_index` still works — verify on macOS 26
 
 ---
 
@@ -366,6 +375,45 @@ Largest persistent volumes are `data-api_arango_data` (12.61 GB) and `data-api_r
 - [ ] Verify before/after accounting and History output
 - [ ] Validate Docker Desktop on Intel and Apple Silicon plus macOS 13, 14, and 15
 - [ ] Acceptance: a user can understand each resource, select only exact items to remove, see selected bytes and consequences, and verify the result without Pare ever running a broad prune
+
+---
+
+## Phase 11 — Agent-machine storage intelligence (from 2026-09-11 audit)
+
+Read-only audit of a real dev/agent machine (Paseo daemon + several AI CLIs) surfaced storage-accounting gaps that plain "safe cache" heuristics miss.
+
+### Clone-aware size accounting
+- [ ] Estimate reclaimable bytes from unique/allocated blocks, not apparent (`du`) size, for APFS-clonefile-backed caches (uv and similar)
+  - Verify any reclaim estimate against before/after `df` free space, never `du` or a tool's own "tracked cleanup" total
+  - See `UV_INVESTIGATION.md` correction note (2026-09-11): `du` showed 27 GB, `uv cache clean` only freed ~1 GB of real disk
+
+### Stale versioned CLI installs
+- [ ] New rule: detect self-updating CLIs that keep old versions on disk and flag all but the currently symlinked/active one
+  - Targets: `~/.local/share/cursor-agent/versions/*` (0.8 GB stale), `~/.grok/downloads/grok-*`, `~/.local/share/devin/_versions`
+  - Risk: `.review` — resolve the active version via its symlink target before flagging siblings as `.safe`
+
+### Tiny-file queue bloat
+- [ ] New detector: directories with very large counts of tiny files where allocated size ≫ logical size (APFS 4 KB block minimum per file)
+  - Example: an app queue dir with 318k ~250 B JSON files — ~80 MB logical content, 1.2 GB allocated
+  - Risk: `.review` (queue contents may be in-flight app state, not pure cache)
+
+### Space held by deleted-but-open files
+- [ ] Informational check via `lsof +L1`: report space held by running processes that still hold deleted/replaced binaries open (e.g. after an app auto-updates)
+  - Read-only finding; suggest restarting the owning app rather than any file action
+  - Observed 1.8–2.4 GB held this way by stale `claude` binaries on one audit machine
+
+### Unaccounted space / Full Disk Access
+- [ ] Surface "unaccounted = volume consumed − scanned" explicitly when Pare lacks Full Disk Access, and link to granting FDA
+  - Without FDA, TCC-protected dirs are skipped (Mail, Messages, MobileSync, Photos, Biome, `/private/var`)
+  - Observed gap on one machine: 204.1 GB volume consumed vs 170.5 GB scannable (~34 GB unaccounted)
+
+### Swap pressure health warning
+- [ ] Health item: warn when swap usage is high while disk free space is low, and name the top RAM-consuming apps
+  - Swapfiles live on the VM volume in the same APFS container as data, so swap growth directly eats free disk space
+  - Observed swap grow 5→8 GB in one afternoon with free space falling ~2 GB/hour on one machine
+
+### Housekeeping
+- [x] `docs/plans/2026-07-25-crg-uvx-pin-plan.md` implemented manually 2026-09-10/11 — Status line and Outcome section updated in that file
 
 ---
 

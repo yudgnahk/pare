@@ -1,12 +1,32 @@
 # Plan: Pin code-review-graph MCP (stop floating `uvx` env churn)
 
-**Status:** Draft for review (do not implement until approved)  
+**Status:** Implemented manually 2026-09-10/11 (see Outcome below)  
 **Date:** 2026-07-25  
 **Owner:** Kelvin / Pare + local agent tooling  
 **Related investigation:** [`UV_INVESTIGATION.md`](../../UV_INVESTIGATION.md)  
 **Companion plan:** [`2026-07-25-pare-uv-cache-scan-plan.md`](./2026-07-25-pare-uv-cache-scan-plan.md)
 
 ---
+
+## Outcome (2026-09-10/11)
+
+Implemented by hand, outside this plan's Grok-specific steps (actual spawner set differed
+from §1's assumptions — Claude plugin + Cursor were the live consumers on this machine):
+
+- `uv tool install "code-review-graph==2.3.8"` → pinned binary at `/Users/kelvin/.local/bin/code-review-graph`.
+- Repointed every MCP config to that absolute path: Claude plugin's inline `mcpServers` in
+  `.claude-plugin/plugin.json` **and** `.mcp.json` (both under
+  `~/.claude/plugins/cache/code-review-graph/code-review-graph/1.7.2/`, and under
+  `marketplaces/`), `~/.codex/config.toml`, plus project `.mcp.json` files (`resume`,
+  `gql-catalog-mw`). Backups left as `*.bak` next to each file.
+- Root-caused `CONNECTION_CLOSED` as a timeout, not a config bug: `serve` takes ~51–59s to
+  answer `initialize`, but the default MCP timeout is 30s. Fixed with
+  `"env": {"MCP_TIMEOUT": "90000"}` in `~/.claude/settings.json` and
+  `startup_timeout_sec = 90` for Codex.
+- Open risk: **a plugin update reverts `plugin.json`/`.mcp.json` back to `uvx`** (new
+  version directory). After every plugin update, check
+  `claude mcp list | grep code-review-graph` and re-pin if it shows `uvx`. Upgrade via
+  `uv tool upgrade code-review-graph`, never `uvx`.
 
 ## 1. Problem statement
 

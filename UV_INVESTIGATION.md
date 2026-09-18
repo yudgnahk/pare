@@ -5,6 +5,12 @@
 **uv version:** 0.11.32 (Homebrew)  
 **Context:** Comparing how Mole and Pare treat `~/.cache/uv` (~20 GB), and what actually fills that space.
 
+> **Correction (2026-09-11):** the ~20 GB figure below is `du` apparent size, not allocated
+> disk. uv installs tool envs via APFS clonefile (copy-on-write), so the 43 `archive-v0`
+> envs share blocks. On a later audit, `du` reported 27 GB but `uv cache clean` only freed
+> ~1 GB by `df`. Treat `du` output here as an upper bound, not a reclaim estimate — verify
+> any cleanup against before/after `df` free space instead.
+
 ---
 
 ## Summary
