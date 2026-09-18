@@ -2,6 +2,16 @@ SHELL := /bin/zsh
 
 APP := pare-cli
 APP_BUNDLE := .build/debug/PareApp.app
+
+# macOS 27+ SDKs expand @State through Xcode's SwiftUIMacros plugin, which
+# Command Line Tools do not ship. Pin an SDK the toolchain can build.
+ifeq ($(origin SDKROOT), undefined)
+SELECTED_SDK := $(shell bash scripts/select-sdk.sh)
+ifneq ($(SELECTED_SDK),)
+export SDKROOT := $(SELECTED_SDK)
+endif
+endif
+
 PROFILE ?= baseline
 TOP ?= 20
 ARGS ?=
@@ -29,6 +39,7 @@ help:
 	@printf "  CERT_NAME='Developer ID Application: ...' APPLE_ID=you@example.com NOTARY_PASSWORD=xxxx TEAM_ID=ABCD1234EF make release\n"
 
 build:
+	@if [ -n "$(SDKROOT)" ]; then printf 'Using SDK: %s\n' '$(SDKROOT)'; fi
 	swift build
 
 test:
@@ -51,10 +62,17 @@ run-app: build ensure-icon
 	cp scripts/AppInfo.plist $(APP_BUNDLE)/Contents/Info.plist
 	cp scripts/AppIcon.icns $(APP_BUNDLE)/Contents/Resources/AppIcon.icns
 	cp scripts/PareLogo.png $(APP_BUNDLE)/Contents/Resources/PareLogo.png
-	# Copy SPM resource bundles next to the executable (e.g. app-catalog.json).
-	@if [ -d .build/debug/Pare_PareCore.bundle ]; then \
-		cp -R .build/debug/Pare_PareCore.bundle $(APP_BUNDLE)/Contents/MacOS/; \
-	fi
+	# SPM resource bundles must land in Contents/Resources — that is where
+	# Bundle.module looks (Bundle.main.resourceURL); Contents/MacOS is not.
+	@find .build/debug -maxdepth 1 -type d -name '*.bundle' | while read -r b; do \
+		rm -rf "$(APP_BUNDLE)/Contents/Resources/$$(basename $$b)"; \
+		cp -R "$$b" $(APP_BUNDLE)/Contents/Resources/; \
+		printf 'Bundled resource: %s\n' "$$(basename $$b)"; \
+	done
+	@find $(APP_BUNDLE)/Contents/MacOS -maxdepth 1 -name '*.bundle' -exec rm -rf {} +
+	# Sign last — the signature covers everything copied above. A stable
+	# identity keeps the Full Disk Access grant across rebuilds.
+	@bash scripts/sign-app.sh $(APP_BUNDLE)
 	# Bump modtime so Dock/Finder refresh the icon after rebuilds.
 	touch $(APP_BUNDLE)
 	open $(APP_BUNDLE)

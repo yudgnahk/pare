@@ -80,6 +80,15 @@ cd "$REPO_ROOT"
 
 echo "▶  [1/7] Building release binaries…"
 
+# macOS 27+ SDKs need Xcode's SwiftUIMacros plugin; pin a buildable SDK if not.
+if [ -z "${SDKROOT:-}" ]; then
+    selected_sdk=$(bash "$REPO_ROOT/scripts/select-sdk.sh")
+    if [ -n "$selected_sdk" ]; then
+        export SDKROOT="$selected_sdk"
+        echo "   Using SDK: $SDKROOT"
+    fi
+fi
+
 swift build -c release --arch arm64
 swift build -c release --arch x86_64
 
@@ -116,17 +125,29 @@ cp "$SCRIPTS_DIR/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 cp "$SCRIPTS_DIR/PareLogo.png" "$APP_BUNDLE/Contents/Resources/PareLogo.png"
 echo "   ✓ AppIcon.icns + PareLogo.png copied"
 
-# SPM resource bundles live next to the executable
+# SPM resource bundles must land in Contents/Resources — that is where
+# Bundle.module looks (Bundle.main.resourceURL); Contents/MacOS is not.
+bundles_copied=0
 for arch_dir in \
     "$BUILD_DIR/arm64-apple-macosx/release" \
     "$BUILD_DIR/x86_64-apple-macosx/release" \
     "$BUILD_DIR/release"; do
-    if [ -d "$arch_dir/Pare_PareCore.bundle" ]; then
-        cp -R "$arch_dir/Pare_PareCore.bundle" "$APP_BUNDLE/Contents/MacOS/"
-        echo "   ✓ Pare_PareCore.bundle copied"
-        break
-    fi
+    [ -d "$arch_dir" ] || continue
+    for b in "$arch_dir"/*.bundle; do
+        [ -d "$b" ] || continue
+        cp -R "$b" "$APP_BUNDLE/Contents/Resources/"
+        echo "   ✓ $(basename "$b") copied"
+        bundles_copied=$((bundles_copied + 1))
+    done
+    [ "$bundles_copied" -gt 0 ] && break
 done
+
+# app-catalog.json lives in this bundle; shipping without it silently degrades
+# every catalog-backed scan rule, so fail the release instead.
+if [ ! -d "$APP_BUNDLE/Contents/Resources/Pare_PareCore.bundle" ]; then
+    echo "✗  Pare_PareCore.bundle not found — refusing to package an app without it." >&2
+    exit 1
+fi
 
 # Update version/build in the bundle's plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP_BUNDLE/Contents/Info.plist"
