@@ -369,6 +369,161 @@ Largest persistent volumes are `data-api_arango_data` (12.61 GB) and `data-api_r
 
 ---
 
+## Phase 11 — Scan Coverage Gaps
+
+Defect list with file locations: [`docs/features/scan-coverage-gaps.md`](features/scan-coverage-gaps.md).
+
+### 11.1 — Finding deduplication (C1)
+
+- [ ] Deduplicate findings by canonical path in `ScanRunner` — `BrowserReviewDataRule:51` and `BrowserExtendedArtifactsRule:80` resolve to the same Chromium `IndexedDB` path and both are counted
+- [ ] Define the tie-break when two rules claim one path: highest risk level wins, so `.review` is never downgraded to `.safe`
+- [ ] Collapse parent/child overlap so a folder finding and a file finding inside it contribute once
+- [ ] Test: two rules emitting one path produce one finding and one contribution to the total
+- [ ] Test: the sum of finding sizes never exceeds the allocated size of the union of their paths
+- [ ] Find which rules emit the JetBrains Copilot `native/<platform>` folder/file pairs, including the native-platform `darwin-x64` on Intel
+- [ ] Re-measure the baseline with `RuleCatalog.all` (the 2026-09-21 figure used the developer profile)
+- [ ] Do this before the rest of Phase 11 — every displayed total depends on it
+
+### 11.2 — Project artifact recognition (C2)
+
+- [ ] Add `.build`, `.swiftpm`, `.dart_tool`, `.angular`, `.svelte-kit`, `.vite`, `.expo`, `.serverless`, `.terraform` to `ScanPolicy.projectLocalArtifactDirectoryNames`
+- [ ] Confirm `CleanupEngine.isReclaimableProjectArtifact` still demands project-root evidence for each new name (fail-closed)
+- [ ] Decide risk level per name — build output that may hold committed release artifacts stays `.review`, like `dist` and `build`
+- [ ] Test: a SwiftPM `.build` under a project root is a finding; the same directory name outside any root is not
+
+### 11.3 — Project root discovery (C3, C4, C5)
+
+- [ ] Add `package.json`, `pubspec.yaml`, `Package.resolved`, `composer.json` to `SpotlightQueryRunner.signalNames`
+- [ ] Remove `.git` — Spotlight does not index hidden entries, so it never matches
+- [ ] Add `/go/pkg/mod/`, `/.pub-cache/`, `/.cargo/registry/` to `ScanPolicy.projectDiscoveryExcludedPathComponents`; dependency caches carry manifest files and are already covered by the package-cache rules
+- [ ] Prune roots matching the new exclusions from `project-roots.json` on first launch after the fix
+- [ ] Replace the `lastDiscoveredAt == nil` guard in `ProjectRootDiscovery.discoverIfNeeded()` with a TTL (7 days)
+- [ ] Add a manual refresh entry point so a new project can be picked up on demand
+- [ ] Test: a project with only `package.json` is discovered; paths under a dependency cache are not
+
+### 11.4 — AI agent directories (privacy-critical)
+
+Read the classification in the gaps doc before writing any rule here.
+
+- [ ] Add `ScanPolicy.aiConversationDataMarkers` and check it wherever `appStateSensitiveMarkers` is checked
+- [ ] Cover `~/.local/share/opencode/storage`, `~/.local/share/opencode/opencode.db`, `~/.claude/projects`, `~/.codex/sessions`, `~/.codex/*.sqlite`, `~/.cache/github-copilot/project-context`, `~/.cache/github-copilot/project-index`
+- [ ] Fail closed: a denied path stays denied even when an ancestor matches an allowed marker
+- [ ] Never surface a denied path in the UI — these directory names encode the user's project list
+- [ ] Extend `app-catalog.json` (category `ai`) with reconstructible children only, never a whole tool directory: `~/.config/opencode/node_modules`, `~/.cache/codex-runtimes/*/dependencies`, `~/.cache/kilo/{bin,node_modules}`, `~/.cache/hyperframes/{chrome,fonts}`, `~/.paseo/models`
+- [ ] `~/.paseo/models` is `.review`, never `.safe`
+- [ ] Survey `~/.codex` and `~/.gemini` children and classify each before any catalog entry — never add either as a whole directory
+- [ ] Test: `~/.local/share/opencode/log` is a finding while `~/.local/share/opencode/storage` is not, at both scan and cleanup time
+
+### 11.5 — Stale CLI versions (C9)
+
+- [ ] New `StaleCLIVersionRule` for `~/.local/share/*/versions/` and `~/.local/share/*/cli/_versions/` — keep the live version, flag the rest
+- [ ] Resolve the live version from a `current` symlink or the binary on `PATH`, never from mtime or version sort. See the layout table in the gaps doc (Devin, cursor-agent, ACLI)
+- [ ] Include dot-prefixed version directories (cursor-agent renames superseded ones to `.2026.09.10-*`) and `_download` staging directories
+- [ ] Follow the `JetBrainsStaleVersionRule` shape: `customScan` for sibling comparison, `.safe`, age gate via `ScanPolicy.effectiveAgeDate`
+- [ ] Register in `RuleCatalog` (developer profile + `all`)
+- [ ] Test: two versions flag exactly one; a single version flags nothing; the `current` target is never flagged even when older than a sibling
+
+### 11.6 — Homebrew breadth (C6)
+
+- [ ] Cover `Caskroom/<cask>/<version>` superseded versions — keep the linked version only
+- [ ] Report `Library/Taps` as `.review`; removal is a re-clone, not a rebuild
+- [ ] Resolve the prefix through `BrewRunner.homebrewPrefix()` rather than hardcoding `/opt/homebrew` (Intel uses `/usr/local`)
+- [ ] Surface superseded `Cellar` kegs from `brew cleanup --dry-run` so they count in the scan total
+- [ ] Prefer a `brew cleanup` Maintenance action over deleting prefix contents directly; kegs and cask versions never go through `CleanupEngine`
+- [ ] Sub-attribute `go_cache` / `go_mod_cache` inside the Homebrew cache for build-from-source installs
+- [ ] Test: no finding is produced when Homebrew is absent
+
+### 11.7 — Large stale files (C7)
+
+- [ ] New `LargeStaleFilesRule` with its own discovery threshold (default 500 MB); `largeFileThresholdBytes` (50 MB) stays a display filter
+- [ ] Scope `~/Downloads`, `~/Desktop`, `~/Documents`, `~/Library/ScreenRecordings`; any extension; risk `.review`; 90-day age gate; never `.safe`
+- [ ] Surface individual files with source-app attribution rather than folder rollups
+- [ ] Test: a file over the threshold untouched for 100 days is flagged; the same file touched yesterday is not
+
+### 11.8 — Daemon logs (C8)
+
+- [ ] Extend log coverage beyond `~/Library/Logs` to user-daemon logs written into tool home directories
+- [ ] Keep the existing 1-day minimum age gate
+- [ ] Ensure log databases belonging to a session store are excluded by 11.4's deny-list
+
+### 11.9 — Inactive project dependency trees (C10)
+
+- [ ] Add a per-root inactivity signal: last commit date and newest mtime outside artifact/dependency directories
+- [ ] Flag `node_modules`, `.venv`, `venv` as `.review` only when the root is inactive **and** a lockfile or manifest exists to rebuild it
+- [ ] Inactivity gate is a user setting, default 90 days
+- [ ] Show the lockfile and uncommitted-change count on the finding; changes do not block
+- [ ] Test: an active root's `node_modules` is never a finding; an inactive root without a lockfile is never a finding
+
+### 11.10 — Downloaded ML models (C11)
+
+- [ ] Cover `~/.cache/huggingface/hub`, `~/Library/Application Support/tts`, `~/.rembg` as `.review`, one finding per model
+- [ ] Attribute each model to consuming projects by searching project roots for the model identifier; show "no consumer found" explicitly
+- [ ] Never `.safe` — redownload can be multiple GB
+
+### 11.11 — Abandoned downloads and updater payloads (C12)
+
+- [ ] `.safe` for `*.tmp-*`, `*.partial`, `*.download` older than 1 day with no open handle
+- [ ] Flag Electron/Squirrel updater payloads whose version is below the installed bundle's `CFBundleShortVersionString`
+- [ ] Extend `InstallerFileRule` to `.tar.gz`/`.tgz` archives whose name matches an installed tool
+- [ ] Test: a `.tmp` file currently open by a process is not flagged
+
+### 11.12 — App bundles outside /Applications (C13)
+
+- [ ] Bundle-aware walk of `~/Documents`, `~/Downloads`, `~/Desktop` for `.app` over 500 MB
+- [ ] Report last-used date from `kMDItemLastUsedDate`; `.review` only
+- [ ] Test: a `.app` bundle counts as one finding with its total size, not thousands of files
+
+### 11.13 — Growth tracking and alerts (C14)
+
+The request behind this is "stop making me check the disk". This sub-phase matters more than any single rule.
+
+- [ ] Persist a per-directory size index at the end of each scan
+- [ ] Show delta since the previous scan per top-level directory and per rule, sorted by growth
+- [ ] Track refill rate per cache rule; a cache that regrows within 24 h is labelled working set and demoted in cleanup suggestions
+- [ ] Add an "unaccounted" row: volume used minus scanned total, so growth in FDA-blocked areas is still visible
+- [ ] Scheduled background scan (LaunchAgent) with a free-space threshold notification, default 20 GB
+- [ ] Test: two scans with a directory grown by 1 GB report exactly that delta
+
+### 11.14 — Docker VM disk visibility (C15)
+
+- [ ] Detect-only `.advanced` finding for `…/vms/0/data/Docker.raw`: allocated size, apparent size beside it, labelled sparse
+- [ ] Excluded from reclaimable totals; `isDockerNeverDeletePath` and the `CleanupEngine` block unchanged
+- [ ] Attach the prune / Phase 10 guidance to the finding
+- [ ] Update `DockerStorageRule` doc comment, `docs/features/docker-safety.md` and CLAUDE.md, which currently say the VM disk is never a finding
+- [ ] Test: the finding exists, is `.advanced`, reports allocated size, and `CleanupEngine` still refuses it
+
+### 11.15 — Local VM and Kubernetes disks (C16)
+
+- [ ] New rule for `~/.minikube`, `~/.lima`, `~/.colima`, `~/.vagrant.d`, `~/.local/share/containers`, Parallels/VMware/UTM/VirtualBox images
+- [ ] VM disks `.advanced` with allocated size; preloaded image tarballs for unused Kubernetes versions `.review`
+- [ ] Show last-used date; 90 days untouched is the signal
+- [ ] Test: a sparse disk image reports allocated, not apparent, size
+
+### 11.16 — Version-manager installs (C17)
+
+- [ ] Flag `asdf`/`pyenv`/`rbenv`/`nvm`/`fvm`/`rustup` versions that are neither the global default nor pinned by any discovered project root
+- [ ] `.review` only; depends on 11.3 for a complete root set
+- [ ] Test: a version pinned by one project's `.tool-versions` is never flagged
+
+### 11.17 — Duplicate clones (C18)
+
+- [ ] Group repos under discovered roots by `origin` remote; report groups of two or more
+- [ ] Detect-only: each clone's `.git` size, last commit, dirty state
+
+### 11.18 — Database dumps and loose archives (C19)
+
+- [ ] `.review` for `*.rdb`, `*.aof`, `*.sql`, `*.dump` over 100 MB in project trees and at the top level of `~`
+- [ ] `.review` for an archive whose extracted folder of the same name sits beside it
+- [ ] Test: an archive with no sibling folder is not flagged
+
+### 11.19 — Verification
+
+- [ ] Confirm a scan report contains no duplicate paths
+- [ ] `make run-app` and verify no AI conversation path appears anywhere in the UI
+- [ ] Record the before/after reclaimable total for each sub-phase in the PR description
+
+---
+
 ## Always-On (every phase)
 
 - [ ] `make build` passes before any PR
