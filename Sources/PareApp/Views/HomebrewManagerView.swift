@@ -1170,7 +1170,7 @@ struct BrewOperationSheet: View {
                 case .failed:
                     Text("Operation Failed")
                         .font(scale.font(17, weight: .semibold))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(AppTheme.review)
                 case .idle:
                     Text("Ready")
                         .font(scale.font(17, weight: .semibold))
@@ -1196,7 +1196,7 @@ struct BrewOperationSheet: View {
         case .succeeded:
             Image(systemName: "checkmark.circle.fill")
                 .font(scale.font(28))
-                .foregroundStyle(.green)
+                .foregroundStyle(AppTheme.success)
         case .partiallySucceeded:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(scale.font(28))
@@ -1204,7 +1204,7 @@ struct BrewOperationSheet: View {
         case .failed:
             Image(systemName: "xmark.circle.fill")
                 .font(scale.font(28))
-                .foregroundStyle(.red)
+                .foregroundStyle(AppTheme.review)
         case .idle:
             Image(systemName: "shippingbox")
                 .font(scale.font(28))
@@ -1228,7 +1228,7 @@ struct BrewOperationSheet: View {
                 }
                 .padding(.vertical, 8)
             }
-            .background(Color.black.opacity(0.3))
+            .background(AppTheme.Fill.subtle)
             .onChange(of: viewModel.operationLog.count) { _ in
                 if let last = viewModel.operationLog.indices.last {
                     withAnimation(.linear(duration: 0.1)) {
@@ -1244,7 +1244,7 @@ struct BrewOperationSheet: View {
         if lower.contains("error") || lower.contains("fail") { return .red.opacity(0.9) }
         if lower.contains("warning") || lower.contains("warn") { return .yellow.opacity(0.9) }
         if lower.contains("==>") { return .cyan.opacity(0.9) }
-        return .white.opacity(0.75)
+        return AppTheme.textSecondary
     }
 
     private var footer: some View {
@@ -1252,7 +1252,7 @@ struct BrewOperationSheet: View {
             if case .failed(let msg) = viewModel.operationState {
                 Text(msg)
                     .font(scale.font(11))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(AppTheme.review)
                     .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if case .partiallySucceeded = viewModel.operationState,

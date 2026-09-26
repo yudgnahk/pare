@@ -21,7 +21,7 @@ struct GlassCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(AppTheme.panel.opacity(0.62))
+                    .fill(AppTheme.cardFill)
                     .overlay(
                         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                             .strokeBorder(
@@ -38,6 +38,6 @@ struct GlassCard<Content: View>: View {
                             )
                     )
             )
-            .shadow(color: .black.opacity(0.2), radius: 16, x: 0, y: 8)
+            .shadow(color: AppTheme.Shadow.card, radius: 16, x: 0, y: 8)
     }
 }

@@ -24,7 +24,7 @@ struct PrimaryActionButton: View {
             case .warning:
                 return [AppTheme.warning, AppTheme.warning.opacity(0.88)]
             case .review:
-                return [AppTheme.review, Color(red: 0.92, green: 0.38, blue: 0.32)]
+                return [AppTheme.review, AppTheme.review.opacity(0.88)]
             }
         }
 
@@ -55,7 +55,7 @@ struct PrimaryActionButton: View {
                 if isLoading {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(AppTheme.textPrimary)
+                        .tint(AppTheme.onAccent)
                 } else {
                     Image(systemName: systemImage)
                         .font(scale.font(style == .prominent ? 14 : 13, weight: .semibold))
@@ -66,7 +66,7 @@ struct PrimaryActionButton: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
             }
-            .foregroundStyle(AppTheme.textPrimary)
+            .foregroundStyle(AppTheme.onAccent)
             .padding(.horizontal, scale.space(style == .prominent ? 16 : 12))
             // Soft min width — avoid forcing overflow when text zoom is high.
             .frame(minWidth: min(scale.space(AppTheme.Control.primaryMinWidth), 140))
@@ -87,7 +87,7 @@ struct PrimaryActionButton: View {
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .strokeBorder(Color.white.opacity(hovering ? 0.48 : 0.22), lineWidth: 1)
+                    .strokeBorder(AppTheme.Hairline.strong.opacity(hovering ? 1 : 0.5), lineWidth: 1)
             )
             .scaleEffect(hovering && isEnabled && !isLoading ? 1.02 : 1)
             .shadow(

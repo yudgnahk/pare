@@ -155,7 +155,7 @@ struct TextZoomHUD: View {
                             Capsule(style: .continuous)
                                 .strokeBorder(AppTheme.Hairline.strong, lineWidth: 1)
                         )
-                        .shadow(color: .black.opacity(0.35), radius: 16, y: 6)
+                        .shadow(color: AppTheme.Shadow.card, radius: 16, y: 6)
                 )
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 .allowsHitTesting(false)

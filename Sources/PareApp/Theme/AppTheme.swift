@@ -31,32 +31,73 @@ enum AppTheme {
         static let fog = Color(hex: 0x7A9BB0)
     }
 
+    // MARK: - Adaptive swatches (light/dark pairs; source of truth for semantic colors)
+
+    /// Raw light/dark pairs behind every semantic token. Tests read these directly,
+    /// with no `NSColor` resolution involved — see palette table in the redesign plan.
+    enum Swatch {
+        static let base = ThemeSwatch(light: RGBA(0xEDF2F5), dark: RGBA(0x0D1520))
+        static let panel = ThemeSwatch(light: RGBA(0xFFFFFF), dark: RGBA(0x1A2D40))
+        static let panelSecondary = ThemeSwatch(light: RGBA(0xE4EBF0), dark: RGBA(0x152030))
+        static let cardFill = ThemeSwatch(light: RGBA(0xFFFFFF, alpha: 0.85), dark: RGBA(0x1A2D40, alpha: 0.62))
+        static let sidebar = ThemeSwatch(light: RGBA(0xE6EDF2), dark: RGBA(0x152030))
+        static let sidebarSelected = ThemeSwatch(light: RGBA(0xD3EBE7), dark: RGBA(0x1F4757))
+
+        static let textPrimary = ThemeSwatch(light: RGBA(0x152030), dark: RGBA(0xE4EDF2))
+        static let textSecondary = ThemeSwatch(light: RGBA(0x44586A), dark: RGBA(0xA9BCC9))
+        static let textTertiary = ThemeSwatch(light: RGBA(0x56697B), dark: RGBA(0x8499A9))
+
+        static let accent = ThemeSwatch(light: RGBA(0x17706A), dark: RGBA(0x5CC8BC))
+        static let accentDeep = ThemeSwatch(light: RGBA(0x0F5A55), dark: RGBA(0x238C82))
+        static let onAccent = ThemeSwatch(light: RGBA(0xFFFFFF), dark: RGBA(0x0D1520))
+
+        static let success = ThemeSwatch(light: RGBA(0x1A7542), dark: RGBA(0x57DB94))
+        static let warning = ThemeSwatch(light: RGBA(0x8F5500), dark: RGBA(0xF7BD4F))
+        static let review = ThemeSwatch(light: RGBA(0xB8352A), dark: RGBA(0xFA7A6B))
+
+        static let tableHeaderBackground = ThemeSwatch(light: RGBA(0x152030, alpha: 0.04), dark: RGBA(0x000000, alpha: 0.12))
+
+        static let hairlineFaint = ThemeSwatch(light: RGBA(0x152030, alpha: 0.05), dark: RGBA(0xFFFFFF, alpha: 0.04))
+        static let hairlineStandard = ThemeSwatch(light: RGBA(0x152030, alpha: 0.09), dark: RGBA(0xFFFFFF, alpha: 0.07))
+        static let hairlineStrong = ThemeSwatch(light: RGBA(0x152030, alpha: 0.16), dark: RGBA(0xFFFFFF, alpha: 0.14))
+
+        static let fillSubtle = ThemeSwatch(light: RGBA(0x152030, alpha: 0.04), dark: RGBA(0xFFFFFF, alpha: 0.06))
+        static let fillControl = ThemeSwatch(light: RGBA(0x152030, alpha: 0.06), dark: RGBA(0xFFFFFF, alpha: 0.08))
+        static let fillHover = ThemeSwatch(light: RGBA(0x152030, alpha: 0.08), dark: RGBA(0xFFFFFF, alpha: 0.10))
+        static let fillSelected = ThemeSwatch(light: RGBA(0x152030, alpha: 0.12), dark: RGBA(0xFFFFFF, alpha: 0.18))
+
+        static let shadowCard = ThemeSwatch(light: RGBA(0x152030, alpha: 0.08), dark: RGBA(0x000000, alpha: 0.20))
+        static let backgroundVignette = ThemeSwatch(light: RGBA(0x000000, alpha: 0), dark: RGBA(0x000000, alpha: 0.22))
+        static let backgroundBloom = ThemeSwatch(light: RGBA(0x17706A, alpha: 0.08), dark: RGBA(0x5CC8BC, alpha: 0.22))
+    }
+
     // MARK: - Semantic colors
 
-    static let base = Brand.ink
-    static let panel = Brand.surface
-    static let panelSecondary = Brand.marine
-    static let sidebar = Brand.marine
-    static let sidebarSelected = Color(hex: 0x1F4757)
-    static let textPrimary = Brand.chalk
-    static let textSecondary = Brand.chalk.opacity(0.72)
-    static let textTertiary = Brand.chalk.opacity(0.48)
+    static let base = Swatch.base.color
+    static let panel = Swatch.panel.color
+    static let panelSecondary = Swatch.panelSecondary.color
+    static let cardFill = Swatch.cardFill.color
+    static let sidebar = Swatch.sidebar.color
+    static let sidebarSelected = Swatch.sidebarSelected.color
+    static let textPrimary = Swatch.textPrimary.color
+    static let textSecondary = Swatch.textSecondary.color
+    static let textTertiary = Swatch.textTertiary.color
     /// Pare seafoam accent
-    static let accent = Brand.seafoam
-    static let accentDeep = Brand.seafoamDeep
-    static let success = Color(red: 0.34, green: 0.86, blue: 0.58)
-    static let warning = Color(red: 0.97, green: 0.74, blue: 0.31)
-    static let review = Color(red: 0.98, green: 0.48, blue: 0.42)
+    static let accent = Swatch.accent.color
+    /// Accent used as text (buttons, links, active states) rather than a fill.
+    static let accentText = Swatch.accent.color
+    static let accentDeep = Swatch.accentDeep.color
+    /// Text/glyph color drawn on top of `accent`, `success` or `review` fills.
+    static let onAccent = Swatch.onAccent.color
+    static let success = Swatch.success.color
+    static let warning = Swatch.warning.color
+    static let review = Swatch.review.color
 
     /// Column-header strip behind sortable tables (Apps, Homebrew).
-    static let tableHeaderBackground = Color.black.opacity(0.12)
+    static let tableHeaderBackground = Swatch.tableHeaderBackground.color
 
     static let pageGradient = LinearGradient(
-        colors: [
-            Brand.ink,
-            Brand.marine,
-            Brand.surface
-        ],
+        colors: [base, panelSecondary, panel],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
@@ -74,28 +115,43 @@ enum AppTheme {
 
     // MARK: - Hairlines (strokes / dividers)
 
-    /// Consolidated hairline strokes — replaces the ad-hoc white alphas that
-    /// used to be scattered across views.
+    /// Consolidated hairline strokes — adapts per appearance instead of a fixed white alpha.
     enum Hairline {
         /// Barely-there separators and resting row washes.
-        static let faint = Color.white.opacity(0.04)
-        /// Standard 1 pt strokes / dividers — brand `--border` (white 7%).
-        static let standard = Color.white.opacity(0.07)
+        static let faint = Swatch.hairlineFaint.color
+        /// Standard 1 pt strokes / dividers.
+        static let standard = Swatch.hairlineStandard.color
         /// Emphasized strokes (hovered capsules, prominent borders).
-        static let strong = Color.white.opacity(0.14)
+        static let strong = Swatch.hairlineStrong.color
     }
 
     // MARK: - Translucent fills (chips, rows, controls)
 
     enum Fill {
         /// Resting chip / row background.
-        static let subtle = Color.white.opacity(0.06)
+        static let subtle = Swatch.fillSubtle.color
         /// Slightly raised control background (capsule chips, pills).
-        static let control = Color.white.opacity(0.08)
+        static let control = Swatch.fillControl.color
         /// Hover highlight for rows and controls.
-        static let hover = Color.white.opacity(0.10)
+        static let hover = Swatch.fillHover.color
         /// Selected segment / tab background.
-        static let selected = Color.white.opacity(0.18)
+        static let selected = Swatch.fillSelected.color
+    }
+
+    // MARK: - Shadows
+
+    enum Shadow {
+        /// Drop shadow under raised cards.
+        static let card = Swatch.shadowCard.color
+    }
+
+    // MARK: - Background layers (page ground effects)
+
+    enum Background {
+        /// Darkening wash at the page edges; clear in light mode.
+        static let vignette = Swatch.backgroundVignette.color
+        /// Faint accent glow behind hero content.
+        static let bloom = Swatch.backgroundBloom.color
     }
 
     // MARK: - Spacing

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Parameterized dark-themed clean confirmation sheet.
+/// Parameterized, appearance-adaptive clean confirmation sheet.
 ///
 /// One component replaces the three ~85%-identical sheets (Quick Clean,
 /// Deep Clean, Clean Selected): icon header, optional warning banner,
@@ -33,7 +33,7 @@ struct CleanConfirmationSheet: View {
         var infoLines: [InfoLine]
         var confirmTitle: String = "Move to Trash"
         var confirmTint: Color = AppTheme.success
-        var confirmForeground: Color = .black
+        var confirmForeground: Color = AppTheme.onAccent
         var size = Size()
     }
 
@@ -219,7 +219,7 @@ struct CleanConfirmationSheet_Previews: PreviewProvider {
                         )
                     ],
                     confirmTint: AppTheme.review,
-                    confirmForeground: .white,
+                    confirmForeground: AppTheme.onAccent,
                     size: .init(
                         minWidth: 420,
                         idealWidth: 480,

@@ -237,7 +237,7 @@ private struct ActionCard: View {
                     .frame(maxHeight: 160)
                     .background(
                         RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                            .fill(Color.black.opacity(0.25))
+                            .fill(AppTheme.Fill.subtle)
                     )
                     .onChange(of: log.count) { _ in
                         withAnimation { proxy.scrollTo("bottom") }

@@ -9,7 +9,7 @@ struct AppBackgroundView: View {
             // Teal bloom — top trailing
             RadialGradient(
                 colors: [
-                    AppTheme.accent.opacity(0.22),
+                    AppTheme.Background.bloom,
                     .clear
                 ],
                 center: .topTrailing,
@@ -30,11 +30,11 @@ struct AppBackgroundView: View {
             )
             .ignoresSafeArea()
 
-            // Subtle vignette for depth
+            // Subtle vignette for depth — clear in light mode
             RadialGradient(
                 colors: [
                     .clear,
-                    Color.black.opacity(0.22)
+                    AppTheme.Background.vignette
                 ],
                 center: .center,
                 startRadius: 200,

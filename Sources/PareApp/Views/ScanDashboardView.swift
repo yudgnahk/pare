@@ -964,7 +964,7 @@ extension ScanDashboardView {
             warningText: "Deep Clean includes REVIEW-risk items. They may need app reconfiguration; review them before continuing.",
             infoLines: lines,
             confirmTint: AppTheme.review,
-            confirmForeground: .white,
+            confirmForeground: AppTheme.onAccent,
             size: .init(
                 minWidth: 420,
                 idealWidth: 480,
