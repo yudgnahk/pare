@@ -21,7 +21,9 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 |---|------|-------|--------|--------|
 | 1 | Redesign plan (no code) | planner agent + `macos-swiftui-design` skill | done — awaiting review | `2026-09-26-ui-redesign-plan.md` |
 | 2 | Phase 1 — adaptive tokens | tdd-guide agents | done — light mode unverified visually | branch `feat/ui-redesign-phase-1-adaptive-theme` |
-| 3 | Review Phase 1 + commit | code-reviewer | done — 0 CRITICAL/HIGH | `../reviews/2026-09-26-ui-redesign-phase-1-review.md` |
+| 3 | Review Phase 1 + commit + PR | code-reviewer | done — PR #31 | `../reviews/2026-09-26-ui-redesign-phase-1-review.md` |
+| 4 | Phase 2 — category tiles + sidebar vibrancy | tdd-guide agents | implemented + committed, review pending | branch `feat/ui-redesign-phase-2-category-tiles` (stacked on phase 1) |
+| 5 | Makefile SDK fix | agent | pending | own branch from `master` |
 
 ## Decisions
 
@@ -31,6 +33,16 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 - 2026-09-26: The planner runs as a general-purpose agent in the planner role, because the `everything-claude-code:planner` agent has no Write tool and the plan has to land in a file.
 - 2026-09-26: Disk Analyzer "Add to Review" accepts scan-covered items only; arbitrary-file delete is dropped (Kelvin, Q1).
 - 2026-09-26: The sidebar switches to native vibrancy with a faint brand tint (Kelvin, Q2).
+
+## Checklist — Wave 4 (Phase 2; task details are in the plan)
+
+- [x] 2.1 CategoryStyle rewrite + tests (seq)
+- [x] 2.2 + 2.4 IconTile, SidebarMaterial (par-B)
+- [x] 2.3 DestinationStyle + tests (par-B)
+- [x] 2.5 SidebarView redesign (after B)
+- [x] 2.6 ScanDashboardView tiles (par-C)
+- [x] 2.7 + 2.8 + 2.9 DeviceBackupsCard, DisclosureSelectRow preview, ToolShareChart (par-C)
+- [x] build clean
 
 ## Blockers
 
@@ -105,3 +117,12 @@ Forcing Light without touching the system-wide toggle did not work: neither the 
 - [ ] Settings
 - [ ] Sheets: `CleanConfirmationSheet` (Deep Clean and Selected variants), exclusion list, project scan paths
 - [ ] Text-zoom HUD (`TextZoomController`)
+
+## Notes — Phase 2
+
+- 2.1: Kept `CategoryStyle.sky` as a `@available(*, deprecated)` alias (not migrated) because `DisclosureSelectRow`'s preview call site is owned by task 2.8, not 2.1; build is clean, with one expected deprecation warning there.
+- 2.2/2.4: `IconTile` preview uses `.environment(\.colorScheme, …)` (no `.preferredColorScheme`, which needs a live window) to render both appearances; `SidebarMaterial` preview only shows the material (no content) since vibrancy needs a real window to render meaningfully.
+- 2.7/2.8/2.9: `ToolShareChart` already used `CategoryStyle.chartColor(at:)` for both donut slices and legend dots (no `Color.indigo`/sky present), so 2.9 needed no edit — verified as clean; `sky` deprecation warning is now gone.
+- 2.3: Settings gray (`#6B7280`/`#7B8392`) is new; all other destinations reuse an existing `CategoryStyle` swatch pair per the plan's naming (e.g. Smart Scan = userCaches teal), so palettes stay in one system. XCTest is unavailable on this machine, so RED/GREEN was demonstrated via a throwaway `/tmp` script (deleted after use), not a real test run.
+- 2.6: Only `CategoryFolderRowView` (private, defined in `ScanDashboardView.swift`) got the 18pt finding-row tile, replacing its static `folder.fill` icon; it needed a new `category` field (from `SummaryItem`/`CategoryToolGroup`, both already carry `ScanCategory`) since `CategoryFolderRow` in `PareCore` doesn't. `largestItemRow`'s `SelectableCandidateRow` is a separate component file outside this task's ownership scope, so its icon was left as-is.
+- 2.5: Kept the top accent tint at 4% (spec value) rather than the prior 10%; host's own 1px `Fill.control` divider between `SidebarView` and content (`PareApp.swift`) is a separate element from the new in-file `Hairline.standard` trailing divider — not edited, out of ownership scope for this task.

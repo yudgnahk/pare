@@ -78,10 +78,7 @@ struct SidebarView: View {
             }
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: destination.systemImage)
-                    .font(scale.font(14, weight: .semibold))
-                    .frame(width: 20, alignment: .center)
-                    .foregroundStyle(selected ? AppTheme.accent : AppTheme.textSecondary)
+                IconTile(symbol: destination.systemImage, swatch: DestinationStyle.swatch(for: destination), size: 22)
 
                 Text(destination.title)
                     .font(scale.font(14, weight: selected ? .semibold : .medium))
@@ -89,25 +86,12 @@ struct SidebarView: View {
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
-
-                if selected {
-                    Circle()
-                        .fill(AppTheme.accent)
-                        .frame(width: 6, height: 6)
-                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
-                    .fill(selected ? AppTheme.sidebarSelected : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
-                    .strokeBorder(
-                        selected ? AppTheme.accent.opacity(0.4) : Color.clear,
-                        lineWidth: 1
-                    )
+                    .fill(selected ? AppTheme.Fill.selected : Color.clear)
             )
             .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
         }
@@ -130,30 +114,22 @@ struct SidebarView: View {
 
     private var sidebarBackground: some View {
         ZStack(alignment: .top) {
-            // Solid base so the menu is never transparent/invisible
-            AppTheme.sidebar
+            SidebarMaterial()
 
             LinearGradient(
                 colors: [
-                    AppTheme.accent.opacity(0.10),
+                    AppTheme.accent.opacity(0.04),
                     Color.clear
                 ],
                 startPoint: .top,
                 endPoint: .center
             )
 
-            // Right edge depth
             HStack {
                 Spacer()
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.0),
-                        Color.black.opacity(0.18)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: 8)
+                Rectangle()
+                    .fill(AppTheme.Hairline.standard)
+                    .frame(width: 1)
             }
         }
         .ignoresSafeArea()

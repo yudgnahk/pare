@@ -438,9 +438,7 @@ struct ScanDashboardView: View {
                 onToggleSelect: { viewModel.toggleCategory(summary.category) },
                 onToggleExpand: { viewModel.toggleCategoryExpanded(summary.category) }
             ) {
-                Circle()
-                    .fill(CategoryStyle.tint(for: summary.category))
-                    .frame(width: 8, height: 8)
+                IconTile(category: summary.category, size: 28)
             }
 
             if isExpanded {
@@ -487,6 +485,7 @@ struct ScanDashboardView: View {
                     ForEach(rows) { row in
                         CategoryFolderRowView(
                             row: row,
+                            category: summary.category,
                             sizeText: viewModel.formattedBytes(row.totalBytes),
                             selectionState: viewModel.folderSelectionState(row),
                             canReveal: viewModel.canReveal(path: row.folderPath),
@@ -538,6 +537,7 @@ struct ScanDashboardView: View {
                     ForEach(rows) { row in
                         CategoryFolderRowView(
                             row: row,
+                            category: group.category,
                             sizeText: viewModel.formattedBytes(row.totalBytes),
                             selectionState: viewModel.folderSelectionState(row),
                             canReveal: viewModel.canReveal(path: row.folderPath),
@@ -770,6 +770,7 @@ struct ScanDashboardView: View {
 
 private struct CategoryFolderRowView: View, Equatable {
     let row: CategoryFolderRow
+    let category: ScanCategory
     let sizeText: String
     let selectionState: CategorySelectState
     let canReveal: Bool
@@ -779,6 +780,7 @@ private struct CategoryFolderRowView: View, Equatable {
 
     nonisolated static func == (lhs: CategoryFolderRowView, rhs: CategoryFolderRowView) -> Bool {
         lhs.row == rhs.row
+            && lhs.category == rhs.category
             && lhs.sizeText == rhs.sizeText
             && lhs.selectionState == rhs.selectionState
             && lhs.canReveal == rhs.canReveal
@@ -798,10 +800,7 @@ private struct CategoryFolderRowView: View, Equatable {
                   ? "Select this entire folder for Clean selected"
                   : "Select cleanable items in this folder")
 
-            Image(systemName: "folder.fill")
-                .font(scale.font(12, weight: .medium))
-                .foregroundStyle(AppTheme.accent)
-                .frame(width: 16)
+            IconTile(category: category, size: 18)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.displayPath)

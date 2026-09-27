@@ -122,9 +122,7 @@ struct DisclosureSelectRow_Previews: PreviewProvider {
                 onToggleSelect: {},
                 onToggleExpand: {}
             ) {
-                Circle()
-                    .fill(CategoryStyle.sky)
-                    .frame(width: 8, height: 8)
+                IconTile(category: .developerPackageCaches, size: 18)
             }
 
             DisclosureSelectRow(
