@@ -23,7 +23,7 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 | 2 | Phase 1 — adaptive tokens | tdd-guide agents | done — light mode unverified visually | branch `feat/ui-redesign-phase-1-adaptive-theme` |
 | 3 | Review Phase 1 + commit + PR | code-reviewer | done — PR #31 | `../reviews/2026-09-26-ui-redesign-phase-1-review.md` |
 | 4 | Phase 2 — category tiles + sidebar vibrancy | tdd-guide agents | implemented + committed, review pending | branch `feat/ui-redesign-phase-2-category-tiles` (stacked on phase 1) |
-| 5 | Makefile SDK fix | agent | pending | own branch from `master` |
+| 5 | Makefile SDK fix | orchestrator | done — PR #32 | branch `fix/makefile-clt-sdk` |
 
 ## Decisions
 
@@ -79,6 +79,8 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 
 ## Follow-ups (not scheduled)
 
+- [ ] **Needs Kelvin:** review Phase 2 (code-reviewer), then push and open the stacked PR on top of #31.
+- [ ] **Needs Kelvin:** Jev AI shadow-mode trial; see `docs/research/2026-09-27-jev-ai-evaluation.md`.
 - [ ] **Needs security review:** a "user-chosen file" policy in `ScanPolicy` so the Disk Analyzer can delete files the scan did not find.
 - [ ] **Needs discussion:** permanent delete (CleanMyMac deletes directly and skips the Trash). Pare's current rule is Trash-only, which is what makes undo possible. Options: keep Trash-only, or add an explicit "Empty Pare items from Trash" step after cleanup.
 
