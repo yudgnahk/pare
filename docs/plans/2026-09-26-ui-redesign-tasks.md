@@ -34,6 +34,7 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 - 2026-09-26: The planner runs as a general-purpose agent in the planner role, because the `everything-claude-code:planner` agent has no Write tool and the plan has to land in a file.
 - 2026-09-26: Disk Analyzer "Add to Review" accepts scan-covered items only; arbitrary-file delete is dropped (Kelvin, Q1).
 - 2026-09-26: The sidebar switches to native vibrancy with a faint brand tint (Kelvin, Q2).
+- 2026-09-27: The 4% tint looked too washed out next to the old brand gradient. Keep vibrancy, but make the brand tint much stronger (~15–20%, gradient reaching deeper). Icon tiles get a subtle top-to-bottom gradient plus a highlight edge (Kelvin).
 
 ## Checklist — Wave 4 (Phase 2; task details are in the plan)
 
@@ -68,6 +69,12 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 - [x] 3.15 DiskAnalyzerView composition + move (seq)
 - [x] 3.16 Docs: CLAUDE.md, roadmap, plan ticks (seq)
 - [x] build clean
+
+## Checklist — Phase 2 polish (on the #33 branch, then merged into #34)
+
+- [x] Stronger sidebar brand tint over vibrancy
+- [x] Icon tile gradient + highlight, glyph contrast ≥ 3:1 at the lightest stop
+- [x] build clean + dark screenshot
 
 ## Blockers
 
@@ -156,6 +163,11 @@ Forcing Light without touching the system-wide toggle did not work: neither the 
 - 3.12: new file only, no existing symbol edited, so no `gitnexus impact` was needed. `DiskEntry.modified` is `Date?`, which isn't `Comparable` in this SDK (verified via a throwaway `swiftc -typecheck` snippet), so `Table`'s `sortOrder` uses a private `DiskColumnComparator: SortComparator` instead of `KeyPathComparator`, re-deriving `DiskTableQuery`'s per-field comparisons (its helpers are private) rather than a keypath. The kind→(symbol, swatch) mapping is a closure parameter (`(DiskKind) -> (symbol: String, swatch: ThemeSwatch)`), not a protocol, per the task's "or" — 3.15 can pass `DiskKindStyle.style(for:)` once that file lands. Context menu: single selection shows Open (directories only)/Reveal/Copy Path/Add to Review; multi-selection shows only bulk Add to Review, since Reveal/Copy Path closures are per-entry and copying N paths through a single-path closure would silently overwrite the pasteboard.
 - 3.15: `gitnexus impact DiskAnalyzerView`/`DiskAnalyzerViewModel` both report LOW risk once file-level `IMPORTS` noise is filtered out — the only real `CALLS` caller of either is `PareApp.swift` (`MainShellView`/`ContentView`), which this task also owns. Added `pendingCleanup`/`cleanupState`/`canUndo`/`cancelPendingCleanup`/`dismissCleanupResult`/`undoLastCleanup` forwarding properties plus a `coordinator.objectWillChange` → `self.objectWillChange` Combine subscription to `DiskAnalyzerViewModel` (mirrors `ScanDashboardViewModel`'s existing pattern) — without it the view's single `@ObservedObject` never re-renders when the nested `CleanupCoordinator` changes `pending`/`state`. `DiskAnalyzerView` gained one new public param, `onRunSmartScan: () -> Void = {}` (defaulted, so the one existing call site needed a one-line addition, not a signature break); `PareApp.swift` wires it to `{ models.scan.runScan() }` since the Disk Analyzer screen has no reference to `ScanDashboardViewModel` otherwise. "Collapsible under 1100 pt window width" is read from the real `NSWindow.frame.width` (via an `NSWindow.didResizeNotification` observer), not the content pane's own `GeometryReader` width, since the pane width is roughly `windowWidth - 232` (sidebar) and would sit under 1100 even at the 1240 pt default width, which would hide the inspector by default and contradict the mockup. Empty-filter and empty-folder both route through `EmptyStateView` (distinguished by whether search/kind/size filters are active); the table itself is only rendered when `visibleEntries` is non-empty. Verified live via `make run-app`: the header, sidebar and "No directory selected" empty state render correctly in dark mode (screenshot below); a live capture of the populated table/breadcrumb/inspector was attempted with a temporary (reverted) `onAppear` that opened a real directory, but repeated relaunches during capture triggered macOS's launch-throttling (`RBSRequestErrorDomain` "Launchd job spawn failed", then `SIGKILL` on direct exec) and the app could not be relaunched again in this session to retry — a machine/environment constraint, not a code issue; `swift build` stayed clean throughout.
 - 3.13/3.14: new files only, no existing symbol edited. `DiskKindStyle` maps `folder` to `AppTheme.Swatch.accentDeep`, not plain `accent` — accent's dark-mode seafoam (`#5CC8BC`) measures ~2.0:1 for a white glyph (below the 3:1 floor), confirmed via a throwaway `/tmp` script mirroring `RGBA`/`WCAG.contrastRatio` before/after (deleted after use); `accentDeep` measures 4.08:1 dark / 8.03:1 light. Every other `DiskKind` reuses an existing `CategoryStyle` swatch (already covered by `CategoryStyleTests`), so `DiskKindStyleTests` only needed to gate the one new pairing. Added `DiskKindStyle.style(for:) -> (symbol:swatch:)` alongside the separate `symbol(for:)`/`swatch(for:)` so it satisfies `DiskAnalyzerTable.kindStyle`'s closure shape (3.12's note anticipated this exact name). `DiskEntry` has no creation-date field, so `DiskInspectorPane` reads `URLResourceValues(.creationDateKey)` from `entry.url` directly for the "Created" row — presentation-only glue, not core logic. Per the task instructions, `.insideFinding` shows explanatory text (which finding covers the entry), not an Add button, even though `DiskAnalyzerViewModel.addToReview` does accept `.insideFinding` (it adds the parent finding, not the entry itself) — the pane is intentionally stricter about what it *offers* than what the VM *accepts*. `swift test` still fails locally on the pre-existing `no such module 'XCTest'` CLT limitation; relying on CI.
+
+## Notes — Phase 2 polish
+
+- Sidebar tint: accent 0.18 -> 0.08 -> accentDeep 0.05 (top to bottom), over `SidebarMaterial` vibrancy. `textSecondary` stays >= 4.5:1 (worst case 4.89:1 light mode) against the opaque `AppTheme.Swatch.sidebar` approximation blended with the top stop.
+- Icon tile gradient: lighten top stop 6%, darken bottom stop 8% (not the 8-12% spec target — `userCaches`' dark swatch only clears 3:1 white-glyph contrast up to ~7% lightening; worst case at 6% is 3.06:1). RED/GREEN shown via throwaway `/tmp` script (XCTest unavailable on this machine) before writing `IconTileGradientTests.swift`.
 
 ## Notes — Phase 2
 
