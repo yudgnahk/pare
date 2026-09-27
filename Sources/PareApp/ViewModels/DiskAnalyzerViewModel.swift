@@ -1,39 +1,103 @@
 import Foundation
 import AppKit
+import Combine
 import PareCore
 
+/// Drives one Disk Analyzer level at a time: breadcrumb navigation, the
+/// filter/sort pipeline over `DiskEntry` rows, and a review tray that hands
+/// off to `CleanupCoordinator` (never touches the filesystem directly).
 @MainActor
 final class DiskAnalyzerViewModel: ObservableObject {
-
-    // MARK: - DiskNode
-
-    struct DiskNode: Identifiable {
-        let id = UUID()
-        let url: URL
-        let name: String
-        let sizeBytes: Int64
-        let isDirectory: Bool
-        let children: [DiskNode]
-        /// Share of the parent node's total size (0.0–1.0).
-        let shareOfParent: Double
-
-        /// Non-nil triggers an expansion arrow in List(children:).
-        var expandableChildren: [DiskNode]? {
-            guard isDirectory, !children.isEmpty else { return nil }
-            return children
-        }
-    }
 
     // MARK: - Published state
 
     @Published private(set) var rootURL: URL?
-    @Published private(set) var rootNode: DiskNode?
+    @Published private(set) var currentURL: URL?
+    @Published private(set) var crumbs: [DiskBreadcrumb.Crumb] = []
+    @Published private(set) var level: DiskLevelLoader.Level?
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
-    private var scanTask: Task<Void, Never>?
+    @Published var search = ""
+    @Published var kindFilter: DiskKind?
+    @Published var sizeFloor: DiskSizeFloor = .any
+    @Published var sortOrder = DiskSortDescriptor.nameAscending
+    @Published var selection: Set<String> = []
 
-    // MARK: - Public interface
+    /// Findings currently staged for cleanup, keyed by path so re-adding an
+    /// already-covered entry never double-counts its bytes.
+    @Published private(set) var reviewFindingsByPath: [String: ScanFinding] = [:]
+
+    let coordinator: CleanupCoordinator
+
+    private var breadcrumb: DiskBreadcrumb?
+    private let findingsProvider: () -> [ScanFinding]
+    private let levelLoader: DiskLevelLoader
+    private var loadTask: Task<Void, Never>?
+    private var cancellables: Set<AnyCancellable> = []
+
+    // MARK: - Init
+
+    init(
+        findingsProvider: @escaping () -> [ScanFinding],
+        levelLoader: DiskLevelLoader = DiskLevelLoader(),
+        coordinator: CleanupCoordinator = CleanupCoordinator()
+    ) {
+        self.findingsProvider = findingsProvider
+        self.levelLoader = levelLoader
+        self.coordinator = coordinator
+        coordinator.onCleanupCompleted = { [weak self] in
+            self?.handleCleanupCompleted()
+        }
+        // Forward so the view's single @ObservedObject re-renders on sheet/state changes.
+        coordinator.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Cleanup lifecycle (forwarded to `coordinator`)
+
+    var cleanupState: CleanupCoordinator.CleanupState { coordinator.state }
+    var canUndo: Bool { coordinator.canUndo }
+
+    /// Drives the single cleanup confirmation sheet (`.sheet(item:)`).
+    var pendingCleanup: PendingCleanup? {
+        get { coordinator.pending }
+        set { coordinator.pending = newValue }
+    }
+
+    func cancelPendingCleanup() {
+        coordinator.cancelPending()
+    }
+
+    func dismissCleanupResult() {
+        coordinator.dismissResult()
+    }
+
+    func undoLastCleanup() {
+        coordinator.undoLastCleanup()
+    }
+
+    // MARK: - Derived
+
+    var visibleEntries: [DiskEntry] {
+        DiskTableQuery.apply(
+            entries: level?.entries ?? [],
+            search: search,
+            kind: kindFilter,
+            sizeFloor: sizeFloor,
+            sortOrder: sortOrder
+        )
+    }
+
+    var reviewTrayFindings: [ScanFinding] { Array(reviewFindingsByPath.values) }
+    var reviewTrayCount: Int { reviewFindingsByPath.count }
+    var reviewTrayTotalBytes: Int64 { reviewFindingsByPath.values.reduce(0) { $0 + $1.sizeBytes } }
+    var reviewTrayReviewRiskCount: Int {
+        reviewFindingsByPath.values.filter { $0.riskLevel == .review }.count
+    }
+
+    // MARK: - Navigation
 
     func chooseDirectory() {
         let panel = NSOpenPanel()
@@ -43,107 +107,133 @@ final class DiskAnalyzerViewModel: ObservableObject {
         panel.message = "Choose a directory to analyze"
         panel.prompt = "Analyze"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        startAnalysis(url: url)
+        open(root: url)
+    }
+
+    func open(root url: URL) {
+        guard let crumb = DiskBreadcrumb(root: url, current: url) else { return }
+        selection = []
+        loadLevel(breadcrumb: crumb)
+    }
+
+    /// Drills into `entry` when it is a real directory inside the current level.
+    func open(_ entry: DiskEntry) {
+        guard entry.isDirectory, !entry.isRemainder,
+              let breadcrumb, let next = breadcrumb.enter(entry.url) else { return }
+        selection = []
+        loadLevel(breadcrumb: next)
+    }
+
+    func goUp() {
+        guard let breadcrumb, let previous = breadcrumb.up() else { return }
+        selection = []
+        loadLevel(breadcrumb: previous)
+    }
+
+    /// Jumps directly to a breadcrumb crumb (e.g. the user clicked an ancestor).
+    func select(crumb: DiskBreadcrumb.Crumb) {
+        guard let root = rootURL, let target = DiskBreadcrumb(root: root, current: crumb.url) else { return }
+        selection = []
+        loadLevel(breadcrumb: target)
     }
 
     func refresh() {
-        guard let url = rootURL else { return }
-        startAnalysis(url: url)
+        guard let breadcrumb else { return }
+        Task {
+            await levelLoader.invalidate(directory: breadcrumb.current)
+            loadLevel(breadcrumb: breadcrumb)
+        }
     }
 
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.selectFile(url.path, inFileViewerRootedAtPath: "")
     }
 
-    func moveToTrash(_ url: URL) {
-        do {
-            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
-            refresh()
-        } catch {
-            errorMessage = "Could not move to Trash: \(error.localizedDescription)"
-        }
-    }
-
     func formattedBytes(_ bytes: Int64) -> String {
         ScanReportPresenter.formatBytes(bytes)
     }
 
+    // MARK: - Review tray
+
+    /// Whether/why `entry` may be added to the review tray, without mutating state.
+    func reviewResolution(for entry: DiskEntry) -> DiskReviewResolution {
+        guard !entry.isRemainder else { return .notCandidate }
+        return DiskReviewResolver.resolve(entryPath: entry.url.path, findings: findingsProvider())
+    }
+
+    /// Adds the findings covering `entry` to the tray; `.notCandidate`/`.noScan` add nothing.
+    @discardableResult
+    func addToReview(_ entry: DiskEntry) -> DiskReviewResolution {
+        let resolution = reviewResolution(for: entry)
+        switch resolution {
+        case .covered(let findings):
+            merge(findings)
+        case .insideFinding(let finding):
+            merge([finding])
+        case .notCandidate, .noScan:
+            break
+        }
+        return resolution
+    }
+
+    func removeFromReview(path: String) {
+        reviewFindingsByPath.removeValue(forKey: path)
+    }
+
+    func clearReview() {
+        reviewFindingsByPath = [:]
+    }
+
+    /// Opens the confirmation sheet for the tray's contents.
+    func requestReviewCleanup() {
+        guard !reviewFindingsByPath.isEmpty else { return }
+        coordinator.request(.selected)
+    }
+
+    /// Hands the coordinator exactly the tray's findings.
+    func confirmReviewCleanup() {
+        coordinator.confirm(.selected, findings: reviewTrayFindings)
+    }
+
     // MARK: - Private
 
-    private func startAnalysis(url: URL) {
-        rootURL = url
-        isLoading = true
-        rootNode = nil
-        errorMessage = nil
-        scanTask?.cancel()
-        scanTask = Task {
-            let node = await buildNode(url: url, depth: 0, shareOfParent: 1.0)
-            guard !Task.isCancelled else { return }
-            isLoading = false
-            rootNode = node
+    private func merge(_ findings: [ScanFinding]) {
+        for finding in findings {
+            reviewFindingsByPath[finding.path] = finding
         }
     }
 
-    private func buildNode(url: URL, depth: Int, shareOfParent: Double) async -> DiskNode {
-        let name = url.lastPathComponent
+    private func loadLevel(breadcrumb: DiskBreadcrumb) {
+        self.breadcrumb = breadcrumb
+        rootURL = breadcrumb.root
+        currentURL = breadcrumb.current
+        crumbs = breadcrumb.crumbs
+        isLoading = true
+        errorMessage = nil
 
-        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey]),
-              values.isDirectory == true else {
-            let size = fileSizeBytes(url: url)
-            return DiskNode(url: url, name: name, sizeBytes: size, isDirectory: false, children: [], shareOfParent: shareOfParent)
-        }
-
-        // Beyond depth 4, report directory size without recursing.
-        guard depth < 4 else {
-            let size = FileSystemUtils.directorySize(url: url)
-            return DiskNode(url: url, name: name, sizeBytes: size, isDirectory: true, children: [], shareOfParent: shareOfParent)
-        }
-
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else {
-            let size = FileSystemUtils.directorySize(url: url)
-            return DiskNode(url: url, name: name, sizeBytes: size, isDirectory: true, children: [], shareOfParent: shareOfParent)
-        }
-
-        // Build child nodes (size computed per child).
-        var childNodes: [DiskNode] = []
-        for childURL in contents {
-            if Task.isCancelled { break }
-            // Placeholder share; will be recalculated after we know all sizes.
-            let child = await buildNode(url: childURL, depth: depth + 1, shareOfParent: 0)
-            childNodes.append(child)
-        }
-
-        // Sort by size descending; keep top 50 to avoid overwhelming the UI.
-        childNodes.sort { $0.sizeBytes > $1.sizeBytes }
-        if childNodes.count > 50 {
-            childNodes = Array(childNodes.prefix(50))
-        }
-
-        let totalSize = childNodes.reduce(0) { $0 + $1.sizeBytes }
-
-        // Recompute shareOfParent for each child now that we know the total.
-        if totalSize > 0 {
-            childNodes = childNodes.map { child in
-                DiskNode(
-                    url: child.url,
-                    name: child.name,
-                    sizeBytes: child.sizeBytes,
-                    isDirectory: child.isDirectory,
-                    children: child.children,
-                    shareOfParent: Double(child.sizeBytes) / Double(totalSize)
-                )
+        loadTask?.cancel()
+        loadTask = Task {
+            do {
+                let level = try await levelLoader.load(directory: breadcrumb.current)
+                guard !Task.isCancelled else { return }
+                self.level = level
+                isLoading = false
+            } catch is CancellationError {
+                // Superseded by a newer navigation; drop silently.
+            } catch {
+                isLoading = false
+                errorMessage = "Could not read \(breadcrumb.current.path): \(error.localizedDescription)"
             }
         }
-
-        return DiskNode(url: url, name: name, sizeBytes: totalSize, isDirectory: true, children: childNodes, shareOfParent: shareOfParent)
     }
 
-    private func fileSizeBytes(url: URL) -> Int64 {
-        let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey])
-        return Int64(values?.totalFileAllocatedSize ?? values?.fileSize ?? 0)
+    /// Clears the tray and re-walks the current level so it reflects what cleanup just moved.
+    private func handleCleanupCompleted() {
+        reviewFindingsByPath = [:]
+        guard let breadcrumb else { return }
+        Task {
+            await levelLoader.invalidateAll()
+            loadLevel(breadcrumb: breadcrumb)
+        }
     }
 }

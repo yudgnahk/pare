@@ -1,5 +1,18 @@
 import Foundation
 
+/// Allocated bytes, regular-file count and newest modification date for a directory subtree.
+public struct DirectoryUsage: Sendable {
+    public let allocatedBytes: Int64
+    public let itemCount: Int
+    public let newestModification: Date?
+
+    public init(allocatedBytes: Int64, itemCount: Int, newestModification: Date?) {
+        self.allocatedBytes = allocatedBytes
+        self.itemCount = itemCount
+        self.newestModification = newestModification
+    }
+}
+
 public enum FileSystemUtils {
     /// Compares two dot-separated version strings component-by-component.
     /// Non-numeric or missing components are treated as 0.
@@ -52,6 +65,41 @@ public enum FileSystemUtils {
             }
         }
         return total
+    }
+
+    /// Allocated bytes, regular-file count and newest modification, in one enumerator pass
+    /// (avoids walking large trees twice for the Disk Analyzer's size + item-count + date columns).
+    public static func directoryUsage(url: URL) -> DirectoryUsage {
+        let fm = FileManager.default
+        let keys: [URLResourceKey] = [
+            .totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey, .contentModificationDateKey,
+        ]
+        guard let enumerator = fm.enumerator(
+            at: url,
+            includingPropertiesForKeys: keys,
+            options: [.skipsHiddenFiles]
+        ) else {
+            return DirectoryUsage(allocatedBytes: 0, itemCount: 0, newestModification: nil)
+        }
+        var total: Int64 = 0
+        var itemCount = 0
+        var newest: Date?
+        var checkedCount = 0
+        for case let fileURL as URL in enumerator {
+            checkedCount += 1
+            if checkedCount % cancellationCheckInterval == 0, Task.isCancelled {
+                break
+            }
+            guard let vals = try? fileURL.resourceValues(forKeys: Set(keys)), vals.isRegularFile == true else {
+                continue
+            }
+            total += allocatedBytes(from: vals)
+            itemCount += 1
+            if let modified = vals.contentModificationDate, modified > (newest ?? .distantPast) {
+                newest = modified
+            }
+        }
+        return DirectoryUsage(allocatedBytes: total, itemCount: itemCount, newestModification: newest)
     }
 
     /// Bytes actually allocated on disk for a file.

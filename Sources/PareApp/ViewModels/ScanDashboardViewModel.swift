@@ -70,6 +70,8 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Raw findings kept after scan so cleanup can reference them.
     private var latestFindings: [ScanFinding] = []
+    /// Read-only view of the latest scan's findings, for other view models (e.g. Disk Analyzer).
+    var latestFindingsSnapshot: [ScanFinding] { latestFindings }
     /// O(1) path → finding lookup (not published).
     private var findingsByPath: [String: ScanFinding] = [:]
     /// Private path expansion map — never exposed to SwiftUI views.

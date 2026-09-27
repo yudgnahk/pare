@@ -287,17 +287,18 @@ Core logic comes first so the UI tasks can run in parallel against fixed signatu
   (kind tile + name), Size (share bar + bytes), Items, Modified and Kind; `sortOrder` binding;
   `contextMenu(forSelectionType:primaryAction:)` for drill-in, Reveal, Copy Path and Add to Review;
   `.tableStyle(.inset(alternatesRowBackgrounds: true))`.
-- [ ] **3.13 [par-E]** New `Views/DiskAnalyzer/DiskInspectorPane.swift`: 56 pt tile, name (wraps, never
+- [x] **3.13 [par-E]** New `Views/DiskAnalyzer/DiskInspectorPane.swift`: 56 pt tile, name (wraps, never
   truncated), size, a details grid (Items, Kind, Modified, Created, Location), and actions
   (Reveal in Finder, Copy Path, Add to Review / disabled reason / "Run Smart Scan").
-- [ ] **3.14 [par-E]** New `Views/DiskAnalyzer/DiskReviewTray.swift` + `Theme/DiskKindStyle.swift`: the
+- [x] **3.14 [par-E]** New `Views/DiskAnalyzer/DiskReviewTray.swift` + `Theme/DiskKindStyle.swift`: the
   tray bar and the `CleanConfirmationSheet.Config` builder (title, byte total, review warning);
-  `DiskKind` → swatch and symbol (folder uses accent, the rest reuse category hues).
-- [ ] **3.15 [seq]** Move `Views/DiskAnalyzerView.swift` to `Views/DiskAnalyzer/DiskAnalyzerView.swift`
+  `DiskKind` → swatch and symbol (folder uses accent**Deep** — see Phase 3 notes, plain `accent` fails
+  glyph contrast in dark mode — the rest reuse category hues).
+- [x] **3.15 [seq]** Move `Views/DiskAnalyzerView.swift` to `Views/DiskAnalyzer/DiskAnalyzerView.swift`
   and compose the header summary, filter bar, breadcrumb, table | inspector (`HStack`, inspector
   280 pt, collapsible under 1100 pt width), tray, sheet and result banner. Loading, empty and
   error states follow the skill: no skeleton rows. `#if DEBUG` previews use `PreviewProvider`.
-- [ ] **3.16 [seq]** Docs: in `CLAUDE.md` Known State, add the adaptive tokens and the Disk Analyzer
+- [x] **3.16 [seq]** Docs: in `CLAUDE.md` Known State, add the adaptive tokens and the Disk Analyzer
   review flow; add a `docs/roadmap.md` entry; tick this plan's boxes.
 
 **Parallel groups:** A (1.3–1.8) after 1.2 · B (2.2–2.4) after 2.1 · C (2.6–2.9) after 2.2 ·

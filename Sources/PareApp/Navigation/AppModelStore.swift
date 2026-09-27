@@ -14,6 +14,6 @@ final class AppModelStore: ObservableObject {
     let history = HistoryViewModel()
     let apps = AppManagerViewModel()
     let homebrew = HomebrewManagerViewModel()
-    let disk = DiskAnalyzerViewModel()
     let maintenance = MaintenanceViewModel()
+    lazy var disk = DiskAnalyzerViewModel(findingsProvider: { [scan] in scan.latestFindingsSnapshot })
 }

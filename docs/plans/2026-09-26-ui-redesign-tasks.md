@@ -23,6 +23,7 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 | 2 | Phase 1 — adaptive tokens | tdd-guide agents | done — light mode unverified visually | branch `feat/ui-redesign-phase-1-adaptive-theme` |
 | 3 | Review Phase 1 + commit + PR | code-reviewer | done — PR #31 | `../reviews/2026-09-26-ui-redesign-phase-1-review.md` |
 | 4 | Phase 2 — category tiles + sidebar vibrancy | tdd-guide agents | implemented + committed, review pending | branch `feat/ui-redesign-phase-2-category-tiles` (stacked on phase 1) |
+| 6 | Phase 3 — Disk Analyzer | tdd-guide agents | implemented, review pending | branch `feat/ui-redesign-phase-3-disk-analyzer` (stacked on phase 2, PR #33) |
 | 5 | Makefile SDK fix | orchestrator | done — PR #32 | branch `fix/makefile-clt-sdk` |
 
 ## Decisions
@@ -42,6 +43,30 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 - [x] 2.5 SidebarView redesign (after B)
 - [x] 2.6 ScanDashboardView tiles (par-C)
 - [x] 2.7 + 2.8 + 2.9 DeviceBackupsCard, DisclosureSelectRow preview, ToolShareChart (par-C)
+- [x] build clean
+
+## Agent rules (every implementation agent reads this)
+
+- Build: `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk swift build` (or `make build`) must be clean.
+- XCTest is unavailable locally. For [TDD] tasks, write the XCTest first, then show RED/GREEN with a throwaway `swift /tmp/*.swift` script that mirrors the pure logic, and delete the script afterwards.
+- Edit only the files you own. Report build errors in other files instead of fixing them.
+- Comments are one line, why-not-what; a doc comment is one sentence. Previews use `PreviewProvider` inside `#if DEBUG`, never `#Preview`.
+- Functions under 50 lines, nesting at most 4 levels, no hardcoded colors (use `AppTheme`/`CategoryStyle` tokens). `ScanPolicy` stays the only place with path-safety logic.
+- Before editing an existing symbol, run `npx gitnexus impact <Symbol> --direction upstream` and report the risk.
+- Do NOT commit. Tick your checkbox below with a single-line edit; put deviations as one line under `## Notes — Phase 3`.
+
+## Checklist — Wave 6 (Phase 3; task details are in the plan)
+
+- [x] 3.1 + 3.6 directoryUsage (PareCore) + DiskLevelLoader (par-D)
+- [x] 3.2 + 3.3 DiskEntry/DiskKind + DiskTableQuery (par-D)
+- [x] 3.4 + 3.5 DiskBreadcrumb + DiskReviewResolver (par-D)
+- [x] 3.7 + 3.8a CleanupCoordinator engine injection + latestFindingsSnapshot (par-D)
+- [x] 3.9 DiskAnalyzerViewModel rewrite + AppModelStore wiring (3.8b), delete moveToTrash (seq)
+- [x] 3.10 + 3.11 DiskFilterBar + DiskBreadcrumbBar (par-E)
+- [x] 3.12 DiskAnalyzerTable (par-E)
+- [x] 3.13 + 3.14 DiskInspectorPane + DiskReviewTray/DiskKindStyle (par-E)
+- [x] 3.15 DiskAnalyzerView composition + move (seq)
+- [x] 3.16 Docs: CLAUDE.md, roadmap, plan ticks (seq)
 - [x] build clean
 
 ## Blockers
@@ -79,7 +104,8 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 
 ## Follow-ups (not scheduled)
 
-- [ ] **Needs Kelvin:** review Phase 2 (code-reviewer), then push and open the stacked PR on top of #31.
+- [ ] **Needs Kelvin:** review PR #33 (Phase 2) and the Phase 3 PR. No code-reviewer agent has run on either yet.
+- [ ] **Review note:** `DiskAnalyzerTable` re-implements the `DiskTableQuery` sort comparisons (drift risk). `onRunSmartScan` only calls `runScan()` and does not switch to the Smart Scan tab. `DiskBreadcrumb` hand-maps `/tmp`, `/var` and `/etc` to `/private/...`.
 - [ ] **Needs Kelvin:** Jev AI shadow-mode trial; see `docs/research/2026-09-27-jev-ai-evaluation.md`.
 - [ ] **Needs security review:** a "user-chosen file" policy in `ScanPolicy` so the Disk Analyzer can delete files the scan did not find.
 - [ ] **Needs discussion:** permanent delete (CleanMyMac deletes directly and skips the Trash). Pare's current rule is Trash-only, which is what makes undo possible. Options: keep Trash-only, or add an explicit "Empty Pare items from Trash" step after cleanup.
@@ -119,6 +145,17 @@ Forcing Light without touching the system-wide toggle did not work: neither the 
 - [ ] Settings
 - [ ] Sheets: `CleanConfirmationSheet` (Deep Clean and Selected variants), exclusion list, project scan paths
 - [ ] Text-zoom HUD (`TextZoomController`)
+
+## Notes — Phase 3
+
+- 3.7/3.8a: not `[TDD]`-tagged in the plan (glue/DI, no branching logic), so added happy-path XCTest coverage only — `Tests/PareAppTests/CleanupCoordinatorTests.swift` (injected temp-store engine actually used by `confirm`) and `Tests/PareAppTests/ScanDashboardViewModelTests.swift` (snapshot starts empty) — rather than a full RED/GREEN throwaway-script cycle. `swift test` still fails locally on the pre-existing `no such module 'XCTest'` CLT limitation (reproduces identically on unmodified files); relying on CI per the plan's verification section.
+- 3.4/3.5: `DiskBreadcrumb.canonicalize` hand-normalizes the `/tmp`, `/var`, `/etc` → `/private/…` indirection because Foundation's `resolvingSymlinksInPath()` deliberately leaves those three unresolved; both files got RED/GREEN via throwaway `/tmp` scripts mirroring `ScanPolicy.isEqualToOrDescendant` and real `ScanFinding`/`RiskLevel` before being deleted.
+- 3.2/3.3: `DiskEntry.swift` was written first (ahead of its tests) per the explicit dependency note in this doc, since another agent was blocked on it; `DiskKind`/`DiskTableQuery` still got RED/GREEN via throwaway `/tmp` scripts mirroring the production logic before/after. `DiskEntry.id` and `DiskEntry.remainder(...)` are plain stored fields/factories rather than always auto-deriving `id` from `url`, so `DiskLevelLoader` (3.6) controls the identity string directly. `DiskSizeFloor`/`DiskSortField`/`DiskSortDescriptor` are new types owned by this file, not in the plan's exact-fields list, needed so `apply(...)` has a concrete sort/filter signature; `DiskKind` sorts by `rawValue` string (deterministic, not a specific visual order — no spec requirement either way).
+
+- 3.9: `gitnexus impact DiskAnalyzerViewModel` reports `risk: CRITICAL` / 57 impacted, but almost all hits are file-level `IMPORTS` edges (any file importing the `PareApp` module); the only real `CALLS` dependents are `AppModelStore` (construction) and `DiskAnalyzerView` (usage), both owned/edited by this task. `DiskAnalyzerView` keeps its prior look (flat `List`, hover-reveal, share bar) but now reads one `DiskLevelLoader.Level` at a time instead of a full recursive tree, since the new `DiskEntry`/`DiskLevelLoader` model only loads one directory level per navigation step (no recursive `DiskNode` tree); double-click drills in, the header's new chevron button goes up a level. Full Table/breadcrumb-bar/filter-bar composition is 3.10–3.15, not this task. `XCTest` is unavailable locally (same CLT limitation as 3.7/3.8a and prior phases), so RED/GREEN for the pure tray-dedup/gating logic was demonstrated via a throwaway `/tmp` script (deleted after use) mirroring `DiskReviewResolver` + the tray-merge logic exactly; the full `Tests/PareAppTests/DiskAnalyzerViewModelTests.swift` (crumbs, filter/sort pipeline via real temp directories, dedup, `.notCandidate`/`.noScan`, tray totals, confirm-hands-coordinator-the-tray's-findings via a temp-store `CleanupEngine`) relies on CI to actually run.
+- 3.12: new file only, no existing symbol edited, so no `gitnexus impact` was needed. `DiskEntry.modified` is `Date?`, which isn't `Comparable` in this SDK (verified via a throwaway `swiftc -typecheck` snippet), so `Table`'s `sortOrder` uses a private `DiskColumnComparator: SortComparator` instead of `KeyPathComparator`, re-deriving `DiskTableQuery`'s per-field comparisons (its helpers are private) rather than a keypath. The kind→(symbol, swatch) mapping is a closure parameter (`(DiskKind) -> (symbol: String, swatch: ThemeSwatch)`), not a protocol, per the task's "or" — 3.15 can pass `DiskKindStyle.style(for:)` once that file lands. Context menu: single selection shows Open (directories only)/Reveal/Copy Path/Add to Review; multi-selection shows only bulk Add to Review, since Reveal/Copy Path closures are per-entry and copying N paths through a single-path closure would silently overwrite the pasteboard.
+- 3.15: `gitnexus impact DiskAnalyzerView`/`DiskAnalyzerViewModel` both report LOW risk once file-level `IMPORTS` noise is filtered out — the only real `CALLS` caller of either is `PareApp.swift` (`MainShellView`/`ContentView`), which this task also owns. Added `pendingCleanup`/`cleanupState`/`canUndo`/`cancelPendingCleanup`/`dismissCleanupResult`/`undoLastCleanup` forwarding properties plus a `coordinator.objectWillChange` → `self.objectWillChange` Combine subscription to `DiskAnalyzerViewModel` (mirrors `ScanDashboardViewModel`'s existing pattern) — without it the view's single `@ObservedObject` never re-renders when the nested `CleanupCoordinator` changes `pending`/`state`. `DiskAnalyzerView` gained one new public param, `onRunSmartScan: () -> Void = {}` (defaulted, so the one existing call site needed a one-line addition, not a signature break); `PareApp.swift` wires it to `{ models.scan.runScan() }` since the Disk Analyzer screen has no reference to `ScanDashboardViewModel` otherwise. "Collapsible under 1100 pt window width" is read from the real `NSWindow.frame.width` (via an `NSWindow.didResizeNotification` observer), not the content pane's own `GeometryReader` width, since the pane width is roughly `windowWidth - 232` (sidebar) and would sit under 1100 even at the 1240 pt default width, which would hide the inspector by default and contradict the mockup. Empty-filter and empty-folder both route through `EmptyStateView` (distinguished by whether search/kind/size filters are active); the table itself is only rendered when `visibleEntries` is non-empty. Verified live via `make run-app`: the header, sidebar and "No directory selected" empty state render correctly in dark mode (screenshot below); a live capture of the populated table/breadcrumb/inspector was attempted with a temporary (reverted) `onAppear` that opened a real directory, but repeated relaunches during capture triggered macOS's launch-throttling (`RBSRequestErrorDomain` "Launchd job spawn failed", then `SIGKILL` on direct exec) and the app could not be relaunched again in this session to retry — a machine/environment constraint, not a code issue; `swift build` stayed clean throughout.
+- 3.13/3.14: new files only, no existing symbol edited. `DiskKindStyle` maps `folder` to `AppTheme.Swatch.accentDeep`, not plain `accent` — accent's dark-mode seafoam (`#5CC8BC`) measures ~2.0:1 for a white glyph (below the 3:1 floor), confirmed via a throwaway `/tmp` script mirroring `RGBA`/`WCAG.contrastRatio` before/after (deleted after use); `accentDeep` measures 4.08:1 dark / 8.03:1 light. Every other `DiskKind` reuses an existing `CategoryStyle` swatch (already covered by `CategoryStyleTests`), so `DiskKindStyleTests` only needed to gate the one new pairing. Added `DiskKindStyle.style(for:) -> (symbol:swatch:)` alongside the separate `symbol(for:)`/`swatch(for:)` so it satisfies `DiskAnalyzerTable.kindStyle`'s closure shape (3.12's note anticipated this exact name). `DiskEntry` has no creation-date field, so `DiskInspectorPane` reads `URLResourceValues(.creationDateKey)` from `entry.url` directly for the "Created" row — presentation-only glue, not core logic. Per the task instructions, `.insideFinding` shows explanatory text (which finding covers the entry), not an Add button, even though `DiskAnalyzerViewModel.addToReview` does accept `.insideFinding` (it adds the parent finding, not the entry itself) — the pane is intentionally stricter about what it *offers* than what the VM *accepts*. `swift test` still fails locally on the pre-existing `no such module 'XCTest'` CLT limitation; relying on CI.
 
 ## Notes — Phase 2
 

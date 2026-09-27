@@ -35,7 +35,12 @@ final class CleanupCoordinator: ObservableObject {
 
     /// Most recent transaction, used to offer undo.
     private var lastTransaction: CleanupTransaction?
-    private let engine = CleanupEngine()
+    private let engine: CleanupEngine
+
+    /// Engine is injectable so tests can pass one backed by a temp-directory store.
+    init(engine: CleanupEngine = CleanupEngine()) {
+        self.engine = engine
+    }
 
     var isCleaning: Bool {
         if case .cleaning = state { return true }
