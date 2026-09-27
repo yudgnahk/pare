@@ -33,6 +33,7 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 - 2026-09-26: The planner runs as a general-purpose agent in the planner role, because the `everything-claude-code:planner` agent has no Write tool and the plan has to land in a file.
 - 2026-09-26: Disk Analyzer "Add to Review" accepts scan-covered items only; arbitrary-file delete is dropped (Kelvin, Q1).
 - 2026-09-26: The sidebar switches to native vibrancy with a faint brand tint (Kelvin, Q2).
+- 2026-09-27: The 4% tint looked too washed out next to the old brand gradient. Keep vibrancy, but make the brand tint much stronger (~15–20%, gradient reaching deeper). Icon tiles get a subtle top-to-bottom gradient plus a highlight edge (Kelvin).
 
 ## Checklist — Wave 4 (Phase 2; task details are in the plan)
 
@@ -43,6 +44,12 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 - [x] 2.6 ScanDashboardView tiles (par-C)
 - [x] 2.7 + 2.8 + 2.9 DeviceBackupsCard, DisclosureSelectRow preview, ToolShareChart (par-C)
 - [x] build clean
+
+## Checklist — Phase 2 polish (on the #33 branch, then merged into #34)
+
+- [x] Stronger sidebar brand tint over vibrancy
+- [x] Icon tile gradient + highlight, glyph contrast ≥ 3:1 at the lightest stop
+- [x] build clean + dark screenshot
 
 ## Blockers
 
@@ -119,6 +126,11 @@ Forcing Light without touching the system-wide toggle did not work: neither the 
 - [ ] Settings
 - [ ] Sheets: `CleanConfirmationSheet` (Deep Clean and Selected variants), exclusion list, project scan paths
 - [ ] Text-zoom HUD (`TextZoomController`)
+
+## Notes — Phase 2 polish
+
+- Sidebar tint: accent 0.18 -> 0.08 -> accentDeep 0.05 (top to bottom), over `SidebarMaterial` vibrancy. `textSecondary` stays >= 4.5:1 (worst case 4.89:1 light mode) against the opaque `AppTheme.Swatch.sidebar` approximation blended with the top stop.
+- Icon tile gradient: lighten top stop 6%, darken bottom stop 8% (not the 8-12% spec target — `userCaches`' dark swatch only clears 3:1 white-glyph contrast up to ~7% lightening; worst case at 6% is 3.06:1). RED/GREEN shown via throwaway `/tmp` script (XCTest unavailable on this machine) before writing `IconTileGradientTests.swift`.
 
 ## Notes — Phase 2
 
