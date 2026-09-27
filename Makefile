@@ -6,6 +6,16 @@ PROFILE ?= baseline
 TOP ?= 20
 ARGS ?=
 
+# CLT-only machines: the macOS 27 SDK turns @State into a macro whose plugin ships only with Xcode.
+CLT_FALLBACK_SDK := /Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk
+ifeq ($(origin SDKROOT),undefined)
+  ifeq ($(shell xcode-select -p 2>/dev/null),/Library/Developer/CommandLineTools)
+    ifneq ($(wildcard $(CLT_FALLBACK_SDK)),)
+      export SDKROOT := $(CLT_FALLBACK_SDK)
+    endif
+  endif
+endif
+
 .PHONY: help build test run start run-app ensure-icon run-baseline run-developer run-designer run-video-builder icon release clean
 
 help:
