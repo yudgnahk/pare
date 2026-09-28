@@ -5,32 +5,6 @@ import SwiftUI
 /// Color source of truth: `docs/brand-guide.html`. Semantic tokens below point
 /// at the brand palette; views must never hardcode colors, radii, or paddings.
 enum AppTheme {
-    // MARK: - Brand palette (docs/brand-guide.html)
-
-    /// Raw brand colors. Prefer the semantic tokens (`base`, `panel`, `accent`,
-    /// `textPrimary`, …) in views; reach for `Brand` only when defining new
-    /// semantic tokens.
-    enum Brand {
-        /// Page ground.
-        static let ink = Color(hex: 0x0D1520)
-        /// Recessed / secondary surface.
-        static let marine = Color(hex: 0x152030)
-        /// Raised surface (cards, panels).
-        static let surface = Color(hex: 0x1A2D40)
-        /// Primary mark — Pare seafoam accent.
-        static let seafoam = Color(hex: 0x5CC8BC)
-        /// Highlight ("Mist").
-        static let seafoamLight = Color(hex: 0x8DE8E0)
-        /// Deep accent for gradients and pressed states.
-        static let seafoamDeep = Color(hex: 0x238C82)
-        /// Typography.
-        static let chalk = Color(hex: 0xE4EDF2)
-        /// Warm typography accents.
-        static let chalkWarm = Color(hex: 0xEDF2F5)
-        /// Secondary text (brand); use with care on dark grounds (contrast).
-        static let fog = Color(hex: 0x7A9BB0)
-    }
-
     // MARK: - Adaptive swatches (light/dark pairs; source of truth for semantic colors)
 
     /// Raw light/dark pairs behind every semantic token. Tests read these directly,

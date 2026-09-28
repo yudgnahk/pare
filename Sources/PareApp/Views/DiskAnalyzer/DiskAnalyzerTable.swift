@@ -208,42 +208,11 @@ private struct DiskColumnComparator: SortComparator {
         DiskSortDescriptor(field: field, ascending: order == .forward)
     }
 
+    // Delegates to DiskTableQuery, which drives actual row order; this only feeds header sort-indicator state.
     func compare(_ lhs: DiskEntry, _ rhs: DiskEntry) -> ComparisonResult {
-        let ascendingResult = fieldOrdering(lhs, rhs)
+        let ascendingResult = DiskTableQuery.primaryOrdering(lhs, rhs, field: field)
         guard ascendingResult != .orderedSame else { return .orderedSame }
         return order == .forward ? ascendingResult : ascendingResult.reversed
-    }
-
-    private func fieldOrdering(_ lhs: DiskEntry, _ rhs: DiskEntry) -> ComparisonResult {
-        switch field {
-        case .name: return Self.compareStrings(lhs.name, rhs.name)
-        case .size: return Self.compareInt64(lhs.sizeBytes, rhs.sizeBytes)
-        case .items: return Self.compareInt64(Int64(lhs.itemCount), Int64(rhs.itemCount))
-        case .modified: return Self.compareDates(lhs.modified, rhs.modified)
-        case .kind: return Self.compareStrings(lhs.kind.rawValue, rhs.kind.rawValue)
-        }
-    }
-
-    private static func compareStrings(_ a: String, _ b: String) -> ComparisonResult {
-        if a == b { return .orderedSame }
-        return a < b ? .orderedAscending : .orderedDescending
-    }
-
-    private static func compareInt64(_ a: Int64, _ b: Int64) -> ComparisonResult {
-        if a == b { return .orderedSame }
-        return a < b ? .orderedAscending : .orderedDescending
-    }
-
-    /// `nil` sorts oldest regardless of direction, matching `DiskTableQuery`.
-    private static func compareDates(_ a: Date?, _ b: Date?) -> ComparisonResult {
-        switch (a, b) {
-        case (nil, nil): return .orderedSame
-        case (nil, _): return .orderedAscending
-        case (_, nil): return .orderedDescending
-        case let (l?, r?):
-            if l == r { return .orderedSame }
-            return l < r ? .orderedAscending : .orderedDescending
-        }
     }
 }
 

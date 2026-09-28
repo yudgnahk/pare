@@ -77,7 +77,8 @@ enum DiskTableQuery {
         return normalize(lhs.name) < normalize(rhs.name)
     }
 
-    private static func primaryOrdering(_ lhs: DiskEntry, _ rhs: DiskEntry, field: DiskSortField) -> ComparisonResult {
+    /// Also used by `DiskColumnComparator` (SwiftUI Table header sort state) to avoid duplicating field-ordering logic.
+    static func primaryOrdering(_ lhs: DiskEntry, _ rhs: DiskEntry, field: DiskSortField) -> ComparisonResult {
         switch field {
         case .name:
             return compareStrings(normalize(lhs.name), normalize(rhs.name))

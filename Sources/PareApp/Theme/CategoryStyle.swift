@@ -103,10 +103,4 @@ enum CategoryStyle {
     static func chartColor(at index: Int) -> Color {
         chartPalette[index % chartPalette.count]
     }
-
-    // MARK: - Deprecated named colors
-
-    /// Deprecated: use `swatch(for: .developerPackageCaches)`. Kept only so pre-2.8 call sites still compile.
-    @available(*, deprecated, message: "Use swatch(for:) instead")
-    static let sky = Color(red: 0.50, green: 0.85, blue: 0.94)
 }

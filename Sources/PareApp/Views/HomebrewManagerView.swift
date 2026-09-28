@@ -1240,6 +1240,7 @@ struct BrewOperationSheet: View {
     }
 
     private func lineColor(_ line: String) -> Color {
+        // Terminal-style output: system colors intentionally kept, not AppTheme tokens; they already adapt.
         let lower = line.lowercased()
         if lower.contains("error") || lower.contains("fail") { return .red.opacity(0.9) }
         if lower.contains("warning") || lower.contains("warn") { return .yellow.opacity(0.9) }

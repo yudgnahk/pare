@@ -21,7 +21,7 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 |---|------|-------|--------|--------|
 | 1 | Redesign plan (no code) | planner agent + `macos-swiftui-design` skill | done — awaiting review | `2026-09-26-ui-redesign-plan.md` |
 | 2 | Phase 1 — adaptive tokens | tdd-guide agents | done — light mode unverified visually | branch `feat/ui-redesign-phase-1-adaptive-theme` |
-| 3 | Review Phase 1 + commit + PR | code-reviewer | done — PR #31 | `../reviews/2026-09-26-ui-redesign-phase-1-review.md` |
+| 3 | Review Phase 1 + commit + PR | code-reviewer | done — PR #31 | PR description |
 | 4 | Phase 2 — category tiles + sidebar vibrancy | tdd-guide agents | implemented + committed, review pending | branch `feat/ui-redesign-phase-2-category-tiles` (stacked on phase 1) |
 | 6 | Phase 3 — Disk Analyzer | tdd-guide agents | implemented, review pending | branch `feat/ui-redesign-phase-3-disk-analyzer` (stacked on phase 2, PR #33) |
 | 5 | Makefile SDK fix | orchestrator | done — PR #32 | branch `fix/makefile-clt-sdk` |
