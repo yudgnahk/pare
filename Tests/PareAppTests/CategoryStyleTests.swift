@@ -75,10 +75,14 @@ final class CategoryStyleTests: XCTestCase {
     }
 
     private func resolvedHex(_ color: NSColor, appearance: NSAppearance) -> UInt32 {
-        let resolved = color.resolvedColor(with: appearance).usingColorSpace(.deviceRGB)!
-        let red = UInt32((resolved.redComponent * 255).rounded())
-        let green = UInt32((resolved.greenComponent * 255).rounded())
-        let blue = UInt32((resolved.blueComponent * 255).rounded())
-        return (red << 16) | (green << 8) | blue
+        var hex: UInt32 = 0
+        appearance.performAsCurrentDrawingAppearance {
+            let resolved = color.usingColorSpace(NSColorSpace.deviceRGB)!
+            let red = UInt32((resolved.redComponent * 255).rounded())
+            let green = UInt32((resolved.greenComponent * 255).rounded())
+            let blue = UInt32((resolved.blueComponent * 255).rounded())
+            hex = (red << 16) | (green << 8) | blue
+        }
+        return hex
     }
 }
