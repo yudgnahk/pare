@@ -66,7 +66,7 @@ make test         # must pass
 make run-app      # launch the SwiftUI app and exercise the changed feature manually
 ```
 
-**Command Line Tools-only machines (no Xcode.app):** `make build` and `make run-app` work, but `make test` fails with `no such module 'XCTest'` because Apple's Command Line Tools do not ship XCTest. This is an environment limitation, not a regression. To run tests locally, install Xcode or a swift.org toolchain (e.g. via `swiftly`), which bundles XCTest; otherwise rely on CI (`macos-26` runner with Xcode).
+**Command Line Tools-only machines (no Xcode.app):** `make build` and `make run-app` work, but `make test` fails with `no such module 'XCTest'` because Apple's Command Line Tools do not ship XCTest. This is an environment limitation, not a regression. On CLT-only machines the Makefile also pins `SDKROOT` to `MacOSX26.sdk` when present, because the macOS 27 SDK turns `@State` into a macro whose plugin ships only with Xcode. Plain `swift build` needs `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk`. To run tests locally, install Xcode or a swift.org toolchain (e.g. via `swiftly`), which bundles XCTest; otherwise rely on CI (`macos-26` runner with Xcode).
 
 ## Priorities
 
