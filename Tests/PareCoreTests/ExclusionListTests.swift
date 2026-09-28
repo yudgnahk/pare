@@ -60,10 +60,10 @@ final class ExclusionListTests: XCTestCase {
         XCTAssertFalse(list.blocksRemoval(of: "/Users/test/Caches"))
     }
 
-    func testExactExclusionDoesNotBlockDeletingAnAncestorDirectory() {
+    func testExactExclusionBlocksDeletingAnAncestorDirectory() {
         var list = ExclusionList()
         list.add(ExclusionEntry(path: "/Users/test/Cache/keep", matchType: .exact))
-        XCTAssertFalse(list.blocksRemoval(of: "/Users/test/Cache"))
+        XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache"))
         XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache/keep"))
     }
 

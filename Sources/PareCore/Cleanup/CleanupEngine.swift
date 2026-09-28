@@ -478,11 +478,14 @@ public actor CleanupEngine {
     }
 
     private static func hasSymbolicLinkComponent(atPath path: String) -> Bool {
+        // macOS may expose these system-owned roots through stable aliases.
+        let systemAliases: Set<String> = ["/private", "/private/tmp", "/tmp", "/var", "/etc"]
         var current = ""
         for component in URL(fileURLWithPath: path).standardizedFileURL.pathComponents {
             current = current.isEmpty
                 ? component
                 : URL(fileURLWithPath: current).appendingPathComponent(component).path
+            if systemAliases.contains(current) { continue }
             if isSymbolicLink(atPath: current) { return true }
         }
         return false

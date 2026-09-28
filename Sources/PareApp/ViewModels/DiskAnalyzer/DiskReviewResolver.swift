@@ -26,14 +26,14 @@ enum DiskReviewResolver {
         let candidates = findings.filter { $0.riskLevel != .advanced }
 
         let covering = candidates.filter { finding in
-            contains(entryURL.path, root: finding.path)
+            contains(finding.path, root: entryURL.path)
         }
         if !covering.isEmpty {
             return .covered(covering)
         }
 
         if let container = candidates
-            .filter({ contains(entryPath, root: $0.path) })
+            .filter({ contains(entryURL.path, root: $0.path) })
             .max(by: { componentCount($0.path) < componentCount($1.path) }) {
             return .insideFinding(container)
         }
