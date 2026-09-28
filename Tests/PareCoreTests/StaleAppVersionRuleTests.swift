@@ -40,7 +40,9 @@ final class StaleAppVersionRuleTests: XCTestCase {
         tempDir = FileManager.default.temporaryDirectory
             .appending(path: "StaleAppVersionRuleTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        env = ScanEnvironment(homeDirectory: tempDir)
+        // Empty system app dirs so customScan tests never traverse the real /Applications
+        // (which on CI shares a bundle ID across multiple Xcode installs and is many GB).
+        env = ScanEnvironment(homeDirectory: tempDir, systemApplicationDirectories: [])
     }
 
     override func tearDownWithError() throws {
@@ -82,8 +84,11 @@ final class StaleAppVersionRuleTests: XCTestCase {
         XCTAssertFalse(dirs.contains { $0.path.hasPrefix("/System/Applications") })
     }
 
+    /// scanDirectories does no I/O, so exercising the real default here is safe — unlike
+    /// customScan, which would traverse whatever the default path actually contains.
     func testScansHomeApplicationsAndSystemApplications() {
-        let dirs = rule.scanDirectories(environment: env)
+        let defaultEnv = ScanEnvironment(homeDirectory: tempDir)
+        let dirs = rule.scanDirectories(environment: defaultEnv)
         XCTAssertTrue(dirs.contains { $0.path == "/Applications" })
         XCTAssertTrue(dirs.contains { $0.path == tempDir.appending(path: "Applications").path })
     }
