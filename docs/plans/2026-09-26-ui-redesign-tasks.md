@@ -25,6 +25,7 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 | 4 | Phase 2 — category tiles + sidebar vibrancy | tdd-guide agents | implemented + committed, review pending | branch `feat/ui-redesign-phase-2-category-tiles` (stacked on phase 1) |
 | 6 | Phase 3 — Disk Analyzer | tdd-guide agents | implemented, review pending | branch `feat/ui-redesign-phase-3-disk-analyzer` (stacked on phase 2, PR #33) |
 | 5 | Makefile SDK fix | orchestrator | done — PR #32 | branch `fix/makefile-clt-sdk` |
+| 7 | Disk Analyzer deep review + fixes | code-reviewer / security-reviewer | review done, fixes pending | see "Checklist — Wave 7" |
 
 ## Decisions
 
@@ -76,6 +77,50 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 - [x] Icon tile gradient + highlight, glyph contrast ≥ 3:1 at the lightest stop
 - [x] build clean + dark screenshot
 
+## Checklist — Wave 7 (Disk Analyzer review follow-ups, 2026-09-28)
+
+Source: three-agent deep review (safety, loading, UI) of the branch at `388280f`. Nothing below has been fixed yet. Suggested order: S1–S2 → S4–S6 → L1–L2 → the rest.
+
+**Done before this wave**
+- [x] PR review of #31/#33/#34, fixes in `388280f` (dead `Brand`/`sky`, AI review doc removed, sort-comparator duplicate, SF Symbols verified ≤ macOS 13)
+- [x] Merged `master` (#32 Makefile SDK fix); `make build` clean
+
+**Safety — fix before merge**
+- [ ] S1 HIGH: right-click "Add to Review" on a file inside a finding queues the whole parent finding, with no feedback (`DiskAnalyzerTable.swift:148,162`, `DiskAnalyzerViewModel.swift:166`). Gate the menu on `reviewResolution`, name the parent in the label, and list paths in the confirm sheet.
+- [ ] S2 HIGH: the context menu ignores `.notCandidate`/`.noScan`, so clicking does nothing and says nothing. Same fix as S1.
+- [ ] S3 MEDIUM: `DiskReviewResolver.swift:35` `first(where:)` picks an arbitrary container, not the nearest one.
+- [ ] S4 MEDIUM: the tray goes stale across folders and rescans, and `removeFromReview` is never called. Revalidate against the latest findings on confirm, and add a per-item remove.
+- [ ] S5 MEDIUM: a parent and its child can both be in the tray, so totals are double-counted and Undo can fail to restore the parent. Drop nested findings in `merge`.
+- [ ] S6 MEDIUM: "Review & Clean" stays enabled while cleaning, so a second confirm overwrites `lastTransaction` and Undo is lost (`DiskReviewTray.swift:29`, `CleanupCoordinator.swift:62`).
+- [ ] S7 MEDIUM (existing bug): an exclusion inside a finding does not protect it (`CleanupEngine.swift:239`).
+- [ ] S8 LOW: every skip reason reads "policy check", `transactionSaveError` is dropped, and the tray is cleared even when items were skipped.
+- [ ] S9 LOW: path matching ignores case, so on a case-sensitive volume `Build` matches `build`.
+- [ ] S10 LOW (existing bug): a symlink swapped into a finding's path after the scan is followed at trash time.
+
+**UI / state**
+- [ ] U1 MEDIUM: stale doc comment on `DiskColumnComparator` (`DiskAnalyzerTable.swift:189`) still says it reimplements the comparisons (introduced by `388280f`).
+- [ ] U2 MEDIUM: `DiskInspectorPane.creationDate(for:)` does sync file I/O on every render. Move it into `DiskLevelLoader`.
+- [ ] U3 MEDIUM: `selection` is not cleared after cleanup or `refresh()`, so the inspector goes blank with no explanation.
+- [ ] U4 MEDIUM: the sort `onChange` pair has no equality guard (loop risk).
+- [ ] U5 MEDIUM: truncated breadcrumb crumbs have no `.help` tooltip.
+- [ ] U6 LOW: row `IconTile` is not `accessibilityHidden`; double-clicking a file does nothing; test gaps (tie-breaks, combined filters, NFD names).
+
+**Loading / concurrency**
+- [ ] L1 HIGH: `.skipsHiddenFiles` in `DiskLevelLoader.buildLevel` and `FileSystemUtils.directoryUsage` hides dot-folders (`~/.npm`, `~/.cargo`, `.git`) and leaves them out of every size, so Disk Analyzer under-reports exactly what Smart Scan targets.
+- [ ] L2 HIGH: `directoryUsage`/`directorySize` enumerators have no `errorHandler`, so unreadable subtrees (no Full Disk Access) are silently skipped and the size looks smaller than it is. Flag it as a partial size in the UI.
+- [ ] L3 MEDIUM: `DiskLevelCache` has no eviction or size cap.
+- [ ] L4 MEDIUM: `directorySize` duplicates `directoryUsage`'s enumerator and cancellation logic.
+- [ ] L5 MEDIUM: the cache key (`DiskEntry.standardizedID`) does not canonicalize symlinks. Safe today because every caller passes `breadcrumb.current`.
+- [ ] L6 LOW: cancellation is checked only every 256 files, so fast navigation leaves old walks running; `onProgress` is never wired (static spinner); no tests for navigation races or error states.
+- Not a bug: the agent's "CRITICAL main-thread" doubt. `load` is a nonisolated async method on a non-actor class (tools 5.9, no `NonisolatedNonsendingByDefault`), so under SE-0338 it runs off the main actor. Confirm with T1.
+
+**Manual test (Kelvin, `make run-app`)**. The bugs above were confirmed by reading the code, so they don't need testing now. Retest them after the fixes.
+- [ ] T1 Now: open `~` and, while it is sizing, type in search and drag the window. It must not freeze. Go in and out of big folders 5× fast; the table must match the last click. (L6)
+- [ ] T2 Now: after a Smart Scan, add `~/Library/Caches` itself, clean, then Undo. Does everything come back? (S5, not confirmed by code)
+- [ ] T3 After fixes: right-click a small file inside a cache folder → Add to Review. The tray and sheet say exactly what will go; an item that can't be added says why. (S1, S2)
+- [ ] T4 After fixes: add items, switch folders, add more, clean, Undo. Everything comes back and nothing extra is trashed. (S4–S6)
+- [ ] T5 After fixes: the Disk Analyzer size of `~` roughly matches Finder's Get Info. (L1, L2)
+
 ## Blockers
 
 - None.
@@ -111,8 +156,8 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 
 ## Follow-ups (not scheduled)
 
-- [ ] **Needs Kelvin:** review PR #33 (Phase 2) and the Phase 3 PR. No code-reviewer agent has run on either yet.
-- [ ] **Review note:** `DiskAnalyzerTable` re-implements the `DiskTableQuery` sort comparisons (drift risk). `onRunSmartScan` only calls `runScan()` and does not switch to the Smart Scan tab. `DiskBreadcrumb` hand-maps `/tmp`, `/var` and `/etc` to `/private/...`.
+- [x] **Needs Kelvin:** review PR #33 (Phase 2) and the Phase 3 PR. Done 2026-09-28; findings are in Wave 7.
+- [ ] **Review note:** ~~`DiskAnalyzerTable` re-implements the `DiskTableQuery` sort comparisons~~ (fixed in `388280f`). `onRunSmartScan` only calls `runScan()` and does not switch to the Smart Scan tab. `DiskBreadcrumb` hand-maps `/tmp`, `/var` and `/etc` to `/private/...`.
 - [ ] **Needs Kelvin:** Jev AI shadow-mode trial; see `docs/research/2026-09-27-jev-ai-evaluation.md`.
 - [ ] **Needs security review:** a "user-chosen file" policy in `ScanPolicy` so the Disk Analyzer can delete files the scan did not find.
 - [ ] **Needs discussion:** permanent delete (CleanMyMac deletes directly and skips the Trash). Pare's current rule is Trash-only, which is what makes undo possible. Options: keep Trash-only, or add an explicit "Empty Pare items from Trash" step after cleanup.
