@@ -16,6 +16,7 @@ final class DiskAnalyzerViewModel: ObservableObject {
     @Published private(set) var crumbs: [DiskBreadcrumb.Crumb] = []
     @Published private(set) var level: DiskLevelLoader.Level?
     @Published private(set) var isLoading = false
+    @Published private(set) var loadingProgress: DiskLevelLoader.Progress?
     @Published var errorMessage: String?
 
     @Published var search = ""
@@ -34,6 +35,7 @@ final class DiskAnalyzerViewModel: ObservableObject {
     private let findingsProvider: () -> [ScanFinding]
     private let levelLoader: DiskLevelLoader
     private var loadTask: Task<Void, Never>?
+    private var loadGeneration = UUID()
     private var cancellables: Set<AnyCancellable> = []
 
     // MARK: - Init
@@ -59,6 +61,9 @@ final class DiskAnalyzerViewModel: ObservableObject {
 
     var cleanupState: CleanupCoordinator.CleanupState { coordinator.state }
     var canUndo: Bool { coordinator.canUndo }
+    var cleanupIsBusy: Bool { coordinator.isCleaning || coordinator.isUndoing }
+    var cleanupSkippedReasons: [String] { coordinator.lastResult?.skipped.map(\.reason) ?? [] }
+    var transactionSaveError: String? { coordinator.transactionSaveError }
 
     /// Drives the single cleanup confirmation sheet (`.sheet(item:)`).
     var pendingCleanup: PendingCleanup? {
@@ -118,7 +123,7 @@ final class DiskAnalyzerViewModel: ObservableObject {
 
     /// Drills into `entry` when it is a real directory inside the current level.
     func open(_ entry: DiskEntry) {
-        guard entry.isDirectory, !entry.isRemainder,
+        guard entry.isDirectory,
               let breadcrumb, let next = breadcrumb.enter(entry.url) else { return }
         selection = []
         loadLevel(breadcrumb: next)
@@ -139,6 +144,7 @@ final class DiskAnalyzerViewModel: ObservableObject {
 
     func refresh() {
         guard let breadcrumb else { return }
+        selection = []
         Task {
             await levelLoader.invalidate(directory: breadcrumb.current)
             loadLevel(breadcrumb: breadcrumb)
@@ -157,7 +163,6 @@ final class DiskAnalyzerViewModel: ObservableObject {
 
     /// Whether/why `entry` may be added to the review tray, without mutating state.
     func reviewResolution(for entry: DiskEntry) -> DiskReviewResolution {
-        guard !entry.isRemainder else { return .notCandidate }
         return DiskReviewResolver.resolve(entryPath: entry.url.path, findings: findingsProvider())
     }
 
@@ -186,42 +191,73 @@ final class DiskAnalyzerViewModel: ObservableObject {
 
     /// Opens the confirmation sheet for the tray's contents.
     func requestReviewCleanup() {
+        guard !reviewFindingsByPath.isEmpty, !cleanupIsBusy else { return }
+        let latestByPath = Dictionary(findingsProvider().map { ($0.path, $0) }, uniquingKeysWith: { _, latest in latest })
+        reviewFindingsByPath = reviewFindingsByPath.compactMapValues { latestByPath[$0.path] }
         guard !reviewFindingsByPath.isEmpty else { return }
         coordinator.request(.selected)
     }
 
     /// Hands the coordinator exactly the tray's findings.
     func confirmReviewCleanup() {
-        coordinator.confirm(.selected, findings: reviewTrayFindings)
+        let latestByPath = Dictionary(findingsProvider().map { ($0.path, $0) }, uniquingKeysWith: { _, latest in latest })
+        let current = reviewTrayFindings.compactMap { latestByPath[$0.path] }
+            .filter { $0.riskLevel != .advanced }
+        reviewFindingsByPath = Dictionary(current.map { ($0.path, $0) }, uniquingKeysWith: { _, latest in latest })
+        guard !current.isEmpty else {
+            coordinator.cancelPending()
+            return
+        }
+        coordinator.confirm(.selected, findings: current)
     }
 
     // MARK: - Private
 
     private func merge(_ findings: [ScanFinding]) {
         for finding in findings {
+            if reviewFindingsByPath.keys.contains(where: { isAncestorOrSame($0, finding.path) }) {
+                continue
+            }
+            reviewFindingsByPath = reviewFindingsByPath.filter { !isAncestorOrSame(finding.path, $0.key) }
             reviewFindingsByPath[finding.path] = finding
         }
     }
 
+    private func isAncestorOrSame(_ ancestor: String, _ child: String) -> Bool {
+        let parent = URL(fileURLWithPath: ancestor).standardizedFileURL.pathComponents
+        let path = URL(fileURLWithPath: child).standardizedFileURL.pathComponents
+        return path.count >= parent.count && Array(path.prefix(parent.count)) == parent
+    }
+
     private func loadLevel(breadcrumb: DiskBreadcrumb) {
+        loadGeneration = UUID()
+        let generation = loadGeneration
         self.breadcrumb = breadcrumb
         rootURL = breadcrumb.root
         currentURL = breadcrumb.current
         crumbs = breadcrumb.crumbs
         isLoading = true
+        loadingProgress = nil
         errorMessage = nil
 
         loadTask?.cancel()
         loadTask = Task {
             do {
-                let level = try await levelLoader.load(directory: breadcrumb.current)
+                let level = try await levelLoader.load(directory: breadcrumb.current) { progress in
+                    Task { @MainActor in
+                        guard self.loadGeneration == generation else { return }
+                        self.loadingProgress = progress
+                    }
+                }
                 guard !Task.isCancelled else { return }
                 self.level = level
                 isLoading = false
+                loadingProgress = nil
             } catch is CancellationError {
                 // Superseded by a newer navigation; drop silently.
             } catch {
                 isLoading = false
+                loadingProgress = nil
                 errorMessage = "Could not read \(breadcrumb.current.path): \(error.localizedDescription)"
             }
         }
@@ -229,7 +265,11 @@ final class DiskAnalyzerViewModel: ObservableObject {
 
     /// Clears the tray and re-walks the current level so it reflects what cleanup just moved.
     private func handleCleanupCompleted() {
-        reviewFindingsByPath = [:]
+        selection = []
+        let succeededPaths = Set(coordinator.lastResult?.succeeded.map(\.originalPath) ?? [])
+        reviewFindingsByPath = reviewFindingsByPath.filter { !succeededPaths.contains($0.key) }
+        let latestPaths = Set(findingsProvider().map(\.path))
+        reviewFindingsByPath = reviewFindingsByPath.filter { latestPaths.contains($0.key) }
         guard let breadcrumb else { return }
         Task {
             await levelLoader.invalidateAll()

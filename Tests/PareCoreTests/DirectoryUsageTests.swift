@@ -70,5 +70,6 @@ final class DirectoryUsageTests: XCTestCase {
         XCTAssertEqual(usage.allocatedBytes, 0)
         XCTAssertEqual(usage.itemCount, 0)
         XCTAssertNil(usage.newestModification)
+        XCTAssertTrue(usage.isPartial)
     }
 }

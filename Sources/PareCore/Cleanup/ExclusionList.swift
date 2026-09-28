@@ -62,6 +62,16 @@ public struct ExclusionList: Codable, Sendable {
         entries.contains { $0.matches(path) }
     }
 
+    /// True when trashing `path` would also remove an excluded descendant.
+    public func blocksRemoval(of path: String) -> Bool {
+        entries.contains { entry in
+            if entry.matches(path) { return true }
+            let parent = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
+            let excluded = URL(fileURLWithPath: entry.path).standardizedFileURL.pathComponents
+            return excluded.count > parent.count && Array(excluded.prefix(parent.count)) == parent
+        }
+    }
+
     /// Adds an entry (no-op if an equivalent entry already exists).
     public mutating func add(_ entry: ExclusionEntry) {
         guard !entries.contains(where: { $0.path.lowercased() == entry.path.lowercased() && $0.matchType == entry.matchType }) else {

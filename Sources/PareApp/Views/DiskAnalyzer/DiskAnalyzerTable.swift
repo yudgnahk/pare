@@ -12,6 +12,7 @@ struct DiskAnalyzerTable: View {
     let onReveal: (DiskEntry) -> Void
     let onCopyPath: (DiskEntry) -> Void
     let onAddToReview: (DiskEntry) -> Void
+    let reviewResolution: (DiskEntry) -> DiskReviewResolution
 
     @Binding var selection: Set<String>
     @Binding var sortOrder: DiskSortDescriptor
@@ -28,7 +29,8 @@ struct DiskAnalyzerTable: View {
         onOpen: @escaping (DiskEntry) -> Void,
         onReveal: @escaping (DiskEntry) -> Void,
         onCopyPath: @escaping (DiskEntry) -> Void,
-        onAddToReview: @escaping (DiskEntry) -> Void
+        onAddToReview: @escaping (DiskEntry) -> Void,
+        reviewResolution: @escaping (DiskEntry) -> DiskReviewResolution
     ) {
         self.entries = entries
         self.levelTotalBytes = levelTotalBytes
@@ -39,6 +41,7 @@ struct DiskAnalyzerTable: View {
         self.onReveal = onReveal
         self.onCopyPath = onCopyPath
         self.onAddToReview = onAddToReview
+        self.reviewResolution = reviewResolution
         self._tableSortOrder = State(initialValue: [DiskColumnComparator(descriptor: sortOrder.wrappedValue)])
     }
 
@@ -69,14 +72,15 @@ struct DiskAnalyzerTable: View {
             contextMenuContent(for: ids)
         } primaryAction: { ids in
             guard let id = ids.first, let entry = entry(for: id) else { return }
-            onOpen(entry)
+            if entry.isDirectory { onOpen(entry) } else { onReveal(entry) }
         }
         .onChange(of: tableSortOrder) { newValue in
             guard let first = newValue.first else { return }
-            sortOrder = first.descriptor
+            if sortOrder != first.descriptor { sortOrder = first.descriptor }
         }
         .onChange(of: sortOrder) { newValue in
-            tableSortOrder = [DiskColumnComparator(descriptor: newValue)]
+            let next = [DiskColumnComparator(descriptor: newValue)]
+            if tableSortOrder != next { tableSortOrder = next }
         }
     }
 
@@ -84,13 +88,12 @@ struct DiskAnalyzerTable: View {
 
     private func nameCell(_ entry: DiskEntry) -> some View {
         HStack(spacing: 8) {
-            if !entry.isRemainder {
-                let style = kindStyle(entry.kind)
-                IconTile(symbol: style.symbol, swatch: style.swatch, size: 18)
-            }
+            let style = kindStyle(entry.kind)
+            IconTile(symbol: style.symbol, swatch: style.swatch, size: 18)
+                .accessibilityHidden(true)
             Text(entry.name)
                 .font(scale.rowTitle)
-                .foregroundStyle(entry.isRemainder ? AppTheme.textTertiary : AppTheme.textPrimary)
+                .foregroundStyle(AppTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .help(entry.name)
@@ -119,7 +122,7 @@ struct DiskAnalyzerTable: View {
     }
 
     private func itemsCell(_ entry: DiskEntry) -> some View {
-        Text(entry.isDirectory || entry.isRemainder ? "\(entry.itemCount)" : "—")
+        Text(entry.isDirectory ? "\(entry.itemCount)" : "—")
             .font(scale.rowMono)
             .foregroundStyle(AppTheme.textSecondary)
     }
@@ -140,14 +143,14 @@ struct DiskAnalyzerTable: View {
 
     @ViewBuilder
     private func contextMenuContent(for ids: Set<String>) -> some View {
-        let selected = ids.compactMap(entry(for:)).filter { !$0.isRemainder }
+        let selected = ids.compactMap(entry(for:))
         if selected.isEmpty {
             EmptyView()
         } else if let only = selected.first, selected.count == 1 {
             singleSelectionMenu(only)
         } else {
-            Button("Add to Review") {
-                selected.forEach(onAddToReview)
+            ForEach(selected, id: \.id) { entry in
+                reviewMenuItem(entry)
             }
         }
     }
@@ -160,7 +163,23 @@ struct DiskAnalyzerTable: View {
         Button("Reveal in Finder") { onReveal(entry) }
         Button("Copy Path") { onCopyPath(entry) }
         Divider()
-        Button("Add to Review") { onAddToReview(entry) }
+        reviewMenuItem(entry)
+    }
+
+    @ViewBuilder
+    private func reviewMenuItem(_ entry: DiskEntry) -> some View {
+        switch reviewResolution(entry) {
+        case .covered:
+            Button("Add to Review") { onAddToReview(entry) }
+        case .insideFinding(let finding):
+            Button("Add \(URL(fileURLWithPath: finding.path).lastPathComponent) to Review") {
+                onAddToReview(entry)
+            }
+        case .notCandidate:
+            Button("Not in Smart Scan") {}.disabled(true)
+        case .noScan:
+            Button("Run Smart Scan to Review") {}.disabled(true)
+        }
     }
 
     private func entry(for id: String) -> DiskEntry? {
@@ -187,10 +206,8 @@ struct DiskAnalyzerTable: View {
     }
 }
 
-/// Bridges the table header's tap-to-sort UI to `DiskSortDescriptor`. Reimplements
-/// `DiskTableQuery`'s field comparisons (its helpers are private) since `DiskEntry.modified`
-/// (`Date?`) isn't `Comparable`, which rules out a plain `KeyPathComparator`.
-private struct DiskColumnComparator: SortComparator {
+/// Bridges the table header's tap-to-sort UI to the query's shared ordering logic.
+private struct DiskColumnComparator: SortComparator, Equatable {
     var field: DiskSortField
     var order: SortOrder = .forward
 
@@ -206,6 +223,10 @@ private struct DiskColumnComparator: SortComparator {
 
     var descriptor: DiskSortDescriptor {
         DiskSortDescriptor(field: field, ascending: order == .forward)
+    }
+
+    static func == (lhs: DiskColumnComparator, rhs: DiskColumnComparator) -> Bool {
+        lhs.field == rhs.field && lhs.order == rhs.order
     }
 
     // Delegates to DiskTableQuery, which drives actual row order; this only feeds header sort-indicator state.
@@ -251,7 +272,6 @@ private enum DiskAnalyzerTablePreviewData {
             modified: Date(timeIntervalSince1970: 1_758_790_000),
             kind: .video
         ),
-        DiskEntry.remainder(count: 214, sizeBytes: 40_000_000, in: URL(fileURLWithPath: "/Users/k"))
     ]
 
     static func style(for kind: DiskKind) -> (symbol: String, swatch: ThemeSwatch) {
@@ -281,7 +301,8 @@ struct DiskAnalyzerTable_Previews: PreviewProvider {
             onOpen: { _ in },
             onReveal: { _ in },
             onCopyPath: { _ in },
-            onAddToReview: { _ in }
+            onAddToReview: { _ in },
+            reviewResolution: { _ in .noScan }
         )
         .frame(width: 700, height: 300)
         .background(AppTheme.base)

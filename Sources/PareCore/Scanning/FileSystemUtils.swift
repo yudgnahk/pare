@@ -5,11 +5,13 @@ public struct DirectoryUsage: Sendable {
     public let allocatedBytes: Int64
     public let itemCount: Int
     public let newestModification: Date?
+    public let isPartial: Bool
 
-    public init(allocatedBytes: Int64, itemCount: Int, newestModification: Date?) {
+    public init(allocatedBytes: Int64, itemCount: Int, newestModification: Date?, isPartial: Bool = false) {
         self.allocatedBytes = allocatedBytes
         self.itemCount = itemCount
         self.newestModification = newestModification
+        self.isPartial = isPartial
     }
 }
 
@@ -38,48 +40,33 @@ public enum FileSystemUtils {
     }
 
     /// Entries between cooperative `Task.isCancelled` checks while sizing a directory.
-    private static let cancellationCheckInterval = 256
+    private static let cancellationCheckInterval = 1
 
     public static func directorySize(url: URL) -> Int64 {
-        let fm = FileManager.default
-        guard let enumerator = fm.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
-        var total: Int64 = 0
-        var checkedCount = 0
-        for case let fileURL as URL in enumerator {
-            // Cooperative cancellation: this walk is synchronous, so check
-            // `Task.isCancelled` periodically to let an aborted scan bail out
-            // instead of finishing a potentially huge tree.
-            checkedCount += 1
-            if checkedCount % cancellationCheckInterval == 0, Task.isCancelled {
-                break
-            }
-            if let vals = try? fileURL.resourceValues(
-                forKeys: [.totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey]
-            ),
-               vals.isRegularFile == true {
-                total += allocatedBytes(from: vals)
-            }
-        }
-        return total
+        measureDirectory(url: url, includeModificationDates: false).allocatedBytes
     }
 
     /// Allocated bytes, regular-file count and newest modification, in one enumerator pass
     /// (avoids walking large trees twice for the Disk Analyzer's size + item-count + date columns).
     public static func directoryUsage(url: URL) -> DirectoryUsage {
+        measureDirectory(url: url, includeModificationDates: true)
+    }
+
+    private static func measureDirectory(url: URL, includeModificationDates: Bool) -> DirectoryUsage {
         let fm = FileManager.default
-        let keys: [URLResourceKey] = [
-            .totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey, .contentModificationDateKey,
-        ]
+        var keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey]
+        if includeModificationDates { keys.append(.contentModificationDateKey) }
+        var isPartial = false
         guard let enumerator = fm.enumerator(
             at: url,
             includingPropertiesForKeys: keys,
-            options: [.skipsHiddenFiles]
+            options: [],
+            errorHandler: { _, _ in
+                isPartial = true
+                return true
+            }
         ) else {
-            return DirectoryUsage(allocatedBytes: 0, itemCount: 0, newestModification: nil)
+            return DirectoryUsage(allocatedBytes: 0, itemCount: 0, newestModification: nil, isPartial: true)
         }
         var total: Int64 = 0
         var itemCount = 0
@@ -90,16 +77,27 @@ public enum FileSystemUtils {
             if checkedCount % cancellationCheckInterval == 0, Task.isCancelled {
                 break
             }
-            guard let vals = try? fileURL.resourceValues(forKeys: Set(keys)), vals.isRegularFile == true else {
+            guard let vals = try? fileURL.resourceValues(forKeys: Set(keys)) else {
+                isPartial = true
+                continue
+            }
+            guard vals.isRegularFile == true else {
                 continue
             }
             total += allocatedBytes(from: vals)
             itemCount += 1
-            if let modified = vals.contentModificationDate, modified > (newest ?? .distantPast) {
+            if includeModificationDates,
+               let modified = vals.contentModificationDate,
+               modified > (newest ?? .distantPast) {
                 newest = modified
             }
         }
-        return DirectoryUsage(allocatedBytes: total, itemCount: itemCount, newestModification: newest)
+        return DirectoryUsage(
+            allocatedBytes: total,
+            itemCount: itemCount,
+            newestModification: newest,
+            isPartial: isPartial || Task.isCancelled
+        )
     }
 
     /// Bytes actually allocated on disk for a file.

@@ -110,7 +110,7 @@ struct DiskAnalyzerView: View {
 
     private func levelSummary(_ level: DiskLevelLoader.Level) -> String {
         let itemWord = level.totalItemCount == 1 ? "item" : "items"
-        return "\(viewModel.formattedBytes(level.totalBytes)) \u{00B7} \(level.totalItemCount) \(itemWord)"
+        return "\(level.hasPartialSize ? "At least " : "")\(viewModel.formattedBytes(level.totalBytes)) \u{00B7} \(level.totalItemCount) \(itemWord)"
     }
 
     // MARK: Error
@@ -142,10 +142,34 @@ struct DiskAnalyzerView: View {
             StatusBanner(kind: .progress, title: "Moving files to Trash…")
 
         case .done(let bytesFreed, let skippedCount):
+            let skippedReasons = viewModel.cleanupSkippedReasons
+            let shownReasons = skippedReasons.prefix(3).joined(separator: "\n")
+            let omittedReasonCount = max(0, skippedCount - min(skippedCount, skippedReasons.prefix(3).count))
+            let skipDetails = [
+                shownReasons.isEmpty ? nil : shownReasons,
+                omittedReasonCount > 0 ? "and \(omittedReasonCount) more skipped item\(omittedReasonCount == 1 ? "" : "s")" : nil
+            ].compactMap { $0 }.joined(separator: "\n")
+            let saveWarning = viewModel.transactionSaveError.map { "Undo record warning: \($0)" }
+            let details = [skipDetails.isEmpty ? nil : skipDetails, saveWarning].compactMap { $0 }.joined(separator: "\n")
+            let resultTitle: String = {
+                if saveWarning != nil {
+                    return bytesFreed > 0
+                        ? "Cleaned \(viewModel.formattedBytes(bytesFreed)); undo record failed"
+                        : "Cleanup finished, but its undo record failed"
+                }
+                if bytesFreed == 0 && skippedCount > 0 {
+                    return "No items cleaned · \(skippedCount) skipped"
+                }
+                if skippedCount > 0 {
+                    return "Cleaned \(viewModel.formattedBytes(bytesFreed)) · \(skippedCount) skipped"
+                }
+                return "Cleaned \(viewModel.formattedBytes(bytesFreed))"
+            }()
             StatusBanner(
-                kind: .success,
-                title: "Cleaned \(viewModel.formattedBytes(bytesFreed))",
-                detail: skippedCount > 0 ? "\(skippedCount) items skipped (policy check)." : nil,
+                kind: saveWarning != nil || (bytesFreed == 0 && skippedCount > 0) ? .error :
+                    skippedCount > 0 ? .warning : .success,
+                title: resultTitle,
+                detail: details.isEmpty ? nil : details,
                 onDismiss: { viewModel.dismissCleanupResult() }
             ) {
                 if viewModel.canUndo {
@@ -181,7 +205,7 @@ struct DiskAnalyzerView: View {
             Spacer()
             ProgressView()
                 .scaleEffect(1.2)
-            Text("Analyzing disk usage…")
+            Text(viewModel.loadingProgress.map { "Analyzing disk usage… \($0.scanned) of \($0.total)" } ?? "Analyzing disk usage…")
                 .font(scale.font(14, weight: .medium))
                 .foregroundStyle(AppTheme.textSecondary)
             Spacer()
@@ -236,9 +260,12 @@ struct DiskAnalyzerView: View {
                     count: viewModel.reviewTrayCount,
                     totalBytes: viewModel.reviewTrayTotalBytes,
                     reviewRiskCount: viewModel.reviewTrayReviewRiskCount,
+                    findings: viewModel.reviewTrayFindings,
                     formatBytes: viewModel.formattedBytes,
                     onClear: { viewModel.clearReview() },
-                    onReviewAndClean: { viewModel.requestReviewCleanup() }
+                    onReviewAndClean: { viewModel.requestReviewCleanup() },
+                    onRemove: { viewModel.removeFromReview(path: $0.path) },
+                    isCleaning: viewModel.cleanupIsBusy
                 )
             }
         }
@@ -266,7 +293,8 @@ struct DiskAnalyzerView: View {
                 onOpen: { viewModel.open($0) },
                 onReveal: { viewModel.revealInFinder($0.url) },
                 onCopyPath: copyPath,
-                onAddToReview: { viewModel.addToReview($0) }
+                onAddToReview: { viewModel.addToReview($0) },
+                reviewResolution: { viewModel.reviewResolution(for: $0) }
             )
         }
     }
@@ -303,6 +331,7 @@ struct DiskAnalyzerView: View {
             count: viewModel.reviewTrayCount,
             totalBytes: viewModel.reviewTrayTotalBytes,
             reviewRiskCount: viewModel.reviewTrayReviewRiskCount,
+            paths: viewModel.reviewTrayFindings.map(\.path),
             formatBytes: viewModel.formattedBytes
         )
     }

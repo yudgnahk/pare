@@ -192,6 +192,46 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: dir.path))
     }
 
+    func testExcludedDescendantBlocksTrashOfItsParentFinding() async throws {
+        let parent = try makeDirectory(at: root.appending(path: "Library/Caches/parent-cache"))
+        let protected = parent.appending(path: "payload.bin")
+        let engine = CleanupEngine(
+            store: CleanupTransactionStore(directory: storeDir),
+            exclusionsProvider: { ExclusionList(entries: [ExclusionEntry(path: protected.path, matchType: .exact)]) }
+        )
+
+        let result = try await engine.clean(
+            findings: [finding(for: parent, category: .userCaches)],
+            profileName: "test"
+        )
+
+        XCTAssertTrue(result.succeeded.isEmpty)
+        XCTAssertEqual(result.skipped.first?.error.localizedDescription.contains("Excluded"), true)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: protected.path))
+    }
+
+    func testSymlinkInFindingPathBlocksTrash() async throws {
+        let target = try makeDirectory(at: root.appending(path: "Library/Caches/real-cache"))
+        let alias = root.appending(path: "Library/Caches/alias-cache")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: target)
+        let engine = CleanupEngine(
+            store: CleanupTransactionStore(directory: storeDir),
+            exclusionsProvider: { .empty }
+        )
+
+        let result = try await engine.clean(
+            findings: [finding(for: alias.appending(path: "payload.bin"), category: .userCaches)],
+            profileName: "test"
+        )
+
+        XCTAssertTrue(result.succeeded.isEmpty)
+        guard case .some(.symbolicLinkBlocked(_)) = result.skipped.first?.error else {
+            return XCTFail("expected symlink path to be blocked")
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: alias.path))
+    }
+
     // MARK: - R0.4: durable undo record
 
     /// If the undo record cannot be persisted, the engine must abort BEFORE

@@ -2,8 +2,7 @@ import Foundation
 import PareCore
 
 /// Loads one Disk Analyzer directory level off the main actor: sizes children with
-/// `FileSystemUtils.directoryUsage`, reports progress, caps the visible rows to 200 plus a
-/// folded remainder, and caches completed levels by standardized path for back/forward.
+/// `FileSystemUtils.directoryUsage`, reports progress, and caches completed levels for back/forward.
 final class DiskLevelLoader: Sendable {
 
     struct Level: Sendable {
@@ -11,14 +10,13 @@ final class DiskLevelLoader: Sendable {
         let entries: [DiskEntry]
         let totalBytes: Int64
         let totalItemCount: Int
+        let hasPartialSize: Bool
     }
 
     struct Progress: Sendable {
         let scanned: Int
         let total: Int
     }
-
-    static let maxVisibleEntries = 200
 
     private let cache = DiskLevelCache()
 
@@ -32,6 +30,7 @@ final class DiskLevelLoader: Sendable {
             return cached
         }
         let level = try Self.buildLevel(directory: directory, onProgress: onProgress)
+        try Task.checkCancellation()
         await cache.store(level, for: key)
         return level
     }
@@ -46,7 +45,7 @@ final class DiskLevelLoader: Sendable {
     }
 
     private static let resourceKeys: Set<URLResourceKey> = [
-        .isDirectoryKey, .isPackageKey, .contentModificationDateKey,
+        .isDirectoryKey, .isPackageKey, .contentModificationDateKey, .creationDateKey,
         .totalFileAllocatedSizeKey, .fileSizeKey,
     ]
 
@@ -57,7 +56,7 @@ final class DiskLevelLoader: Sendable {
         let children = try FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: Array(resourceKeys),
-            options: [.skipsHiddenFiles]
+            options: []
         )
 
         var entries: [DiskEntry] = []
@@ -65,30 +64,19 @@ final class DiskLevelLoader: Sendable {
         for (index, childURL) in children.enumerated() {
             if Task.isCancelled { throw CancellationError() }
             entries.append(makeEntry(url: childURL))
+            if Task.isCancelled { throw CancellationError() }
             onProgress?(Progress(scanned: index + 1, total: children.count))
         }
 
-        // Largest first, so the 200-row cap keeps the entries that matter most.
-        entries.sort { $0.sizeBytes > $1.sizeBytes }
+        entries.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         let totalBytes = entries.reduce(into: Int64(0)) { $0 += $1.sizeBytes }
         let totalItemCount = entries.reduce(into: 0) { $0 += $1.itemCount }
-
-        guard entries.count > maxVisibleEntries else {
-            return Level(directory: directory, entries: entries, totalBytes: totalBytes, totalItemCount: totalItemCount)
-        }
-
-        let visible = Array(entries.prefix(maxVisibleEntries))
-        let folded = entries[maxVisibleEntries...]
-        let remainder = DiskEntry.remainder(
-            count: folded.count,
-            sizeBytes: folded.reduce(into: Int64(0)) { $0 += $1.sizeBytes },
-            in: directory
-        )
         return Level(
             directory: directory,
-            entries: visible + [remainder],
+            entries: entries,
             totalBytes: totalBytes,
-            totalItemCount: totalItemCount
+            totalItemCount: totalItemCount,
+            hasPartialSize: entries.contains(where: \.hasPartialSize)
         )
     }
 
@@ -97,6 +85,7 @@ final class DiskLevelLoader: Sendable {
         let isDirectory = values?.isDirectory ?? false
         let isPackage = values?.isPackage ?? false
         let ownModified = values?.contentModificationDate
+        let creationDate = values?.creationDate
 
         guard isDirectory else {
             return DiskEntry(
@@ -108,7 +97,9 @@ final class DiskLevelLoader: Sendable {
                 sizeBytes: FileSystemUtils.fileSize(url: url),
                 itemCount: 1,
                 modified: ownModified,
-                kind: DiskKind(isDirectory: false, isPackage: false, pathExtension: url.pathExtension)
+                kind: DiskKind(isDirectory: false, isPackage: false, pathExtension: url.pathExtension),
+                creationDate: creationDate,
+                hasPartialSize: values == nil
             )
         }
 
@@ -124,7 +115,9 @@ final class DiskLevelLoader: Sendable {
             sizeBytes: usage.allocatedBytes,
             itemCount: usage.itemCount,
             modified: usage.newestModification ?? ownModified,
-            kind: DiskKind(isDirectory: true, isPackage: isPackage, pathExtension: url.pathExtension)
+            kind: DiskKind(isDirectory: true, isPackage: isPackage, pathExtension: url.pathExtension),
+            creationDate: creationDate,
+            hasPartialSize: usage.isPartial || values == nil
         )
     }
 }
@@ -132,10 +125,33 @@ final class DiskLevelLoader: Sendable {
 /// Actor-isolated storage backing `DiskLevelLoader`'s path cache — the only mutable state, so
 /// the loader class itself stays a plain `Sendable` value holder.
 private actor DiskLevelCache {
+    private let capacity = 8
     private var storage: [String: DiskLevelLoader.Level] = [:]
+    private var recency: [String] = []
 
-    func value(for key: String) -> DiskLevelLoader.Level? { storage[key] }
-    func store(_ level: DiskLevelLoader.Level, for key: String) { storage[key] = level }
-    func remove(_ key: String) { storage.removeValue(forKey: key) }
-    func removeAll() { storage.removeAll() }
+    func value(for key: String) -> DiskLevelLoader.Level? {
+        guard let level = storage[key] else { return nil }
+        recency.removeAll { $0 == key }
+        recency.append(key)
+        return level
+    }
+
+    func store(_ level: DiskLevelLoader.Level, for key: String) {
+        storage[key] = level
+        recency.removeAll { $0 == key }
+        recency.append(key)
+        while recency.count > capacity {
+            storage.removeValue(forKey: recency.removeFirst())
+        }
+    }
+
+    func remove(_ key: String) {
+        storage.removeValue(forKey: key)
+        recency.removeAll { $0 == key }
+    }
+
+    func removeAll() {
+        storage.removeAll()
+        recency.removeAll()
+    }
 }

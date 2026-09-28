@@ -26,18 +26,29 @@ enum DiskReviewResolver {
         let candidates = findings.filter { $0.riskLevel != .advanced }
 
         let covering = candidates.filter { finding in
-            ScanPolicy.isEqualToOrDescendant(candidate: URL(fileURLWithPath: finding.path), root: entryURL)
+            contains(entryURL.path, root: finding.path)
         }
         if !covering.isEmpty {
             return .covered(covering)
         }
 
-        if let container = candidates.first(where: { finding in
-            ScanPolicy.isEqualToOrDescendant(candidate: entryURL, root: URL(fileURLWithPath: finding.path))
-        }) {
+        if let container = candidates
+            .filter({ contains(entryPath, root: $0.path) })
+            .max(by: { componentCount($0.path) < componentCount($1.path) }) {
             return .insideFinding(container)
         }
 
         return .notCandidate
+    }
+
+    private static func contains(_ candidate: String, root: String) -> Bool {
+        let candidateParts = URL(fileURLWithPath: candidate).standardizedFileURL.pathComponents
+        let rootParts = URL(fileURLWithPath: root).standardizedFileURL.pathComponents
+        return candidateParts.count >= rootParts.count
+            && Array(candidateParts.prefix(rootParts.count)) == rootParts
+    }
+
+    private static func componentCount(_ path: String) -> Int {
+        URL(fileURLWithPath: path).standardizedFileURL.pathComponents.count
     }
 }

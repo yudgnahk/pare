@@ -7,31 +7,63 @@ struct DiskReviewTray: View {
     let count: Int
     let totalBytes: Int64
     let reviewRiskCount: Int
+    let findings: [ScanFinding]
     let formatBytes: (Int64) -> String
     let onClear: () -> Void
     let onReviewAndClean: () -> Void
+    var onRemove: (ScanFinding) -> Void = { _ in }
+    var isCleaning = false
 
     @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
-        HStack(spacing: AppTheme.Spacing.md) {
-            Image(systemName: "tray.full.fill")
-                .font(scale.font(14, weight: .semibold))
-                .foregroundStyle(AppTheme.accent)
+        VStack(spacing: 6) {
+            if !findings.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(findings, id: \.path) { finding in
+                            HStack(spacing: 6) {
+                                Text(URL(fileURLWithPath: finding.path).lastPathComponent)
+                                    .font(scale.font(11, weight: .medium))
+                                    .lineLimit(1)
+                                    .help(finding.path)
+                                Button { onRemove(finding) } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(scale.font(11))
+                                        .foregroundStyle(AppTheme.textTertiary)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isCleaning)
+                                .help("Remove from Review")
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(AppTheme.Fill.subtle, in: Capsule())
+                        }
+                    }
+                }
+            }
 
-            Text(summary)
-                .font(scale.caption)
-                .foregroundStyle(AppTheme.textSecondary)
+            HStack(spacing: AppTheme.Spacing.md) {
+                Image(systemName: "tray.full.fill")
+                    .font(scale.font(14, weight: .semibold))
+                    .foregroundStyle(AppTheme.accent)
 
-            Spacer(minLength: AppTheme.Spacing.sm)
+                Text(summary)
+                    .font(scale.caption)
+                    .foregroundStyle(AppTheme.textSecondary)
 
-            SecondaryActionButton(title: "Clear", systemImage: "xmark", action: onClear)
-            SecondaryActionButton(
-                title: "Review & Clean",
-                systemImage: "checkmark.circle.fill",
-                role: reviewRiskCount > 0 ? .destructive : .accent,
-                action: onReviewAndClean
-            )
+                Spacer(minLength: AppTheme.Spacing.sm)
+
+                SecondaryActionButton(title: "Clear", systemImage: "xmark", isEnabled: !isCleaning, action: onClear)
+                SecondaryActionButton(
+                    title: "Review & Clean",
+                    systemImage: "checkmark.circle.fill",
+                    role: reviewRiskCount > 0 ? .destructive : .accent,
+                    isEnabled: !isCleaning,
+                    action: onReviewAndClean
+                )
+            }
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .padding(.vertical, AppTheme.Spacing.sm)
@@ -57,6 +89,7 @@ enum DiskReviewTrayConfirmation {
         count: Int,
         totalBytes: Int64,
         reviewRiskCount: Int,
+        paths: [String],
         formatBytes: (Int64) -> String
     ) -> CleanConfirmationSheet.Config {
         let itemWord = count == 1 ? "item" : "items"
@@ -82,6 +115,16 @@ enum DiskReviewTrayConfirmation {
                 )
             )
         }
+        if paths.isEmpty {
+            infoLines.append(.init(icon: "exclamationmark.triangle", color: AppTheme.warning, text: "The selected findings are no longer in the latest Smart Scan and will not be cleaned."))
+        }
+        infoLines.append(contentsOf: paths.sorted().map { path in
+            .init(
+                icon: "doc.text",
+                color: AppTheme.textSecondary,
+                text: path
+            )
+        })
 
         return CleanConfirmationSheet.Config(
             title: "Review & Clean",
@@ -105,6 +148,7 @@ struct DiskReviewTray_Previews: PreviewProvider {
                 count: 3,
                 totalBytes: 1_200_000_000,
                 reviewRiskCount: 0,
+                findings: [],
                 formatBytes: { "\($0 / 1_000_000) MB" },
                 onClear: {},
                 onReviewAndClean: {}
@@ -116,6 +160,7 @@ struct DiskReviewTray_Previews: PreviewProvider {
                 count: 5,
                 totalBytes: 2_400_000_000,
                 reviewRiskCount: 2,
+                findings: [],
                 formatBytes: { "\($0 / 1_000_000) MB" },
                 onClear: {},
                 onReviewAndClean: {}

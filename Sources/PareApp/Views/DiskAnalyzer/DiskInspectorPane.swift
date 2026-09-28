@@ -80,7 +80,10 @@ struct DiskInspectorPane: View {
             detailRow("Items", entry.isDirectory ? "\(entry.itemCount)" : "1")
             detailRow("Kind", kindLabel(entry))
             detailRow("Modified", formattedDate(entry.modified))
-            detailRow("Created", formattedDate(creationDate(for: entry.url)))
+            detailRow("Created", formattedDate(entry.creationDate))
+            if entry.hasPartialSize {
+                reasonText("Some items could not be read. The size shown is partial.")
+            }
             detailRow("Location", entry.url.deletingLastPathComponent().path, wraps: true)
         }
     }
@@ -108,11 +111,6 @@ struct DiskInspectorPane: View {
     private func formattedDate(_ date: Date?) -> String {
         guard let date else { return "—" }
         return date.formatted(date: .abbreviated, time: .omitted)
-    }
-
-    /// `DiskEntry` doesn't carry a creation date; read it on demand from the (already-resolved) URL.
-    private func creationDate(for url: URL) -> Date? {
-        try? url.resourceValues(forKeys: [.creationDateKey]).creationDate
     }
 
     // MARK: - Actions

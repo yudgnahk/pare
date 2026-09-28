@@ -29,6 +29,8 @@ final class CleanupCoordinator: ObservableObject {
     /// Non-nil drives the confirmation sheet (`.sheet(item:)`).
     @Published var pending: PendingCleanup?
     @Published private(set) var state: CleanupState = .idle
+    @Published private(set) var transactionSaveError: String?
+    @Published private(set) var lastResult: CleanupResult?
 
     /// Called after a cleanup or undo completes so the owner can rescan.
     var onCleanupCompleted: (() -> Void)?
@@ -60,6 +62,7 @@ final class CleanupCoordinator: ObservableObject {
     // MARK: - Lifecycle
 
     func request(_ kind: PendingCleanup) {
+        guard !isCleaning, !isUndoing else { return }
         pending = kind
         state = .confirming
     }
@@ -73,8 +76,11 @@ final class CleanupCoordinator: ObservableObject {
 
     /// Runs the pending cleanup with the findings the owner resolved for it.
     func confirm(_ kind: PendingCleanup, findings: [ScanFinding]) {
+        guard !isCleaning, !isUndoing else { return }
         pending = nil
         state = .cleaning
+        lastResult = nil
+        transactionSaveError = nil
 
         Task(priority: .userInitiated) {
             do {
@@ -92,6 +98,8 @@ final class CleanupCoordinator: ObservableObject {
                     result = try await engine.clean(findings: findings, profileName: "all")
                 }
                 lastTransaction = result.transaction
+                lastResult = result
+                transactionSaveError = result.transactionSaveError
                 state = .done(
                     bytesFreed: result.totalBytesFreed,
                     skippedCount: result.skipped.count
@@ -105,7 +113,7 @@ final class CleanupCoordinator: ObservableObject {
     }
 
     func undoLastCleanup() {
-        guard let tx = lastTransaction, !tx.isDryRun else { return }
+        guard !isCleaning, !isUndoing, let tx = lastTransaction, !tx.isDryRun else { return }
         state = .undoing
 
         Task(priority: .userInitiated) {

@@ -8,8 +8,7 @@ final class DiskTableQueryTests: XCTestCase {
         size: Int64 = 0,
         items: Int = 0,
         modified: Date? = nil,
-        kind: DiskKind = .other,
-        isRemainder: Bool = false
+        kind: DiskKind = .other
     ) -> DiskEntry {
         DiskEntry(
             id: "/root/\(name)",
@@ -20,8 +19,7 @@ final class DiskTableQueryTests: XCTestCase {
             sizeBytes: size,
             itemCount: items,
             modified: modified,
-            kind: kind,
-            isRemainder: isRemainder
+            kind: kind
         )
     }
 
@@ -106,18 +104,19 @@ final class DiskTableQueryTests: XCTestCase {
         XCTAssertEqual(result.map(\.name), ["undated", "dated"])
     }
 
-    // MARK: - Remainder row
-
-    func testRemainderRowIsAlwaysLastAndIgnoresFilters() {
+    func testSearchFindsDecomposedUnicodeNameAndCombinedFilters() {
         let entries = [
-            entry("Zeta", size: 1),
-            DiskEntry.remainder(count: 42, sizeBytes: 99, in: URL(fileURLWithPath: "/root")),
+            entry("Cafe\u{301} Archive", size: 200_000_000, kind: .archive),
+            entry("Cafe\u{301} Photo", size: 500_000, kind: .image),
+            entry("Plain Archive", size: 250_000_000, kind: .archive),
         ]
         let result = DiskTableQuery.apply(
-            entries: entries, search: "nomatch", kind: .image, sizeFloor: .oneGB,
+            entries: entries,
+            search: "café archive",
+            kind: .archive,
+            sizeFloor: .oneHundredMB,
             sortOrder: .nameAscending
         )
-        XCTAssertEqual(result.count, 1)
-        XCTAssertTrue(result[0].isRemainder)
+        XCTAssertEqual(result.map(\.name), ["Cafe\u{301} Archive"])
     }
 }

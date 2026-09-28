@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 // MARK: - CleanupError
 
@@ -21,6 +22,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case undoRecordUnavailable(String)
     /// The file does not exist on disk when cleanup is attempted.
     case fileNotFound(String)
+    /// The scanned path became a symbolic link before cleanup.
+    case symbolicLinkBlocked(String)
     /// The Trash move failed with an underlying system error.
     case trashFailed(String, Error)
     /// Undo failed — the associated value describes what went wrong.
@@ -46,6 +49,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "Could not persist undo record — cleanup aborted (\(detail))"
         case .fileNotFound(let path):
             return "File not found: \(path)"
+        case .symbolicLinkBlocked(let path):
+            return "Symbolic link changed after scan; cleanup blocked: \(path)"
         case .trashFailed(let path, let error):
             return "Failed to move to Trash: \(path) — \(error.localizedDescription)"
         case .restoreFailed(let reason):
@@ -236,7 +241,7 @@ public actor CleanupEngine {
             let url = URL(fileURLWithPath: finding.path)
 
             // User exclusions always win — even if the finding predates the exclusion.
-            if exclusions.isExcluded(finding.path) {
+            if exclusions.blocksRemoval(of: finding.path) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .excludedByUser(finding.path)))
                 continue
             }
@@ -274,6 +279,10 @@ public actor CleanupEngine {
             // Verify the file still exists.
             guard FileManager.default.fileExists(atPath: finding.path) else {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .fileNotFound(finding.path)))
+                continue
+            }
+            if Self.hasSymbolicLinkComponent(atPath: finding.path) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .symbolicLinkBlocked(finding.path)))
                 continue
             }
 
@@ -315,6 +324,10 @@ public actor CleanupEngine {
             } else {
                 var trashURL: NSURL?
                 do {
+                    guard !Self.hasSymbolicLinkComponent(atPath: finding.path) else {
+                        skipped.append(CleanupSkippedItem(path: finding.path, error: .symbolicLinkBlocked(finding.path)))
+                        continue
+                    }
                     try FileManager.default.trashItem(at: url, resultingItemURL: &trashURL)
                     succeeded.append(CleanupItem(
                         originalPath: finding.path,
@@ -457,5 +470,21 @@ public actor CleanupEngine {
     private func isPersonaPath(_ url: URL) -> Bool {
         if ScanPolicy.isDockerNeverDeletePath(url) { return false }
         return ScanPolicy.matchesPersonaPath(url, allowedMarkers: Self.allPersonaMarkers)
+    }
+
+    private static func isSymbolicLink(atPath path: String) -> Bool {
+        var metadata = stat()
+        return lstat(path, &metadata) == 0 && (metadata.st_mode & S_IFMT) == S_IFLNK
+    }
+
+    private static func hasSymbolicLinkComponent(atPath path: String) -> Bool {
+        var current = ""
+        for component in URL(fileURLWithPath: path).standardizedFileURL.pathComponents {
+            current = current.isEmpty
+                ? component
+                : URL(fileURLWithPath: current).appendingPathComponent(component).path
+            if isSymbolicLink(atPath: current) { return true }
+        }
+        return false
     }
 }

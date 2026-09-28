@@ -123,6 +123,86 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
         XCTAssertEqual(vm.reviewTrayTotalBytes, 300)
     }
 
+    func testReviewTrayDropsNestedFindingsAndKeepsParentTotal() {
+        let parent = makeFinding(path: "/Users/k/Library/Caches/App", sizeBytes: 500)
+        let child = makeFinding(path: "/Users/k/Library/Caches/App/nested", sizeBytes: 100)
+        let vm = makeViewModel(findings: [child, parent])
+        let entry = DiskEntry(
+            id: "/Users/k/Library/Caches/App",
+            url: URL(fileURLWithPath: "/Users/k/Library/Caches/App"),
+            name: "App",
+            isDirectory: true,
+            isPackage: false,
+            sizeBytes: 600,
+            itemCount: 2,
+            modified: nil,
+            kind: .folder
+        )
+
+        vm.addToReview(entry)
+
+        XCTAssertEqual(vm.reviewTrayCount, 1)
+        XCTAssertEqual(vm.reviewTrayFindings.first?.path, parent.path)
+        XCTAssertEqual(vm.reviewTrayTotalBytes, parent.sizeBytes)
+    }
+
+    func testRefreshClearsSelection() {
+        let vm = makeViewModel()
+        vm.selection = ["/Users/k/Library/Caches/a"]
+        vm.open(root: tempRoot)
+        vm.selection = ["/Users/k/Library/Caches/a"]
+
+        vm.refresh()
+
+        XCTAssertTrue(vm.selection.isEmpty)
+    }
+
+    func testRapidNavigationKeepsMostRecentDirectory() async throws {
+        let first = tempRoot.appending(path: "first")
+        let last = tempRoot.appending(path: "last")
+        try FileManager.default.createDirectory(at: first, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: last, withIntermediateDirectories: true)
+        for index in 0..<250 {
+            try Data([0]).write(to: first.appending(path: "stale-\(index).txt"))
+        }
+        try Data([0]).write(to: last.appending(path: "current.txt"))
+
+        let vm = makeViewModel()
+        vm.open(root: first)
+        vm.open(root: last)
+        await waitUntilLoaded(vm)
+
+        XCTAssertEqual(vm.currentURL?.standardizedFileURL, last.standardizedFileURL)
+        XCTAssertEqual(vm.visibleEntries.map(\.name), ["current.txt"])
+    }
+
+    func testConfirmDropsTrayItemsMissingFromLatestScan() {
+        let path = "/Users/k/Library/Caches/stale"
+        let finding = makeFinding(path: path)
+        var latestFindings = [finding]
+        let coordinator = CleanupCoordinator(engine: CleanupEngine())
+        let vm = DiskAnalyzerViewModel(findingsProvider: { latestFindings }, coordinator: coordinator)
+        let entry = DiskEntry(
+            id: path,
+            url: URL(fileURLWithPath: path),
+            name: "stale",
+            isDirectory: true,
+            isPackage: false,
+            sizeBytes: finding.sizeBytes,
+            itemCount: 1,
+            modified: nil,
+            kind: .folder
+        )
+        vm.addToReview(entry)
+        vm.requestReviewCleanup()
+        latestFindings = []
+
+        vm.confirmReviewCleanup()
+
+        XCTAssertEqual(vm.cleanupState, .idle)
+        XCTAssertEqual(vm.reviewTrayCount, 0)
+    }
+
     // MARK: - .notCandidate and .noScan never add
 
     func testNotCandidateAndNoScanNeverAddToTray() {
@@ -176,12 +256,18 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
     func testConfirmHandsCoordinatorTheTrayFindings() async throws {
         let storeDir = FileManager.default.temporaryDirectory
             .appending(path: "DiskAnalyzerViewModelTests-store-\(UUID().uuidString)")
-        let tempFile = tempRoot.appending(path: "trashable.bin")
+        let fixtureDirectory = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Caches/Pare-DiskAnalyzerViewModelTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
+        let tempFile = fixtureDirectory.appending(path: "trashable.bin")
         try Data("test".utf8).write(to: tempFile)
-        defer { try? FileManager.default.removeItem(at: storeDir) }
+        defer {
+            try? FileManager.default.removeItem(at: storeDir)
+            try? FileManager.default.removeItem(at: fixtureDirectory)
+        }
 
         let store = CleanupTransactionStore(directory: storeDir)
-        let engine = CleanupEngine(store: store, exclusionsProvider: { .empty })
+        let engine = CleanupEngine(store: store, exclusionsProvider: { .empty }, now: { .distantFuture })
         let coordinator = CleanupCoordinator(engine: engine)
         let finding = makeFinding(path: tempFile.path, sizeBytes: 4)
         let vm = makeViewModel(findings: [finding], coordinator: coordinator)

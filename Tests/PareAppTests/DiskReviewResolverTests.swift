@@ -61,6 +61,30 @@ final class DiskReviewResolverTests: XCTestCase {
         XCTAssertEqual(matched.path, finding.path)
     }
 
+    func testNearestFindingWinsWhenMultipleFindingsCoverEntry() {
+        let outer = makeFinding(path: "/Users/k/Library/Caches")
+        let nearest = makeFinding(path: "/Users/k/Library/Caches/App")
+        let result = DiskReviewResolver.resolve(
+            entryPath: "/Users/k/Library/Caches/App/Cache.db",
+            findings: [outer, nearest]
+        )
+        guard case .insideFinding(let matched) = result else {
+            return XCTFail("expected .insideFinding, got \(result)")
+        }
+        XCTAssertEqual(matched.path, nearest.path)
+    }
+
+    func testPathContainmentIsCaseSensitive() {
+        let finding = makeFinding(path: "/Users/k/Library/Caches/Build")
+        let result = DiskReviewResolver.resolve(
+            entryPath: "/Users/k/Library/Caches/build/item",
+            findings: [finding]
+        )
+        guard case .notCandidate = result else {
+            return XCTFail("case-mismatched path must not match on a case-sensitive volume")
+        }
+    }
+
     func testUvBackupSiblingDoesNotMatchUv() {
         let finding = makeFinding(path: "/Users/k/.cache/uv-backup")
 

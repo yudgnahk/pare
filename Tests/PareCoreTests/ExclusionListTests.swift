@@ -52,6 +52,21 @@ final class ExclusionListTests: XCTestCase {
         XCTAssertFalse(list.isExcluded("/Users/test/Library/Caches/otherapp/data.bin"))
     }
 
+    func testPrefixExclusionBlocksDeletingAnAncestorDirectory() {
+        var list = ExclusionList()
+        list.add(ExclusionEntry(path: "/Users/test/Cache/keep", matchType: .prefix))
+        XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache"))
+        XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache/keep"))
+        XCTAssertFalse(list.blocksRemoval(of: "/Users/test/Caches"))
+    }
+
+    func testExactExclusionDoesNotBlockDeletingAnAncestorDirectory() {
+        var list = ExclusionList()
+        list.add(ExclusionEntry(path: "/Users/test/Cache/keep", matchType: .exact))
+        XCTAssertFalse(list.blocksRemoval(of: "/Users/test/Cache"))
+        XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache/keep"))
+    }
+
     func testAddDeduplicatesIdenticalEntries() {
         var list = ExclusionList()
         let e1 = ExclusionEntry(path: "/Users/test/dir", matchType: .prefix)

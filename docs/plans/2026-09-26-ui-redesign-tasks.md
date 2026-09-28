@@ -79,7 +79,7 @@ Out of scope for now: sizes shown in the sidebar, a stacked bar on the dashboard
 
 ## Checklist — Wave 7 (Disk Analyzer review follow-ups, 2026-09-28)
 
-Source: three-agent deep review (safety, loading, UI) of the branch at `388280f`. Nothing below has been fixed yet. Suggested order: S1–S2 → S4–S6 → L1–L2 → the rest.
+Source: three-agent deep review (safety, loading, UI) of the branch at `388280f`. Fixes for S1–S10, U1–U6, L1–L7 and C1–C2 are implemented in the worktree; boxes remain open until CI and the manual checks confirm them. The symlink check in S10 narrows the race but is not atomic.
 
 **Done before this wave**
 - [x] PR review of #31/#33/#34, fixes in `388280f` (dead `Brand`/`sky`, AI review doc removed, sort-comparator duplicate, SF Symbols verified ≤ macOS 13)
@@ -112,7 +112,14 @@ Source: three-agent deep review (safety, loading, UI) of the branch at `388280f`
 - [ ] L4 MEDIUM: `directorySize` duplicates `directoryUsage`'s enumerator and cancellation logic.
 - [ ] L5 MEDIUM: the cache key (`DiskEntry.standardizedID`) does not canonicalize symlinks. Safe today because every caller passes `breadcrumb.current`.
 - [ ] L6 LOW: cancellation is checked only every 256 files, so fast navigation leaves old walks running; `onProgress` is never wired (static spinner); no tests for navigation races or error states.
+- [ ] L7 HIGH (PR #34 review): the 200-row cap runs before search and filters, so matching entries below the cap cannot be found. Remove the cap/remainder or make the full directory searchable.
 - Not a bug: the agent's "CRITICAL main-thread" doubt. `load` is a nonisolated async method on a non-actor class (tools 5.9, no `NonisolatedNonsendingByDefault`), so under SE-0338 it runs off the main actor. Confirm with T1.
+
+**PR #34 completion gates**
+- [ ] C1: repair the two new failing cleanup tests (`CleanupCoordinatorTests.testConfirmUsesInjectedEngine` and `DiskAnalyzerViewModelTests.testConfirmHandsCoordinatorTheTrayFindings`) with valid policy-safe fixtures; verify the intended cleanup behavior.
+- [ ] C2: resolve the inherited `CategoryStyleTests` and `DestinationStyleTests` failures on the stacked branch; rerun CI until all tests pass.
+- [ ] C3: review PR scope after fixes; keep the approved table, breadcrumb, inspector and safe review flow, and move unrelated changes or optional UI features to follow-up PRs where dependencies allow.
+- [ ] C4: run `make build`, focused regression tests, GitNexus change detection, and review the final diff before merge.
 
 **Manual test (Kelvin, `make run-app`)**. The bugs above were confirmed by reading the code, so they don't need testing now. Retest them after the fixes.
 - [ ] T1 Now: open `~` and, while it is sizing, type in search and drag the window. It must not freeze. Go in and out of big folders 5× fast; the table must match the last click. (L6)

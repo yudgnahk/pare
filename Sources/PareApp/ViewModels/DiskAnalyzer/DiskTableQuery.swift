@@ -33,7 +33,7 @@ struct DiskSortDescriptor: Sendable, Hashable {
 
 /// Pure filter/sort pipeline for one Disk Analyzer level's rows.
 enum DiskTableQuery {
-    /// Filters and sorts `entries`, then re-appends the remainder row last — it ignores every filter.
+    /// Filters and sorts all entries in the current directory level.
     static func apply(
         entries: [DiskEntry],
         search: String,
@@ -41,17 +41,14 @@ enum DiskTableQuery {
         sizeFloor: DiskSizeFloor,
         sortOrder: DiskSortDescriptor
     ) -> [DiskEntry] {
-        let remainder = entries.filter(\.isRemainder)
-        let candidates = entries.filter { !$0.isRemainder }
-
         let normalizedSearch = normalize(search)
-        let filtered = candidates.filter { entry in
+        let filtered = entries.filter { entry in
             matchesSearch(entry, normalizedSearch: normalizedSearch)
                 && matchesKind(entry, kind: kind)
                 && entry.sizeBytes >= sizeFloor.minimumBytes
         }
 
-        return filtered.sorted { compare($0, $1, by: sortOrder) } + remainder
+        return filtered.sorted { compare($0, $1, by: sortOrder) }
     }
 
     private static func matchesSearch(_ entry: DiskEntry, normalizedSearch: String) -> Bool {

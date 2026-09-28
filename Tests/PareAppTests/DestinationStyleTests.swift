@@ -32,7 +32,19 @@ final class DestinationStyleTests: XCTestCase {
 
     func testTintMatchesSwatchColorForEveryDestination() {
         for destination in AppDestination.allCases {
-            XCTAssertEqual(DestinationStyle.tint(for: destination), DestinationStyle.swatch(for: destination).color)
+            let tint = NSColor(DestinationStyle.tint(for: destination))
+            let swatch = DestinationStyle.swatch(for: destination).nsColor
+            for appearance in [NSAppearance(named: .aqua)!, NSAppearance(named: .darkAqua)!] {
+                XCTAssertEqual(resolvedHex(tint, appearance: appearance), resolvedHex(swatch, appearance: appearance))
+            }
         }
+    }
+
+    private func resolvedHex(_ color: NSColor, appearance: NSAppearance) -> UInt32 {
+        let resolved = color.resolvedColor(with: appearance).usingColorSpace(.deviceRGB)!
+        let red = UInt32((resolved.redComponent * 255).rounded())
+        let green = UInt32((resolved.greenComponent * 255).rounded())
+        let blue = UInt32((resolved.blueComponent * 255).rounded())
+        return (red << 16) | (green << 8) | blue
     }
 }
