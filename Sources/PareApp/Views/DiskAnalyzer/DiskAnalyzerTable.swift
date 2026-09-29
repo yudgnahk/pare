@@ -62,7 +62,7 @@ struct DiskAnalyzerTable: View {
                     .foregroundStyle(AppTheme.textSecondary)
             }
             TableColumn("Kind", sortUsing: DiskColumnComparator(field: .kind)) { entry in
-                Text(Self.kindLabel(entry.kind))
+                Text(entry.kind.label)
                     .font(scale.rowMono)
                     .foregroundStyle(AppTheme.textSecondary)
             }
@@ -189,20 +189,6 @@ struct DiskAnalyzerTable: View {
     private static func modifiedText(_ date: Date?) -> String {
         guard let date else { return "—" }
         return date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted))
-    }
-
-    private static func kindLabel(_ kind: DiskKind) -> String {
-        switch kind {
-        case .folder: return "Folder"
-        case .application: return "Application"
-        case .image: return "Image"
-        case .video: return "Video"
-        case .audio: return "Audio"
-        case .document: return "Document"
-        case .archive: return "Archive"
-        case .diskImage: return "Disk Image"
-        case .other: return "Other"
-        }
     }
 }
 

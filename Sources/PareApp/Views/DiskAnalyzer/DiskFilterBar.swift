@@ -44,7 +44,7 @@ struct DiskFilterBar: View {
         Picker("Kind", selection: $kindFilter) {
             Text("Any Kind").tag(DiskKind?.none)
             ForEach(DiskKind.allCases, id: \.self) { kind in
-                Text(Self.label(for: kind)).tag(DiskKind?.some(kind))
+                Text(kind.label).tag(DiskKind?.some(kind))
             }
         }
         .pickerStyle(.menu)
@@ -63,20 +63,6 @@ struct DiskFilterBar: View {
         .labelsHidden()
         .font(scale.caption)
         .fixedSize()
-    }
-
-    private static func label(for kind: DiskKind) -> String {
-        switch kind {
-        case .folder: return "Folder"
-        case .application: return "Application"
-        case .image: return "Image"
-        case .video: return "Video"
-        case .audio: return "Audio"
-        case .document: return "Document"
-        case .archive: return "Archive"
-        case .diskImage: return "Disk Image"
-        case .other: return "Other"
-        }
     }
 
     private static func label(for floor: DiskSizeFloor) -> String {

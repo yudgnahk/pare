@@ -75,6 +75,21 @@ enum DiskKind: String, CaseIterable, Sendable {
         self = Self.classifyFile(pathExtension: pathExtension)
     }
 
+    /// Display name shared by the table's Kind column, the inspector and the Kind filter.
+    var label: String {
+        switch self {
+        case .folder: return "Folder"
+        case .application: return "Application"
+        case .image: return "Image"
+        case .video: return "Video"
+        case .audio: return "Audio"
+        case .document: return "Document"
+        case .archive: return "Archive"
+        case .diskImage: return "Disk Image"
+        case .other: return "Other"
+        }
+    }
+
     private static func isApplicationExtension(_ pathExtension: String) -> Bool {
         UTType(filenameExtension: pathExtension)?.conforms(to: .application) ?? false
     }

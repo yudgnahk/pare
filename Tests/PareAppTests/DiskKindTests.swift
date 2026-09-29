@@ -46,4 +46,12 @@ final class DiskKindTests: XCTestCase {
     func testAllCasesAreUniquelyNamed() {
         XCTAssertEqual(DiskKind.allCases.count, Set(DiskKind.allCases.map(\.rawValue)).count)
     }
+
+    /// The inspector once showed "Folder" for apps and "Diskimage" for disk images.
+    func testLabelsAreSharedDisplayNames() {
+        XCTAssertEqual(DiskKind.application.label, "Application")
+        XCTAssertEqual(DiskKind.diskImage.label, "Disk Image")
+        XCTAssertEqual(DiskKind.folder.label, "Folder")
+        XCTAssertEqual(Set(DiskKind.allCases.map(\.label)).count, DiskKind.allCases.count)
+    }
 }
