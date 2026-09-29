@@ -62,8 +62,8 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Shared FDA state machine (also used by Settings).
     let permissions = PermissionCoachingModel()
-    /// Cleanup lifecycle (pending sheet + engine calls + undo).
-    let cleanup = CleanupCoordinator()
+    /// Cleanup lifecycle (pending sheet + engine calls + undo), shared with the Disk Analyzer.
+    let cleanup: CleanupCoordinator
 
     /// Cached clean-candidate totals (recomputed per scan / exclusion — not per sheet render).
     private(set) var candidateStats = CandidateStats()
@@ -84,7 +84,8 @@ final class ScanDashboardViewModel: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
 
-    init() {
+    init(cleanup: CleanupCoordinator = CleanupCoordinator()) {
+        self.cleanup = cleanup
         // Child observable objects publish through the dashboard so existing
         // `@ObservedObject var viewModel` views keep re-rendering.
         permissions.objectWillChange
@@ -93,7 +94,7 @@ final class ScanDashboardViewModel: ObservableObject {
         cleanup.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
-        cleanup.onCleanupCompleted = { [weak self] in self?.runScan() }
+        cleanup.addCompletionHandler { [weak self] in self?.rescanAfterCleanup() }
     }
 
     // MARK: - Derived state
@@ -359,6 +360,12 @@ final class ScanDashboardViewModel: ObservableObject {
 
         showEmptyScanCoaching = true
         emptyScanCoachingStyle = permissions.emptyScanStyle()
+    }
+
+    /// A scan in flight (e.g. during a Disk Analyzer clean) may still list what was just trashed.
+    private func rescanAfterCleanup() {
+        if isScanning { cancelScan() }
+        runScan()
     }
 
     func runScan(forceRescan: Bool = false) {

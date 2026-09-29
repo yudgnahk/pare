@@ -10,10 +10,21 @@ import Foundation
 /// scanning until its screen appears.
 @MainActor
 final class AppModelStore: ObservableObject {
-    let scan = ScanDashboardViewModel()
+    /// One coordinator for Smart Scan and the Disk Analyzer: one busy guard, and each refreshes after the other cleans.
+    let cleanup: CleanupCoordinator
+    let scan: ScanDashboardViewModel
     let history = HistoryViewModel()
     let apps = AppManagerViewModel()
     let homebrew = HomebrewManagerViewModel()
     let maintenance = MaintenanceViewModel()
-    lazy var disk = DiskAnalyzerViewModel(findingsProvider: { [scan] in scan.latestFindingsSnapshot })
+    lazy var disk = DiskAnalyzerViewModel(
+        findingsProvider: { [scan] in scan.latestFindingsSnapshot },
+        coordinator: cleanup
+    )
+
+    init() {
+        let cleanup = CleanupCoordinator()
+        self.cleanup = cleanup
+        self.scan = ScanDashboardViewModel(cleanup: cleanup)
+    }
 }

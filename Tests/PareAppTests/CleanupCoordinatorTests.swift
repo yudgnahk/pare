@@ -42,4 +42,18 @@ final class CleanupCoordinatorTests: XCTestCase {
         let trashed = try FileManager.default.contentsOfDirectory(atPath: fixture.trashDirectory.path)
         XCTAssertEqual(trashed.count, 1, "the item must land in the fixture's trash, not the real Trash")
     }
+
+    /// Screens sharing one coordinator each register a handler; every one must run.
+    func testEveryCompletionHandlerRunsAfterCleanup() async throws {
+        let file = try fixture.makeFile(named: "shared.bin")
+        let coordinator = CleanupCoordinator(engine: fixture.makeEngine())
+        let first = expectation(description: "first handler")
+        let second = expectation(description: "second handler")
+        coordinator.addCompletionHandler { first.fulfill() }
+        coordinator.addCompletionHandler { second.fulfill() }
+
+        coordinator.confirm(.selected, findings: [makeFinding(path: file.path)])
+
+        await fulfillment(of: [first, second], timeout: 10)
+    }
 }

@@ -49,4 +49,22 @@ final class DiskLevelLoaderTests: XCTestCase {
         let link = try XCTUnwrap(level.entries.first { $0.name == "libz.dylib" })
         XCTAssertEqual(URL(fileURLWithPath: link.id).lastPathComponent, "libz.dylib")
     }
+
+    /// Refresh must drop stale ancestor sizes too, not only the current folder.
+    func testInvalidateDirectoryAndAncestorsDropsParentLevel() async throws {
+        let parent = FileManager.default.temporaryDirectory
+            .appending(path: "DiskLevelLoaderTests-ancestors-\(UUID().uuidString)")
+        let child = parent.appending(path: "child")
+        try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let loader = DiskLevelLoader()
+
+        let before = try await loader.load(directory: parent)
+        _ = try await loader.load(directory: child)
+        try Data(repeating: 1, count: 64_000).write(to: child.appending(path: "new.bin"))
+        await loader.invalidate(directoryAndAncestors: child)
+        let after = try await loader.load(directory: parent)
+
+        XCTAssertGreaterThan(after.totalBytes, before.totalBytes)
+    }
 }

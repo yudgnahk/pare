@@ -40,6 +40,17 @@ final class DiskLevelLoader: Sendable {
         await cache.remove(Self.cacheKey(for: directory))
     }
 
+    /// Drops `directory` and every cached ancestor, whose rolled-up sizes include it.
+    func invalidate(directoryAndAncestors directory: URL) async {
+        var current = directory.standardizedFileURL
+        while true {
+            await invalidate(directory: current)
+            let parent = current.deletingLastPathComponent().standardizedFileURL
+            guard parent.path != current.path else { return }
+            current = parent
+        }
+    }
+
     /// A folder and its symlinked spelling are the same level, so the key resolves every component.
     private static func cacheKey(for directory: URL) -> String {
         ScanPolicy.canonicalPathURL(directory.standardizedFileURL.resolvingSymlinksInPath()).path

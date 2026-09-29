@@ -275,4 +275,30 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
         XCTAssertEqual(coordinator.state, .done(bytesFreed: 4, skippedCount: 0))
         XCTAssertTrue((try? fixture.store.loadAll())?.isEmpty == false)
     }
+
+    /// Any cleanup on the shared coordinator must drop cached levels so trashed items disappear.
+    func testCleanupCompletionReloadsLevelWithoutTrashedItem() async throws {
+        let fixture = try HermeticCleanupFixture(name: "DiskAnalyzerViewModelTests-reload")
+        defer { fixture.remove() }
+        let trashable = try fixture.makeFile(named: "trashable.bin")
+        _ = try fixture.makeFile(named: "keeper.bin")
+        let coordinator = CleanupCoordinator(engine: fixture.makeEngine())
+        let vm = makeViewModel(findings: [makeFinding(path: trashable.path, sizeBytes: 4)], coordinator: coordinator)
+        vm.open(root: fixture.cacheDirectory)
+        await waitUntilLoaded(vm)
+        let entry = try XCTUnwrap(vm.visibleEntries.first { $0.name == "trashable.bin" })
+
+        let reloaded = expectation(description: "level reloaded without the trashed item")
+        let subscription = vm.$level
+            .compactMap { $0 }
+            .first { level in !level.entries.contains { $0.name == "trashable.bin" } }
+            .sink { _ in reloaded.fulfill() }
+        vm.addToReview(entry)
+        vm.confirmReviewCleanup()
+        await fulfillment(of: [reloaded], timeout: 10)
+        subscription.cancel()
+
+        XCTAssertEqual(vm.visibleEntries.map(\.name), ["keeper.bin"])
+        XCTAssertEqual(vm.reviewTrayCount, 0)
+    }
 }

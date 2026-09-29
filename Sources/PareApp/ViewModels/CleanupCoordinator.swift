@@ -32,8 +32,8 @@ final class CleanupCoordinator: ObservableObject {
     @Published private(set) var transactionSaveError: String?
     @Published private(set) var lastResult: CleanupResult?
 
-    /// Called after a cleanup or undo completes so the owner can rescan.
-    var onCleanupCompleted: (() -> Void)?
+    /// Run after every cleanup or undo; each screen sharing this coordinator registers one.
+    private var completionHandlers: [() -> Void] = []
 
     /// Most recent transaction, used to offer undo.
     private var lastTransaction: CleanupTransaction?
@@ -57,6 +57,10 @@ final class CleanupCoordinator: ObservableObject {
     var canUndo: Bool {
         if let tx = lastTransaction, !tx.isDryRun, !tx.items.isEmpty { return true }
         return false
+    }
+
+    func addCompletionHandler(_ handler: @escaping () -> Void) {
+        completionHandlers = completionHandlers + [handler]
     }
 
     // MARK: - Lifecycle
@@ -104,8 +108,7 @@ final class CleanupCoordinator: ObservableObject {
                     bytesFreed: result.totalBytesFreed,
                     skippedCount: result.skipped.count
                 )
-                // Re-run scan to refresh results after cleanup.
-                onCleanupCompleted?()
+                notifyCompletion()
             } catch {
                 state = .error(error.localizedDescription)
             }
@@ -121,12 +124,16 @@ final class CleanupCoordinator: ObservableObject {
             lastTransaction = failed.isEmpty ? nil : tx
             // Undo honesty (R0.7): failed restores must never be presented as success.
             state = .undone(restoredCount: restored.count, failedCount: failed.count)
-            onCleanupCompleted?()
+            notifyCompletion()
         }
     }
 
     func dismissResult() {
         state = .idle
+    }
+
+    private func notifyCompletion() {
+        completionHandlers.forEach { $0() }
     }
 
 }
