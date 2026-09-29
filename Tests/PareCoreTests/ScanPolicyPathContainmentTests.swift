@@ -15,10 +15,8 @@ final class ScanPolicyPathContainmentTests: XCTestCase {
             ("dot segments", "/var/folders/../folders/x/./y", "/private/var/folders/x/y"),
         ]
         for testCase in cases {
-            XCTContext.runActivity(named: testCase.name) { _ in
-                let result = ScanPolicy.canonicalPathURL(URL(fileURLWithPath: testCase.input))
-                XCTAssertEqual(result.path, testCase.expected)
-            }
+            let result = ScanPolicy.canonicalPathURL(URL(fileURLWithPath: testCase.input))
+            XCTAssertEqual(result.path, testCase.expected, testCase.name)
         }
     }
 
@@ -36,13 +34,11 @@ final class ScanPolicyPathContainmentTests: XCTestCase {
             ("unrelated", "/Users/k/Desktop", "/Users/k/Downloads", false),
         ]
         for testCase in cases {
-            XCTContext.runActivity(named: testCase.name) { _ in
-                let result = ScanPolicy.isCanonicallyEqualToOrDescendant(
-                    candidate: URL(fileURLWithPath: testCase.candidate),
-                    root: URL(fileURLWithPath: testCase.root)
-                )
-                XCTAssertEqual(result, testCase.expected)
-            }
+            let result = ScanPolicy.isCanonicallyEqualToOrDescendant(
+                candidate: URL(fileURLWithPath: testCase.candidate),
+                root: URL(fileURLWithPath: testCase.root)
+            )
+            XCTAssertEqual(result, testCase.expected, testCase.name)
         }
     }
 }
