@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 import PareCore
 @testable import PareApp
@@ -37,9 +38,10 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
     }
 
     private func waitUntilLoaded(_ vm: DiskAnalyzerViewModel) async {
-        for _ in 0..<200 where vm.isLoading {
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
+        let loaded = expectation(description: "level loaded")
+        let subscription = vm.$isLoading.first { !$0 }.sink { _ in loaded.fulfill() }
+        await fulfillment(of: [loaded], timeout: 10)
+        subscription.cancel()
     }
 
     // MARK: - Drill in/out updates crumbs
@@ -254,21 +256,10 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
     // MARK: - Confirm hands the coordinator the tray's findings
 
     func testConfirmHandsCoordinatorTheTrayFindings() async throws {
-        let storeDir = FileManager.default.temporaryDirectory
-            .appending(path: "DiskAnalyzerViewModelTests-store-\(UUID().uuidString)")
-        let fixtureDirectory = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Caches/Pare-DiskAnalyzerViewModelTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
-        let tempFile = fixtureDirectory.appending(path: "trashable.bin")
-        try Data("test".utf8).write(to: tempFile)
-        defer {
-            try? FileManager.default.removeItem(at: storeDir)
-            try? FileManager.default.removeItem(at: fixtureDirectory)
-        }
-
-        let store = CleanupTransactionStore(directory: storeDir)
-        let engine = CleanupEngine(store: store, exclusionsProvider: { .empty }, now: { .distantFuture })
-        let coordinator = CleanupCoordinator(engine: engine)
+        let fixture = try HermeticCleanupFixture(name: "DiskAnalyzerViewModelTests")
+        defer { fixture.remove() }
+        let tempFile = try fixture.makeFile(named: "trashable.bin")
+        let coordinator = CleanupCoordinator(engine: fixture.makeEngine())
         let finding = makeFinding(path: tempFile.path, sizeBytes: 4)
         let vm = makeViewModel(findings: [finding], coordinator: coordinator)
 
@@ -279,12 +270,35 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
         XCTAssertEqual(vm.reviewTrayCount, 1)
 
         vm.confirmReviewCleanup()
-
-        for _ in 0..<50 where coordinator.isCleaning {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
+        await waitForCleanupToFinish(coordinator)
 
         XCTAssertEqual(coordinator.state, .done(bytesFreed: 4, skippedCount: 0))
-        XCTAssertTrue((try? store.loadAll())?.isEmpty == false)
+        XCTAssertTrue((try? fixture.store.loadAll())?.isEmpty == false)
+    }
+
+    /// Any cleanup on the shared coordinator must drop cached levels so trashed items disappear.
+    func testCleanupCompletionReloadsLevelWithoutTrashedItem() async throws {
+        let fixture = try HermeticCleanupFixture(name: "DiskAnalyzerViewModelTests-reload")
+        defer { fixture.remove() }
+        let trashable = try fixture.makeFile(named: "trashable.bin")
+        _ = try fixture.makeFile(named: "keeper.bin")
+        let coordinator = CleanupCoordinator(engine: fixture.makeEngine())
+        let vm = makeViewModel(findings: [makeFinding(path: trashable.path, sizeBytes: 4)], coordinator: coordinator)
+        vm.open(root: fixture.cacheDirectory)
+        await waitUntilLoaded(vm)
+        let entry = try XCTUnwrap(vm.visibleEntries.first { $0.name == "trashable.bin" })
+
+        let reloaded = expectation(description: "level reloaded without the trashed item")
+        let subscription = vm.$level
+            .compactMap { $0 }
+            .first { level in !level.entries.contains { $0.name == "trashable.bin" } }
+            .sink { _ in reloaded.fulfill() }
+        vm.addToReview(entry)
+        vm.confirmReviewCleanup()
+        await fulfillment(of: [reloaded], timeout: 10)
+        subscription.cancel()
+
+        XCTAssertEqual(vm.visibleEntries.map(\.name), ["keeper.bin"])
+        XCTAssertEqual(vm.reviewTrayCount, 0)
     }
 }

@@ -67,7 +67,7 @@ struct DiskAnalyzerTable: View {
             }
             .width(min: 88, ideal: 100)
             TableColumn("Kind", sortUsing: DiskColumnComparator(field: .kind)) { entry in
-                Text(Self.kindLabel(entry.kind))
+                Text(entry.kind.label)
                     .font(scale.caption)
                     .foregroundStyle(AppTheme.textSecondary)
             }
@@ -198,20 +198,6 @@ struct DiskAnalyzerTable: View {
         guard let date else { return "—" }
         return date.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted))
     }
-
-    private static func kindLabel(_ kind: DiskKind) -> String {
-        switch kind {
-        case .folder: return "Folder"
-        case .application: return "Application"
-        case .image: return "Image"
-        case .video: return "Video"
-        case .audio: return "Audio"
-        case .document: return "Document"
-        case .archive: return "Archive"
-        case .diskImage: return "Disk Image"
-        case .other: return "Other"
-        }
-    }
 }
 
 /// Bridges the table header's tap-to-sort UI to the query's shared ordering logic.
@@ -239,19 +225,7 @@ private struct DiskColumnComparator: SortComparator, Equatable {
 
     // Delegates to DiskTableQuery, which drives actual row order; this only feeds header sort-indicator state.
     func compare(_ lhs: DiskEntry, _ rhs: DiskEntry) -> ComparisonResult {
-        let ascendingResult = DiskTableQuery.primaryOrdering(lhs, rhs, field: field)
-        guard ascendingResult != .orderedSame else { return .orderedSame }
-        return order == .forward ? ascendingResult : ascendingResult.reversed
-    }
-}
-
-private extension ComparisonResult {
-    var reversed: ComparisonResult {
-        switch self {
-        case .orderedAscending: return .orderedDescending
-        case .orderedDescending: return .orderedAscending
-        case .orderedSame: return .orderedSame
-        }
+        DiskTableQuery.ordering(lhs, rhs, by: descriptor)
     }
 }
 

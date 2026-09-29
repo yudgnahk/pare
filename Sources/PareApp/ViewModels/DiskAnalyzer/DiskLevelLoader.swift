@@ -25,7 +25,7 @@ final class DiskLevelLoader: Sendable {
     /// Returns the cached level for `directory` if present, otherwise walks it (cooperatively
     /// cancellable via the calling task) and stores the result before returning.
     func load(directory: URL, onProgress: (@Sendable (Progress) -> Void)? = nil) async throws -> Level {
-        let key = DiskEntry.standardizedID(for: directory)
+        let key = Self.cacheKey(for: directory)
         if let cached = await cache.value(for: key) {
             return cached
         }
@@ -37,7 +37,23 @@ final class DiskLevelLoader: Sendable {
 
     /// Drops the cached level for `directory` (e.g. after a cleanup) so the next `load` re-walks it.
     func invalidate(directory: URL) async {
-        await cache.remove(DiskEntry.standardizedID(for: directory))
+        await cache.remove(Self.cacheKey(for: directory))
+    }
+
+    /// Drops `directory` and every cached ancestor, whose rolled-up sizes include it.
+    func invalidate(directoryAndAncestors directory: URL) async {
+        var current = directory.standardizedFileURL
+        while true {
+            await invalidate(directory: current)
+            let parent = current.deletingLastPathComponent().standardizedFileURL
+            guard parent.path != current.path else { return }
+            current = parent
+        }
+    }
+
+    /// A folder and its symlinked spelling are the same level, so the key resolves every component.
+    private static func cacheKey(for directory: URL) -> String {
+        ScanPolicy.canonicalPathURL(directory.standardizedFileURL.resolvingSymlinksInPath()).path
     }
 
     func invalidateAll() async {

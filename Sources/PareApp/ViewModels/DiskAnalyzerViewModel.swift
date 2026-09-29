@@ -48,7 +48,7 @@ final class DiskAnalyzerViewModel: ObservableObject {
         self.findingsProvider = findingsProvider
         self.levelLoader = levelLoader
         self.coordinator = coordinator
-        coordinator.onCleanupCompleted = { [weak self] in
+        coordinator.addCompletionHandler { [weak self] in
             self?.handleCleanupCompleted()
         }
         // Forward so the view's single @ObservedObject re-renders on sheet/state changes.
@@ -143,11 +143,11 @@ final class DiskAnalyzerViewModel: ObservableObject {
     }
 
     func refresh() {
-        guard let breadcrumb else { return }
+        guard let current = breadcrumb?.current else { return }
         selection = []
         Task {
-            await levelLoader.invalidate(directory: breadcrumb.current)
-            loadLevel(breadcrumb: breadcrumb)
+            await levelLoader.invalidate(directoryAndAncestors: current)
+            reloadCurrentLevel()
         }
     }
 
@@ -224,9 +224,10 @@ final class DiskAnalyzerViewModel: ObservableObject {
     }
 
     private func isAncestorOrSame(_ ancestor: String, _ child: String) -> Bool {
-        let parent = URL(fileURLWithPath: ancestor).standardizedFileURL.pathComponents
-        let path = URL(fileURLWithPath: child).standardizedFileURL.pathComponents
-        return path.count >= parent.count && Array(path.prefix(parent.count)) == parent
+        ScanPolicy.isCanonicallyEqualToOrDescendant(
+            candidate: URL(fileURLWithPath: child),
+            root: URL(fileURLWithPath: ancestor)
+        )
     }
 
     private func loadLevel(breadcrumb: DiskBreadcrumb) {
@@ -249,13 +250,14 @@ final class DiskAnalyzerViewModel: ObservableObject {
                         self.loadingProgress = progress
                     }
                 }
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, generation == loadGeneration else { return }
                 self.level = level
                 isLoading = false
                 loadingProgress = nil
             } catch is CancellationError {
                 // Superseded by a newer navigation; drop silently.
             } catch {
+                guard generation == loadGeneration else { return }
                 isLoading = false
                 loadingProgress = nil
                 errorMessage = "Could not read \(breadcrumb.current.path): \(error.localizedDescription)"
@@ -270,10 +272,15 @@ final class DiskAnalyzerViewModel: ObservableObject {
         reviewFindingsByPath = reviewFindingsByPath.filter { !succeededPaths.contains($0.key) }
         let latestPaths = Set(findingsProvider().map(\.path))
         reviewFindingsByPath = reviewFindingsByPath.filter { latestPaths.contains($0.key) }
-        guard let breadcrumb else { return }
         Task {
             await levelLoader.invalidateAll()
-            loadLevel(breadcrumb: breadcrumb)
+            reloadCurrentLevel()
         }
+    }
+
+    /// Re-reads the location after an `await`, since the user may have navigated meanwhile.
+    private func reloadCurrentLevel() {
+        guard let breadcrumb else { return }
+        loadLevel(breadcrumb: breadcrumb)
     }
 }

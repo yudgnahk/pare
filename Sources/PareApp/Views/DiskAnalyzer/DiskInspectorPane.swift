@@ -78,7 +78,7 @@ struct DiskInspectorPane: View {
     private func detailsGrid(_ entry: DiskEntry) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             detailRow("Items", entry.isDirectory ? "\(entry.itemCount)" : "1")
-            detailRow("Kind", kindLabel(entry))
+            detailRow("Kind", entry.kind.label)
             detailRow("Modified", formattedDate(entry.modified))
             detailRow("Created", formattedDate(entry.creationDate))
             if entry.hasPartialSize {
@@ -102,10 +102,6 @@ struct DiskInspectorPane: View {
                 .help(value)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func kindLabel(_ entry: DiskEntry) -> String {
-        entry.isDirectory ? "Folder" : entry.kind.rawValue.capitalized
     }
 
     private func formattedDate(_ date: Date?) -> String {

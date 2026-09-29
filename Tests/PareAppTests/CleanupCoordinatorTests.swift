@@ -5,49 +5,55 @@ import PareCore
 @MainActor
 final class CleanupCoordinatorTests: XCTestCase {
 
-    private var storeDir: URL!
-    private var tempFile: URL!
-    private var fixtureDirectory: URL!
+    private var fixture: HermeticCleanupFixture!
 
     override func setUp() async throws {
-        storeDir = FileManager.default.temporaryDirectory
-            .appending(path: "CleanupCoordinatorTests-\(UUID().uuidString)")
-        fixtureDirectory = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Caches/Pare-CleanupCoordinatorTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: fixtureDirectory, withIntermediateDirectories: true)
-        tempFile = fixtureDirectory.appending(path: "fixture.bin")
-        try Data("test".utf8).write(to: tempFile)
+        fixture = try HermeticCleanupFixture(name: "CleanupCoordinatorTests")
     }
 
     override func tearDown() async throws {
-        try? FileManager.default.removeItem(at: storeDir)
-        try? FileManager.default.removeItem(at: tempFile)
-        try? FileManager.default.removeItem(at: fixtureDirectory)
+        fixture.remove()
+    }
+
+    private func makeFinding(path: String, sizeBytes: Int64 = 4) -> ScanFinding {
+        ScanFinding(
+            category: .userCaches,
+            riskLevel: .safe,
+            reason: "Test",
+            path: path,
+            sizeBytes: sizeBytes,
+            lastUsed: Date(),
+            confidence: 1.0
+        )
     }
 
     /// The injected engine (backed by a temp store) must be the one actually used,
     /// not the default `CleanupEngine()` writing to the shared app-support store.
-    func testConfirmUsesInjectedEngine() async {
-        let store = CleanupTransactionStore(directory: storeDir)
-        let engine = CleanupEngine(store: store, exclusionsProvider: { .empty }, now: { .distantFuture })
-        let coordinator = CleanupCoordinator(engine: engine)
-        let finding = ScanFinding(
-            category: .userCaches,
-            riskLevel: .safe,
-            reason: "Test",
-            path: tempFile.path,
-            sizeBytes: 4,
-            lastUsed: Date(),
-            confidence: 1.0
-        )
+    func testConfirmUsesInjectedEngine() async throws {
+        let file = try fixture.makeFile(named: "fixture.bin")
+        let coordinator = CleanupCoordinator(engine: fixture.makeEngine())
 
-        coordinator.confirm(.quick, findings: [finding])
-
-        for _ in 0..<50 where coordinator.isCleaning {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-        }
+        coordinator.confirm(.quick, findings: [makeFinding(path: file.path)])
+        await waitForCleanupToFinish(coordinator)
 
         XCTAssertEqual(coordinator.state, .done(bytesFreed: 4, skippedCount: 0))
-        XCTAssertFalse((try? store.loadAll())?.isEmpty ?? true)
+        XCTAssertFalse((try? fixture.store.loadAll())?.isEmpty ?? true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        let trashed = try FileManager.default.contentsOfDirectory(atPath: fixture.trashDirectory.path)
+        XCTAssertEqual(trashed.count, 1, "the item must land in the fixture's trash, not the real Trash")
+    }
+
+    /// Screens sharing one coordinator each register a handler; every one must run.
+    func testEveryCompletionHandlerRunsAfterCleanup() async throws {
+        let file = try fixture.makeFile(named: "shared.bin")
+        let coordinator = CleanupCoordinator(engine: fixture.makeEngine())
+        let first = expectation(description: "first handler")
+        let second = expectation(description: "second handler")
+        coordinator.addCompletionHandler { first.fulfill() }
+        coordinator.addCompletionHandler { second.fulfill() }
+
+        coordinator.confirm(.selected, findings: [makeFinding(path: file.path)])
+
+        await fulfillment(of: [first, second], timeout: 10)
     }
 }

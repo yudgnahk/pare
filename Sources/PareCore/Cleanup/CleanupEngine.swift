@@ -128,6 +128,8 @@ public actor CleanupEngine {
     /// Injectable clock for age re-checks — tests shift this instead of
     /// back-dating real files. Defaults to the wall clock.
     private let now: @Sendable () -> Date
+    /// Moves one item to the Trash and returns where it landed; injectable so tests never touch the real Trash.
+    private let trashItem: @Sendable (URL) throws -> URL?
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -137,7 +139,8 @@ public actor CleanupEngine {
         store: CleanupTransactionStore = .shared,
         projectRootsProvider: (@Sendable () async -> [String])? = nil,
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        trashItem: (@Sendable (URL) throws -> URL?)? = nil
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -148,6 +151,13 @@ public actor CleanupEngine {
             (try? ExclusionStore.shared.load()) ?? .empty
         }
         self.now = now
+        self.trashItem = trashItem ?? Self.moveToSystemTrash
+    }
+
+    private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
+        var trashURL: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &trashURL)
+        return trashURL as URL?
     }
 
     // MARK: - Quick Clean (safe-risk only)
@@ -322,16 +332,15 @@ public actor CleanupEngine {
                     riskLevel: finding.riskLevel
                 ))
             } else {
-                var trashURL: NSURL?
                 do {
                     guard !Self.hasSymbolicLinkComponent(atPath: finding.path) else {
                         skipped.append(CleanupSkippedItem(path: finding.path, error: .symbolicLinkBlocked(finding.path)))
                         continue
                     }
-                    try FileManager.default.trashItem(at: url, resultingItemURL: &trashURL)
+                    let trashURL = try trashItem(url)
                     succeeded.append(CleanupItem(
                         originalPath: finding.path,
-                        trashedPath: (trashURL as URL?)?.path,
+                        trashedPath: trashURL?.path,
                         sizeBytes: finding.sizeBytes,
                         reason: finding.reason,
                         riskLevel: finding.riskLevel

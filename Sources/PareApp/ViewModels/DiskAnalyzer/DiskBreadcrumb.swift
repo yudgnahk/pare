@@ -24,20 +24,9 @@ struct DiskBreadcrumb: Equatable {
         self.current = canonicalCurrent
     }
 
-    /// Foundation's `resolvingSymlinksInPath()` deliberately leaves `/tmp`, `/var`, `/etc`
-    /// unresolved (BSD compatibility), so a path like `/var/folders/...` never becomes
-    /// `/private/var/folders/...` on its own even though the two spell the same directory —
-    /// normalize that indirection by hand so root/current comparisons never split on spelling.
-    private static let privateIndirectionRoots = ["/tmp", "/var", "/etc"]
-
+    /// `resolvingSymlinksInPath()` strips `/private`, so re-apply the policy's canonical alias form.
     private static func canonicalize(_ url: URL) -> URL {
-        let resolved = url.standardizedFileURL.resolvingSymlinksInPath()
-        let path = resolved.path
-        guard !path.hasPrefix("/private") else { return resolved }
-        for indirection in privateIndirectionRoots where path == indirection || path.hasPrefix(indirection + "/") {
-            return URL(fileURLWithPath: "/private" + path)
-        }
-        return resolved
+        ScanPolicy.canonicalPathURL(url.standardizedFileURL.resolvingSymlinksInPath())
     }
 
     /// Crumbs from root through current, inclusive of both endpoints.
