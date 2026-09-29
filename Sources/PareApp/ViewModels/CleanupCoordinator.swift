@@ -129,4 +129,10 @@ final class CleanupCoordinator: ObservableObject {
         state = .idle
     }
 
+    #if DEBUG
+    /// Lets the snapshot renderer show result states without touching the filesystem.
+    func applySnapshotState(_ snapshot: CleanupState) {
+        state = snapshot
+    }
+    #endif
 }

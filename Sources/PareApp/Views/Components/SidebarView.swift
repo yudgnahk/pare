@@ -4,6 +4,7 @@ import SwiftUI
 struct SidebarView: View {
     @Binding var selection: AppDestination
     @Environment(\.pareDisplayScale) private var scale
+    @Environment(\.isSnapshotRendering) private var isSnapshotRendering
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -114,7 +115,11 @@ struct SidebarView: View {
 
     private var sidebarBackground: some View {
         ZStack(alignment: .top) {
-            SidebarMaterial()
+            if isSnapshotRendering {
+                AppTheme.sidebar
+            } else {
+                SidebarMaterial()
+            }
 
             // Brand gradient over vibrancy: seafoam at the top, deepening toward accentDeep
             // near the bottom. Stronger than a flat wash so vibrancy still reads as Pare.

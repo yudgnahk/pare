@@ -15,7 +15,23 @@ final class HistoryViewModel: ObservableObject {
         load()
     }
 
+    #if DEBUG
+    /// Snapshot renderer pins fixture records so `load()` on appear doesn't read real history.
+    private var snapshotTransactions: [CleanupTransaction]?
+
+    func applySnapshotTransactions(_ fixtures: [CleanupTransaction]) {
+        snapshotTransactions = fixtures
+        transactions = fixtures
+    }
+    #endif
+
     func load() {
+        #if DEBUG
+        if let snapshotTransactions {
+            transactions = snapshotTransactions
+            return
+        }
+        #endif
         transactions = (try? store.loadAll()) ?? []
     }
 
