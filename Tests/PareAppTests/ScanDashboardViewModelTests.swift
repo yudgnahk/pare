@@ -23,4 +23,19 @@ final class ScanDashboardViewModelTests: XCTestCase {
         XCTAssertTrue(store.scan.cleanup === store.cleanup)
         XCTAssertTrue(store.disk.coordinator === store.cleanup)
     }
+
+    /// A Disk Analyzer request must never be confirmed (or cancelled) through Smart Scan's selection path.
+    func testDashboardCannotConfirmDiskReviewRequest() {
+        let coordinator = CleanupCoordinator()
+        let vm = ScanDashboardViewModel(cleanup: coordinator)
+        coordinator.request(.diskReview)
+
+        XCTAssertNil(vm.pendingCleanup)
+        vm.confirmPendingCleanup()
+        vm.cancelPendingCleanup()
+        vm.pendingCleanup = nil
+
+        XCTAssertEqual(coordinator.pending, .diskReview)
+        XCTAssertEqual(coordinator.state, .confirming)
+    }
 }

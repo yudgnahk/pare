@@ -47,7 +47,7 @@ struct ScanDashboardView: View {
                 switch pending {
                 case .quick: return quickCleanConfig
                 case .deep: return deepCleanConfig
-                case .selected: return selectedCleanConfig
+                case .selected, .diskReview: return selectedCleanConfig
                 }
             }()
             CleanConfirmationSheet(

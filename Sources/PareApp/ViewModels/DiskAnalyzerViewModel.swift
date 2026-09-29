@@ -65,13 +65,20 @@ final class DiskAnalyzerViewModel: ObservableObject {
     var cleanupSkippedReasons: [String] { coordinator.lastResult?.skipped.map(\.reason) ?? [] }
     var transactionSaveError: String? { coordinator.transactionSaveError }
 
-    /// Drives the single cleanup confirmation sheet (`.sheet(item:)`).
+    /// Drives the tray's confirmation sheet (`.sheet(item:)`); only ever `.diskReview`.
     var pendingCleanup: PendingCleanup? {
-        get { coordinator.pending }
-        set { coordinator.pending = newValue }
+        get { coordinator.pending == .diskReview ? .diskReview : nil }
+        set {
+            if newValue == .diskReview {
+                coordinator.pending = newValue
+            } else if newValue == nil, pendingCleanup != nil {
+                coordinator.pending = nil
+            }
+        }
     }
 
     func cancelPendingCleanup() {
+        guard pendingCleanup != nil else { return }
         coordinator.cancelPending()
     }
 
@@ -195,11 +202,12 @@ final class DiskAnalyzerViewModel: ObservableObject {
         let latestByPath = Dictionary(findingsProvider().map { ($0.path, $0) }, uniquingKeysWith: { _, latest in latest })
         reviewFindingsByPath = reviewFindingsByPath.compactMapValues { latestByPath[$0.path] }
         guard !reviewFindingsByPath.isEmpty else { return }
-        coordinator.request(.selected)
+        coordinator.request(.diskReview)
     }
 
-    /// Hands the coordinator exactly the tray's findings.
+    /// Hands the coordinator exactly the tray's findings, and only for a tray request.
     func confirmReviewCleanup() {
+        guard coordinator.pending == .diskReview else { return }
         let latestByPath = Dictionary(findingsProvider().map { ($0.path, $0) }, uniquingKeysWith: { _, latest in latest })
         let current = reviewTrayFindings.compactMap { latestByPath[$0.path] }
             .filter { $0.riskLevel != .advanced }
@@ -208,7 +216,7 @@ final class DiskAnalyzerViewModel: ObservableObject {
             coordinator.cancelPending()
             return
         }
-        coordinator.confirm(.selected, findings: current)
+        coordinator.confirm(.diskReview, findings: current)
     }
 
     // MARK: - Private

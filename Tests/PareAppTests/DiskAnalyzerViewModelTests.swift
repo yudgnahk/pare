@@ -269,11 +269,36 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
         ))
         XCTAssertEqual(vm.reviewTrayCount, 1)
 
+        vm.requestReviewCleanup()
+        XCTAssertEqual(coordinator.pending, .diskReview)
         vm.confirmReviewCleanup()
         await waitForCleanupToFinish(coordinator)
 
         XCTAssertEqual(coordinator.state, .done(bytesFreed: 4, skippedCount: 0))
         XCTAssertTrue((try? fixture.store.loadAll())?.isEmpty == false)
+    }
+
+    // MARK: - Pending requests are screen-scoped
+
+    /// A Smart Scan request must never be confirmed with the tray's findings.
+    func testConfirmReviewCleanupIgnoresSmartScanSelectedRequest() {
+        let path = "/Users/k/Library/Caches/tray"
+        let finding = makeFinding(path: path)
+        let coordinator = CleanupCoordinator(engine: CleanupEngine())
+        let vm = makeViewModel(findings: [finding], coordinator: coordinator)
+        vm.addToReview(DiskEntry(
+            id: path, url: URL(fileURLWithPath: path), name: "tray", isDirectory: true,
+            isPackage: false, sizeBytes: finding.sizeBytes, itemCount: 1, modified: nil, kind: .folder
+        ))
+        coordinator.request(.selected)
+
+        XCTAssertNil(vm.pendingCleanup)
+        vm.confirmReviewCleanup()
+        vm.cancelPendingCleanup()
+
+        XCTAssertEqual(coordinator.pending, .selected)
+        XCTAssertEqual(coordinator.state, .confirming)
+        XCTAssertEqual(vm.reviewTrayCount, 1)
     }
 
     /// Any cleanup on the shared coordinator must drop cached levels so trashed items disappear.
@@ -294,6 +319,7 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
             .first { level in !level.entries.contains { $0.name == "trashable.bin" } }
             .sink { _ in reloaded.fulfill() }
         vm.addToReview(entry)
+        vm.requestReviewCleanup()
         vm.confirmReviewCleanup()
         await fulfillment(of: [reloaded], timeout: 10)
         subscription.cancel()
