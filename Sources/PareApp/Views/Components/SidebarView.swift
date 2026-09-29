@@ -116,10 +116,7 @@ struct SidebarView: View {
         ZStack(alignment: .top) {
             SidebarMaterial()
 
-            // Brand gradient over vibrancy: seafoam at the top, deepening toward accentDeep
-            // near the bottom. Stronger than a flat wash so vibrancy still reads as Pare.
-            // textSecondary stays >= 4.5:1 against the opaque sidebar-material approximation
-            // at every stop (checked at the 0.18 top stop, the highest-risk case).
+            // Brand gradient over vibrancy; textSecondary must stay >= 4.5:1 at every stop (0.18 top is the tightest).
             LinearGradient(
                 stops: [
                     .init(color: AppTheme.accent.opacity(0.18), location: 0.0),

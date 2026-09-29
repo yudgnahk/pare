@@ -19,57 +19,68 @@ struct DiskReviewTray: View {
     var body: some View {
         VStack(spacing: 6) {
             if !findings.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(findings, id: \.path) { finding in
-                            HStack(spacing: 6) {
-                                Text(URL(fileURLWithPath: finding.path).lastPathComponent)
-                                    .font(scale.font(11, weight: .medium))
-                                    .lineLimit(1)
-                                    .help(finding.path)
-                                Button { onRemove(finding) } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(scale.font(11))
-                                        .foregroundStyle(AppTheme.textTertiary)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(isCleaning)
-                                .help("Remove from Review")
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(AppTheme.Fill.subtle, in: Capsule())
-                        }
-                    }
-                }
+                findingChips
             }
-
-            HStack(spacing: AppTheme.Spacing.md) {
-                Image(systemName: "tray.full.fill")
-                    .font(scale.font(14, weight: .semibold))
-                    .foregroundStyle(AppTheme.accent)
-
-                Text(summary)
-                    .font(scale.caption)
-                    .foregroundStyle(AppTheme.textSecondary)
-
-                Spacer(minLength: AppTheme.Spacing.sm)
-
-                SecondaryActionButton(title: "Clear", systemImage: "xmark", isEnabled: !isCleaning, action: onClear)
-                SecondaryActionButton(
-                    title: "Review & Clean",
-                    systemImage: "checkmark.circle.fill",
-                    role: reviewRiskCount > 0 ? .destructive : .accent,
-                    isEnabled: !isCleaning,
-                    action: onReviewAndClean
-                )
-            }
+            actionBar
         }
         .padding(.horizontal, AppTheme.Spacing.lg)
         .padding(.vertical, AppTheme.Spacing.sm)
         .background(AppTheme.panelSecondary)
         .overlay(alignment: .top) {
             Rectangle().fill(AppTheme.Hairline.standard).frame(height: 1)
+        }
+    }
+
+    private var findingChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(findings, id: \.path) { finding in
+                    findingChip(finding)
+                }
+            }
+        }
+    }
+
+    private func findingChip(_ finding: ScanFinding) -> some View {
+        HStack(spacing: 6) {
+            Text(URL(fileURLWithPath: finding.path).lastPathComponent)
+                .font(scale.font(11, weight: .medium))
+                .lineLimit(1)
+                .help(finding.path)
+            Button { onRemove(finding) } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(scale.font(11))
+                    .foregroundStyle(AppTheme.textTertiary)
+            }
+            .buttonStyle(.plain)
+            .disabled(isCleaning)
+            .help("Remove from Review")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(AppTheme.Fill.subtle, in: Capsule())
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: AppTheme.Spacing.md) {
+            Image(systemName: "tray.full.fill")
+                .font(scale.font(14, weight: .semibold))
+                .foregroundStyle(AppTheme.accent)
+
+            Text(summary)
+                .font(scale.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+
+            Spacer(minLength: AppTheme.Spacing.sm)
+
+            SecondaryActionButton(title: "Clear", systemImage: "xmark", isEnabled: !isCleaning, action: onClear)
+            SecondaryActionButton(
+                title: "Review & Clean",
+                systemImage: "checkmark.circle.fill",
+                role: reviewRiskCount > 0 ? .destructive : .accent,
+                isEnabled: !isCleaning,
+                action: onReviewAndClean
+            )
         }
     }
 

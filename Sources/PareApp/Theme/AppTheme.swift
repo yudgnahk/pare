@@ -8,7 +8,7 @@ enum AppTheme {
     // MARK: - Adaptive swatches (light/dark pairs; source of truth for semantic colors)
 
     /// Raw light/dark pairs behind every semantic token. Tests read these directly,
-    /// with no `NSColor` resolution involved — see palette table in the redesign plan.
+    /// with no `NSColor` resolution involved.
     enum Swatch {
         static let base = ThemeSwatch(light: RGBA(0xEDF2F5), dark: RGBA(0x0D1520))
         static let panel = ThemeSwatch(light: RGBA(0xFFFFFF), dark: RGBA(0x1A2D40))
