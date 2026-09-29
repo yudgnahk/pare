@@ -72,7 +72,8 @@ final class DiskAnalyzerViewModel: ObservableObject {
             if newValue == .diskReview {
                 coordinator.pending = newValue
             } else if newValue == nil, pendingCleanup != nil {
-                coordinator.pending = nil
+                // Escape nils the binding before onDismiss, so this path must reset state too.
+                coordinator.cancelPending()
             }
         }
     }

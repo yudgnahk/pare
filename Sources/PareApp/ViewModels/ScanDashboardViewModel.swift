@@ -116,7 +116,8 @@ final class ScanDashboardViewModel: ObservableObject {
                 guard newValue.isSmartScan else { return }
                 cleanup.pending = newValue
             } else if pendingCleanup != nil {
-                cleanup.pending = nil
+                // Escape nils the binding before onDismiss, so this path must reset state too.
+                cleanup.cancelPending()
             }
         }
     }

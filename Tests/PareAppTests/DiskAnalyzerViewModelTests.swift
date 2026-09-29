@@ -294,10 +294,32 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
 
         XCTAssertNil(vm.pendingCleanup)
         vm.confirmReviewCleanup()
+        vm.pendingCleanup = nil
         vm.cancelPendingCleanup()
 
         XCTAssertEqual(coordinator.pending, .selected)
         XCTAssertEqual(coordinator.state, .confirming)
+        XCTAssertEqual(vm.reviewTrayCount, 1)
+    }
+
+    /// Escape nils the sheet binding before `onDismiss` runs; the state must still return to idle.
+    func testEscapeDismissResetsDiskReviewRequestToIdle() {
+        let path = "/Users/k/Library/Caches/tray"
+        let finding = makeFinding(path: path)
+        let coordinator = CleanupCoordinator(engine: CleanupEngine())
+        let vm = makeViewModel(findings: [finding], coordinator: coordinator)
+        vm.addToReview(DiskEntry(
+            id: path, url: URL(fileURLWithPath: path), name: "tray", isDirectory: true,
+            isPackage: false, sizeBytes: finding.sizeBytes, itemCount: 1, modified: nil, kind: .folder
+        ))
+        vm.requestReviewCleanup()
+        XCTAssertEqual(vm.pendingCleanup, .diskReview)
+
+        vm.pendingCleanup = nil
+        vm.cancelPendingCleanup()
+
+        XCTAssertNil(coordinator.pending)
+        XCTAssertEqual(coordinator.state, .idle)
         XCTAssertEqual(vm.reviewTrayCount, 1)
     }
 

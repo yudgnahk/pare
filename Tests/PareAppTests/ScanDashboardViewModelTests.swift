@@ -38,4 +38,20 @@ final class ScanDashboardViewModelTests: XCTestCase {
         XCTAssertEqual(coordinator.pending, .diskReview)
         XCTAssertEqual(coordinator.state, .confirming)
     }
+
+    /// Escape nils the sheet binding before `onDismiss` runs; the state must still return to idle.
+    func testEscapeDismissResetsSmartScanRequestToIdle() {
+        for kind in [PendingCleanup.quick, .deep, .selected] {
+            let coordinator = CleanupCoordinator()
+            let vm = ScanDashboardViewModel(cleanup: coordinator)
+            coordinator.request(kind)
+            XCTAssertEqual(vm.pendingCleanup, kind)
+
+            vm.pendingCleanup = nil
+            vm.cancelPendingCleanup()
+
+            XCTAssertNil(coordinator.pending, "\(kind)")
+            XCTAssertEqual(coordinator.state, .idle, "\(kind)")
+        }
+    }
 }
