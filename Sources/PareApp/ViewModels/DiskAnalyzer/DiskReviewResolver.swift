@@ -14,7 +14,7 @@ enum DiskReviewResolution {
 }
 
 /// Maps a Disk Analyzer path onto the latest Smart Scan findings so only scan-covered
-/// items can reach the cleanup review tray (resolved decision 2026-09-26, #1).
+/// items can reach the cleanup review tray.
 enum DiskReviewResolver {
 
     /// `.advanced` findings are excluded up front so they can never surface as covered or as

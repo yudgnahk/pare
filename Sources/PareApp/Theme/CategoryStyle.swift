@@ -9,7 +9,7 @@ import PareCore
 enum CategoryStyle {
     // MARK: - Swatch (light/dark tile fill)
 
-    /// Swatch for a scan category's icon tile — see "Category → color / symbol" in the redesign plan.
+    /// Swatch for a scan category's icon tile.
     static func swatch(for category: ScanCategory) -> ThemeSwatch {
         switch category {
         case .userCaches:

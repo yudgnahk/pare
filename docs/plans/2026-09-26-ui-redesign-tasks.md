@@ -86,33 +86,33 @@ Source: three-agent deep review (safety, loading, UI) of the branch at `388280f`
 - [x] Merged `master` (#32 Makefile SDK fix); `make build` clean
 
 **Safety — fix before merge**
-- [ ] S1 HIGH: right-click "Add to Review" on a file inside a finding queues the whole parent finding, with no feedback (`DiskAnalyzerTable.swift:148,162`, `DiskAnalyzerViewModel.swift:166`). Gate the menu on `reviewResolution`, name the parent in the label, and list paths in the confirm sheet.
-- [ ] S2 HIGH: the context menu ignores `.notCandidate`/`.noScan`, so clicking does nothing and says nothing. Same fix as S1.
-- [ ] S3 MEDIUM: `DiskReviewResolver.swift:35` `first(where:)` picks an arbitrary container, not the nearest one.
-- [ ] S4 MEDIUM: the tray goes stale across folders and rescans, and `removeFromReview` is never called. Revalidate against the latest findings on confirm, and add a per-item remove.
-- [ ] S5 MEDIUM: a parent and its child can both be in the tray, so totals are double-counted and Undo can fail to restore the parent. Drop nested findings in `merge`.
-- [ ] S6 MEDIUM: "Review & Clean" stays enabled while cleaning, so a second confirm overwrites `lastTransaction` and Undo is lost (`DiskReviewTray.swift:29`, `CleanupCoordinator.swift:62`).
-- [ ] S7 MEDIUM (existing bug): an exclusion inside a finding does not protect it (`CleanupEngine.swift:239`).
+- [x] S1 HIGH: right-click "Add to Review" on a file inside a finding queues the whole parent finding, with no feedback (`DiskAnalyzerTable.swift:148,162`, `DiskAnalyzerViewModel.swift:166`). Gate the menu on `reviewResolution`, name the parent in the label, and list paths in the confirm sheet.
+- [x] S2 HIGH: the context menu ignores `.notCandidate`/`.noScan`, so clicking does nothing and says nothing. Same fix as S1.
+- [x] S3 MEDIUM: `DiskReviewResolver.swift:35` `first(where:)` picks an arbitrary container, not the nearest one.
+- [x] S4 MEDIUM: the tray goes stale across folders and rescans, and `removeFromReview` is never called. Revalidate against the latest findings on confirm, and add a per-item remove.
+- [x] S5 MEDIUM: a parent and its child can both be in the tray, so totals are double-counted and Undo can fail to restore the parent. Drop nested findings in `merge`.
+- [x] S6 MEDIUM: "Review & Clean" stays enabled while cleaning, so a second confirm overwrites `lastTransaction` and Undo is lost (`DiskReviewTray.swift:29`, `CleanupCoordinator.swift:62`).
+- [x] S7 MEDIUM (existing bug): an exclusion inside a finding does not protect it (`CleanupEngine.swift:239`).
 - [ ] S8 LOW: every skip reason reads "policy check", `transactionSaveError` is dropped, and the tray is cleared even when items were skipped.
 - [ ] S9 LOW: path matching ignores case, so on a case-sensitive volume `Build` matches `build`.
 - [ ] S10 LOW (existing bug): a symlink swapped into a finding's path after the scan is followed at trash time.
 
 **UI / state**
-- [ ] U1 MEDIUM: stale doc comment on `DiskColumnComparator` (`DiskAnalyzerTable.swift:189`) still says it reimplements the comparisons (introduced by `388280f`).
-- [ ] U2 MEDIUM: `DiskInspectorPane.creationDate(for:)` does sync file I/O on every render. Move it into `DiskLevelLoader`.
-- [ ] U3 MEDIUM: `selection` is not cleared after cleanup or `refresh()`, so the inspector goes blank with no explanation.
-- [ ] U4 MEDIUM: the sort `onChange` pair has no equality guard (loop risk).
-- [ ] U5 MEDIUM: truncated breadcrumb crumbs have no `.help` tooltip.
+- [x] U1 MEDIUM: stale doc comment on `DiskColumnComparator` (`DiskAnalyzerTable.swift:189`) still says it reimplements the comparisons (introduced by `388280f`).
+- [x] U2 MEDIUM: `DiskInspectorPane.creationDate(for:)` does sync file I/O on every render. Move it into `DiskLevelLoader`.
+- [x] U3 MEDIUM: `selection` is not cleared after cleanup or `refresh()`, so the inspector goes blank with no explanation.
+- [x] U4 MEDIUM: the sort `onChange` pair has no equality guard (loop risk).
+- [x] U5 MEDIUM: truncated breadcrumb crumbs have no `.help` tooltip.
 - [ ] U6 LOW: row `IconTile` is not `accessibilityHidden`; double-clicking a file does nothing; test gaps (tie-breaks, combined filters, NFD names).
 
 **Loading / concurrency**
-- [ ] L1 HIGH: `.skipsHiddenFiles` in `DiskLevelLoader.buildLevel` and `FileSystemUtils.directoryUsage` hides dot-folders (`~/.npm`, `~/.cargo`, `.git`) and leaves them out of every size, so Disk Analyzer under-reports exactly what Smart Scan targets.
-- [ ] L2 HIGH: `directoryUsage`/`directorySize` enumerators have no `errorHandler`, so unreadable subtrees (no Full Disk Access) are silently skipped and the size looks smaller than it is. Flag it as a partial size in the UI.
-- [ ] L3 MEDIUM: `DiskLevelCache` has no eviction or size cap.
-- [ ] L4 MEDIUM: `directorySize` duplicates `directoryUsage`'s enumerator and cancellation logic.
-- [ ] L5 MEDIUM: the cache key (`DiskEntry.standardizedID`) does not canonicalize symlinks. Safe today because every caller passes `breadcrumb.current`.
+- [x] L1 HIGH: `.skipsHiddenFiles` in `DiskLevelLoader.buildLevel` and `FileSystemUtils.directoryUsage` hides dot-folders (`~/.npm`, `~/.cargo`, `.git`) and leaves them out of every size, so Disk Analyzer under-reports exactly what Smart Scan targets.
+- [x] L2 HIGH: `directoryUsage`/`directorySize` enumerators have no `errorHandler`, so unreadable subtrees (no Full Disk Access) are silently skipped and the size looks smaller than it is. Flag it as a partial size in the UI.
+- [x] L3 MEDIUM: `DiskLevelCache` has no eviction or size cap.
+- [x] L4 MEDIUM: `directorySize` duplicates `directoryUsage`'s enumerator and cancellation logic.
+- [x] L5 MEDIUM: the cache key (`DiskEntry.standardizedID`) does not canonicalize symlinks. Safe today because every caller passes `breadcrumb.current`.
 - [ ] L6 LOW: cancellation is checked only every 256 files, so fast navigation leaves old walks running; `onProgress` is never wired (static spinner); no tests for navigation races or error states.
-- [ ] L7 HIGH (PR #34 review): the 200-row cap runs before search and filters, so matching entries below the cap cannot be found. Remove the cap/remainder or make the full directory searchable.
+- [x] L7 HIGH (PR #34 review): the 200-row cap runs before search and filters, so matching entries below the cap cannot be found. Remove the cap/remainder or make the full directory searchable.
 - Not a bug: the agent's "CRITICAL main-thread" doubt. `load` is a nonisolated async method on a non-actor class (tools 5.9, no `NonisolatedNonsendingByDefault`), so under SE-0338 it runs off the main actor. Confirm with T1.
 
 **PR #34 completion gates**

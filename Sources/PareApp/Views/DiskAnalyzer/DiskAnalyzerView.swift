@@ -120,43 +120,7 @@ struct DiskAnalyzerView: View {
             StatusBanner(kind: .progress, title: "Moving files to Trash…")
 
         case .done(let bytesFreed, let skippedCount):
-            let skippedReasons = viewModel.cleanupSkippedReasons
-            let shownReasons = skippedReasons.prefix(3).joined(separator: "\n")
-            let omittedReasonCount = max(0, skippedCount - min(skippedCount, skippedReasons.prefix(3).count))
-            let skipDetails = [
-                shownReasons.isEmpty ? nil : shownReasons,
-                omittedReasonCount > 0 ? "and \(omittedReasonCount) more skipped item\(omittedReasonCount == 1 ? "" : "s")" : nil
-            ].compactMap { $0 }.joined(separator: "\n")
-            let saveWarning = viewModel.transactionSaveError.map { "Undo record warning: \($0)" }
-            let details = [skipDetails.isEmpty ? nil : skipDetails, saveWarning].compactMap { $0 }.joined(separator: "\n")
-            let resultTitle: String = {
-                if saveWarning != nil {
-                    return bytesFreed > 0
-                        ? "Cleaned \(viewModel.formattedBytes(bytesFreed)); undo record failed"
-                        : "Cleanup finished, but its undo record failed"
-                }
-                if bytesFreed == 0 && skippedCount > 0 {
-                    return "No items cleaned · \(skippedCount) skipped"
-                }
-                if skippedCount > 0 {
-                    return "Cleaned \(viewModel.formattedBytes(bytesFreed)) · \(skippedCount) skipped"
-                }
-                return "Cleaned \(viewModel.formattedBytes(bytesFreed))"
-            }()
-            StatusBanner(
-                kind: saveWarning != nil || (bytesFreed == 0 && skippedCount > 0) ? .error :
-                    skippedCount > 0 ? .warning : .success,
-                title: resultTitle,
-                detail: details.isEmpty ? nil : details,
-                onDismiss: { viewModel.dismissCleanupResult() }
-            ) {
-                if viewModel.canUndo {
-                    Button("Undo") { viewModel.undoLastCleanup() }
-                        .buttonStyle(.borderless)
-                        .font(scale.font(13, weight: .semibold))
-                        .foregroundStyle(AppTheme.accent)
-                }
-            }
+            doneBanner(bytesFreed: bytesFreed, skippedCount: skippedCount)
 
         case .undoing:
             StatusBanner(kind: .progress, title: "Restoring files from Trash…")
@@ -174,6 +138,46 @@ struct DiskAnalyzerView: View {
         case .error(let message):
             StatusBanner(kind: .error, title: message, onDismiss: { viewModel.dismissCleanupResult() })
         }
+    }
+
+    private func doneBanner(bytesFreed: Int64, skippedCount: Int) -> some View {
+        let saveWarning = viewModel.transactionSaveError.map { "Undo record warning: \($0)" }
+        let skipDetails = skipDetailsText(skippedCount: skippedCount)
+        let details = [skipDetails, saveWarning].compactMap { $0 }.joined(separator: "\n")
+        let isError = saveWarning != nil || (bytesFreed == 0 && skippedCount > 0)
+        return StatusBanner(
+            kind: isError ? .error : (skippedCount > 0 ? .warning : .success),
+            title: doneTitle(bytesFreed: bytesFreed, skippedCount: skippedCount, undoRecordFailed: saveWarning != nil),
+            detail: details.isEmpty ? nil : details,
+            onDismiss: { viewModel.dismissCleanupResult() }
+        ) {
+            if viewModel.canUndo {
+                Button("Undo") { viewModel.undoLastCleanup() }
+                    .buttonStyle(.borderless)
+                    .font(scale.font(13, weight: .semibold))
+                    .foregroundStyle(AppTheme.accent)
+            }
+        }
+    }
+
+    private func skipDetailsText(skippedCount: Int) -> String? {
+        let reasons = viewModel.cleanupSkippedReasons.prefix(3)
+        let omitted = max(0, skippedCount - reasons.count)
+        let lines = [
+            reasons.isEmpty ? nil : reasons.joined(separator: "\n"),
+            omitted > 0 ? "and \(omitted) more skipped item\(omitted == 1 ? "" : "s")" : nil
+        ].compactMap { $0 }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    private func doneTitle(bytesFreed: Int64, skippedCount: Int, undoRecordFailed: Bool) -> String {
+        let freed = viewModel.formattedBytes(bytesFreed)
+        if undoRecordFailed {
+            return bytesFreed > 0 ? "Cleaned \(freed); undo record failed" : "Cleanup finished, but its undo record failed"
+        }
+        if bytesFreed == 0 && skippedCount > 0 { return "No items cleaned · \(skippedCount) skipped" }
+        if skippedCount > 0 { return "Cleaned \(freed) · \(skippedCount) skipped" }
+        return "Cleaned \(freed)"
     }
 
     // MARK: Loading

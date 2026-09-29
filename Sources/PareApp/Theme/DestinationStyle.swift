@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Single source of truth for sidebar destination tile swatches — see "Sidebar destination tiles" in the redesign plan.
+/// Single source of truth for sidebar destination tile swatches.
 enum DestinationStyle {
     // MARK: - Swatch (light/dark tile fill)
 
-    /// Swatch for a sidebar destination's icon tile. Reuses category hues where the plan pairs them
+    /// Swatch for a sidebar destination's icon tile. Reuses category hues where they pair up
     /// (e.g. Smart Scan borrows userCaches teal) so the palette reads as one system.
     static func swatch(for destination: AppDestination) -> ThemeSwatch {
         switch destination {
