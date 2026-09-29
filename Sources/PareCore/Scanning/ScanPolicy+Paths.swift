@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 extension ScanPolicy {
 
@@ -17,5 +18,26 @@ extension ScanPolicy {
     /// `isEqualToOrDescendant` after `canonicalPathURL` on both sides, so `/var/…` matches `/private/var/…`.
     public static func isCanonicallyEqualToOrDescendant(candidate: URL, root: URL) -> Bool {
         isEqualToOrDescendant(candidate: canonicalPathURL(candidate), root: canonicalPathURL(root))
+    }
+
+    /// macOS-owned `/private` alias roots — exempt so every temp or `/var/folders` path is not blocked.
+    private static let symlinkExemptSystemPaths: Set<String> = Set(["/private", "/private/tmp"] + privateAliasRoots)
+
+    /// True when any component of `path` (after standardizing) is a symbolic link, ignoring the system aliases.
+    public static func hasSymbolicLinkComponent(atPath path: String) -> Bool {
+        var current = ""
+        for component in URL(fileURLWithPath: path).standardizedFileURL.pathComponents {
+            current = current.isEmpty
+                ? component
+                : URL(fileURLWithPath: current).appendingPathComponent(component).path
+            if symlinkExemptSystemPaths.contains(current) { continue }
+            if isSymbolicLink(atPath: current) { return true }
+        }
+        return false
+    }
+
+    private static func isSymbolicLink(atPath path: String) -> Bool {
+        var metadata = stat()
+        return lstat(path, &metadata) == 0 && (metadata.st_mode & S_IFMT) == S_IFLNK
     }
 }

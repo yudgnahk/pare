@@ -228,6 +228,10 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         guard case .some(.symbolicLinkBlocked(_)) = result.skipped.first?.error else {
             return XCTFail("expected symlink path to be blocked")
         }
+        XCTAssertEqual(
+            result.skipped.first?.reason,
+            "Skipped: path goes through a symbolic link: \(alias.appending(path: "payload.bin").path)"
+        )
         XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: alias.path))
     }

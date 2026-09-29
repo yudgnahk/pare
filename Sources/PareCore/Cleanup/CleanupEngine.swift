@@ -1,5 +1,4 @@
 import Foundation
-import Darwin
 
 // MARK: - CleanupError
 
@@ -22,7 +21,7 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case undoRecordUnavailable(String)
     /// The file does not exist on disk when cleanup is attempted.
     case fileNotFound(String)
-    /// The scanned path became a symbolic link before cleanup.
+    /// The path goes through a symbolic link, which could redirect the Trash move to another item.
     case symbolicLinkBlocked(String)
     /// The Trash move failed with an underlying system error.
     case trashFailed(String, Error)
@@ -50,7 +49,7 @@ public enum CleanupError: Error, LocalizedError, Sendable {
         case .fileNotFound(let path):
             return "File not found: \(path)"
         case .symbolicLinkBlocked(let path):
-            return "Symbolic link changed after scan; cleanup blocked: \(path)"
+            return "Skipped: path goes through a symbolic link: \(path)"
         case .trashFailed(let path, let error):
             return "Failed to move to Trash: \(path) — \(error.localizedDescription)"
         case .restoreFailed(let reason):
@@ -291,7 +290,7 @@ public actor CleanupEngine {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .fileNotFound(finding.path)))
                 continue
             }
-            if Self.hasSymbolicLinkComponent(atPath: finding.path) {
+            if ScanPolicy.hasSymbolicLinkComponent(atPath: finding.path) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .symbolicLinkBlocked(finding.path)))
                 continue
             }
@@ -333,7 +332,7 @@ public actor CleanupEngine {
                 ))
             } else {
                 do {
-                    guard !Self.hasSymbolicLinkComponent(atPath: finding.path) else {
+                    guard !ScanPolicy.hasSymbolicLinkComponent(atPath: finding.path) else {
                         skipped.append(CleanupSkippedItem(path: finding.path, error: .symbolicLinkBlocked(finding.path)))
                         continue
                     }
@@ -479,24 +478,5 @@ public actor CleanupEngine {
     private func isPersonaPath(_ url: URL) -> Bool {
         if ScanPolicy.isDockerNeverDeletePath(url) { return false }
         return ScanPolicy.matchesPersonaPath(url, allowedMarkers: Self.allPersonaMarkers)
-    }
-
-    private static func isSymbolicLink(atPath path: String) -> Bool {
-        var metadata = stat()
-        return lstat(path, &metadata) == 0 && (metadata.st_mode & S_IFMT) == S_IFLNK
-    }
-
-    private static func hasSymbolicLinkComponent(atPath path: String) -> Bool {
-        // macOS may expose these system-owned roots through stable aliases.
-        let systemAliases: Set<String> = ["/private", "/private/tmp", "/tmp", "/var", "/etc"]
-        var current = ""
-        for component in URL(fileURLWithPath: path).standardizedFileURL.pathComponents {
-            current = current.isEmpty
-                ? component
-                : URL(fileURLWithPath: current).appendingPathComponent(component).path
-            if systemAliases.contains(current) { continue }
-            if isSymbolicLink(atPath: current) { return true }
-        }
-        return false
     }
 }

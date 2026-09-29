@@ -41,4 +41,26 @@ final class ScanPolicyPathContainmentTests: XCTestCase {
             XCTAssertEqual(result, testCase.expected, testCase.name)
         }
     }
+
+    func testHasSymbolicLinkComponent() throws {
+        let root = URL(fileURLWithPath: "/private/tmp/SymlinkComponent-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let real = root.appending(path: "real/cache")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let link = root.appending(path: "link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appending(path: "real"))
+        let tmpAliasSpelling = "/tmp/" + root.lastPathComponent + "/real/cache"
+
+        let cases: [(name: String, path: String, expected: Bool)] = [
+            ("plain directory", real.path, false),
+            ("link in the middle", link.appending(path: "cache").path, true),
+            ("link as leaf", link.path, true),
+            ("/tmp system alias", tmpAliasSpelling, false),
+            ("/var system alias", NSTemporaryDirectory(), false),
+            ("missing path", root.appending(path: "missing/x").path, false),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(ScanPolicy.hasSymbolicLinkComponent(atPath: testCase.path), testCase.expected, testCase.name)
+        }
+    }
 }
