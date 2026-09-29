@@ -27,14 +27,14 @@ struct ScanOrbButton: View {
                         Circle()
                             .fill(
                                 RadialGradient(
-                                    colors: [Color.white.opacity(0.28), .clear],
+                                    colors: [AppTheme.sheen.opacity(0.28), .clear],
                                     center: UnitPoint(x: 0.35, y: 0.2),
                                     startRadius: 0,
                                     endRadius: diameter * 0.6
                                 )
                             )
                     )
-                    .overlay(Circle().strokeBorder(Color.white.opacity(0.22), lineWidth: 1))
+                    .overlay(Circle().strokeBorder(AppTheme.sheen.opacity(0.22), lineWidth: 1))
                     .shadow(color: AppTheme.accentDeep.opacity(0.45), radius: 22, y: 12)
 
                 label

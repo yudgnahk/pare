@@ -86,7 +86,7 @@ struct PrimaryActionButton: View {
                     )
                     .overlay(
                         Capsule(style: .continuous)
-                            .fill(LinearGradient(colors: [Color.white.opacity(0.18), .clear], startPoint: .top, endPoint: .center))
+                            .fill(LinearGradient(colors: [AppTheme.sheen.opacity(0.18), .clear], startPoint: .top, endPoint: .center))
                     )
             )
             .overlay(

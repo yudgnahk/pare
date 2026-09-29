@@ -53,6 +53,8 @@ enum AppTheme {
         static let backgroundVignette = ThemeSwatch(light: RGBA(0x000000, alpha: 0), dark: RGBA(0x000000, alpha: 0.22))
         static let backgroundBloom = ThemeSwatch(light: RGBA(0x3FB3A7, alpha: 0.14), dark: RGBA(0x5CC8BC, alpha: 0.16))
         static let backgroundWarmBloom = ThemeSwatch(light: RGBA(0xEFA06B, alpha: 0.12), dark: RGBA(0xF2AE7E, alpha: 0.07))
+        /// Specular sheen on filled CTAs; white in both modes by design.
+        static let sheen = ThemeSwatch(0xFFFFFF)
         static let cardHighlight = ThemeSwatch(light: RGBA(0xFFFFFF, alpha: 0.9), dark: RGBA(0xFFFFFF, alpha: 0.10))
     }
 
@@ -92,6 +94,9 @@ enum AppTheme {
         endPoint: .bottomTrailing
     )
 
+    /// Glossy top-light on filled buttons and the scan orb (apply with opacity).
+    static let sheen = Swatch.sheen.color
+
     /// Fill for the single most important action on a screen (Scan, Clean).
     static let ctaGradient = LinearGradient(
         colors: [Swatch.ctaTop.color, Swatch.ctaBottom.color],
@@ -112,17 +117,6 @@ enum AppTheme {
         colors: [accentDeep, accentBright],
         startPoint: .leading,
         endPoint: .trailing
-    )
-
-    static let heroGlow = RadialGradient(
-        colors: [
-            accent.opacity(0.35),
-            accentDeep.opacity(0.12),
-            .clear
-        ],
-        center: .center,
-        startRadius: 20,
-        endRadius: 280
     )
 
     // MARK: - Hairlines (strokes / dividers)
@@ -263,7 +257,6 @@ enum AppTheme {
         static let secondaryHeight: CGFloat = 32
         static let iconSize: CGFloat = 28
         static let primaryMinWidth: CGFloat = 112
-        static let ringButtonSize: CGFloat = 96
         /// Smart Scan hero: disk ring diameter and the scan orb inside it.
         static let heroRing: CGFloat = 264
         static let heroOrb: CGFloat = 176
@@ -276,7 +269,6 @@ enum AppTheme {
         static let quick = Animation.easeOut(duration: 0.18)
         static let standard = Animation.spring(response: 0.38, dampingFraction: 0.86)
         static let gentle = Animation.spring(response: 0.55, dampingFraction: 0.88)
-        static let ringPulse = Animation.easeInOut(duration: 1.4).repeatForever(autoreverses: true)
         static let reveal = Animation.spring(response: 0.6, dampingFraction: 0.9)
         static let countUp = Animation.easeOut(duration: 1.1)
         static let ringFill = Animation.spring(response: 1.1, dampingFraction: 0.9)

@@ -173,7 +173,7 @@ struct CleanConfirmationSheet: View {
                             .fill(config.confirmTint)
                             .overlay(
                                 RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                                    .fill(LinearGradient(colors: [Color.white.opacity(0.16), .clear], startPoint: .top, endPoint: .center))
+                                    .fill(LinearGradient(colors: [AppTheme.sheen.opacity(0.16), .clear], startPoint: .top, endPoint: .center))
                             )
                     )
                     .shadow(color: config.confirmTint.opacity(0.3), radius: 8, y: 4)
