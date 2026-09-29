@@ -67,6 +67,21 @@ final class ExclusionListTests: XCTestCase {
         XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache/keep"))
     }
 
+    func testBlocksRemovalOfAncestorsIgnoresCaseAndPrivateAliases() {
+        let cases: [(name: String, excluded: String, removed: String, blocked: Bool)] = [
+            ("case differs", "/Users/Test/Cache/Keep", "/users/test/cache", true),
+            ("private alias on exclusion", "/private/var/pare-test/keep", "/var/pare-test", true),
+            ("private alias on removal", "/var/pare-test/keep", "/private/var/pare-test", true),
+            ("sibling with shared prefix", "/Users/test/Cache/keep", "/users/test/Cach", false),
+            ("unrelated sibling", "/Users/test/Cache/keep", "/Users/test/Other", false),
+        ]
+        for c in cases {
+            var list = ExclusionList()
+            list.add(ExclusionEntry(path: c.excluded, matchType: .prefix))
+            XCTAssertEqual(list.blocksRemoval(of: c.removed), c.blocked, c.name)
+        }
+    }
+
     func testAddDeduplicatesIdenticalEntries() {
         var list = ExclusionList()
         let e1 = ExclusionEntry(path: "/Users/test/dir", matchType: .prefix)

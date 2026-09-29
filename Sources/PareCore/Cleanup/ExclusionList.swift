@@ -66,9 +66,10 @@ public struct ExclusionList: Codable, Sendable {
     public func blocksRemoval(of path: String) -> Bool {
         entries.contains { entry in
             if entry.matches(path) { return true }
-            let parent = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
-            let excluded = URL(fileURLWithPath: entry.path).standardizedFileURL.pathComponents
-            return excluded.count > parent.count && Array(excluded.prefix(parent.count)) == parent
+            return ScanPolicy.isCanonicallyEqualToOrDescendant(
+                candidate: URL(fileURLWithPath: entry.path),
+                root: URL(fileURLWithPath: path)
+            )
         }
     }
 
