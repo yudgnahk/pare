@@ -6,46 +6,21 @@ struct MaintenanceView: View {
     @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
-        ZStack {
-            // Shell provides AppBackgroundView.
-
+        VStack(spacing: 0) {
+            PageHeader(
+                destination: .maintenance,
+                subtitle: "One-shot system actions. None of them delete your files."
+            )
             ScrollView {
-                VStack(spacing: AppTheme.Spacing.xl) {
-                    headerCard
-                    actionCards
-                }
-                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                .padding(.vertical, AppTheme.Spacing.pageVertical)
-                .frame(maxWidth: .infinity)
+                actionCards
+                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                    .padding(.top, AppTheme.Spacing.sm)
+                    .padding(.bottom, AppTheme.Spacing.pageVertical)
+                    .frame(maxWidth: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { viewModel.onAppear() }
-    }
-
-    // MARK: - Header
-
-    private var headerCard: some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                    .fill(AppTheme.accent.opacity(0.14))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "wrench.and.screwdriver")
-                    .font(scale.font(17, weight: .semibold))
-                    .foregroundStyle(AppTheme.accent)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Maintenance")
-                    .font(scale.pageTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
-                Text("One-shot system actions — no file deletions")
-                    .font(scale.caption)
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
     }
 
     // MARK: - Action cards
@@ -54,7 +29,7 @@ struct MaintenanceView: View {
         // Adaptive columns: 1 on compact 13–14", 2 on 15"+, 3 on wide desktops.
         LazyVGrid(
             columns: [
-                GridItem(.adaptive(minimum: AppTheme.Breakpoint.cardMin), spacing: AppTheme.Spacing.lg)
+                GridItem(.adaptive(minimum: AppTheme.Breakpoint.cardMin), spacing: AppTheme.Spacing.lg, alignment: .top)
             ],
             spacing: AppTheme.Spacing.lg
         ) {

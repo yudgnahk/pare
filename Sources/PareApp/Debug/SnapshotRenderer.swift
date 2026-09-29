@@ -100,6 +100,10 @@ extension SnapshotRenderer {
                 store.scan.cleanup.applySnapshotState(.done(bytesFreed: 12_884_901_888, skippedCount: 0))
             },
             Scene(name: "05-disk-analyzer-empty", destination: .disk) { _ in },
+            Scene(name: "05b-disk-analyzer-folder", destination: .disk, settleSeconds: 5) { store in
+                store.scan.applySnapshotResults(SnapshotFixtures.scanReport)
+                store.disk.open(root: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+            },
             Scene(name: "06-apps", destination: .apps, settleSeconds: 10) { _ in },
             Scene(name: "07-maintenance", destination: .maintenance) { _ in },
             Scene(name: "08-history", destination: .history) { store in

@@ -16,6 +16,10 @@ struct EmptyStateView: View {
     let message: String
     var layout: Layout = .expanded
     var maxTextWidth: CGFloat = 400
+    var tint: Color = AppTheme.accentText
+    var actionTitle: String? = nil
+    var actionIcon: String = "arrow.right"
+    var action: (() -> Void)? = nil
 
     @Environment(\.pareDisplayScale) private var scale
 
@@ -29,14 +33,27 @@ struct EmptyStateView: View {
     }
 
     private var expanded: some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(scale.font(36, weight: .light))
-                .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(colors: [tint.opacity(0.16), .clear], center: .center, startRadius: 4, endRadius: scale.space(70)))
+                    .frame(width: scale.space(140), height: scale.space(140))
+                Circle()
+                    .fill(AppTheme.cardFill)
+                    .overlay(Circle().strokeBorder(AppTheme.Hairline.standard, lineWidth: 1))
+                    .frame(width: scale.space(72), height: scale.space(72))
+                    .shadow(color: AppTheme.Shadow.card, radius: 12, y: 6)
+                Image(systemName: icon)
+                    .font(scale.font(28, weight: .medium))
+                    .foregroundStyle(tint)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .frame(height: scale.space(100))
+            .accessibilityHidden(true)
 
             if let title {
                 Text(title)
-                    .font(scale.font(16, weight: .semibold))
+                    .font(scale.font(17, weight: .semibold, design: .rounded))
                     .foregroundStyle(AppTheme.textPrimary)
             }
 
@@ -45,6 +62,12 @@ struct EmptyStateView: View {
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: maxTextWidth)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let actionTitle, let action {
+                SecondaryActionButton(title: actionTitle, systemImage: actionIcon, role: .accent, action: action)
+                    .padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

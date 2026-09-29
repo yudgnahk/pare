@@ -18,7 +18,7 @@ struct PrimaryActionButton: View {
         var colors: [Color] {
             switch self {
             case .accent:
-                return [AppTheme.accent, AppTheme.success]
+                return [AppTheme.Swatch.ctaTop.color, AppTheme.Swatch.ctaBottom.color]
             case .success:
                 return [AppTheme.success, AppTheme.success.opacity(0.85)]
             case .warning:
@@ -80,9 +80,13 @@ struct PrimaryActionButton: View {
                     .fill(
                         LinearGradient(
                             colors: tint.colors,
-                            startPoint: .leading,
-                            endPoint: .trailing
+                            startPoint: .top,
+                            endPoint: .bottom
                         )
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .fill(LinearGradient(colors: [Color.white.opacity(0.18), .clear], startPoint: .top, endPoint: .center))
                     )
             )
             .overlay(
@@ -99,7 +103,7 @@ struct PrimaryActionButton: View {
             .animation(.easeOut(duration: 0.16), value: hovering)
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
         .disabled(isLoading || !isEnabled)
         .opacity(isEnabled ? 1 : 0.55)
         .onHover { inside in
@@ -191,7 +195,7 @@ struct SecondaryActionButton: View {
             )
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
         .disabled(isLoading || !isEnabled)
         .opacity(isEnabled ? 1 : 0.5)
         .onHover { hovering = $0 }
