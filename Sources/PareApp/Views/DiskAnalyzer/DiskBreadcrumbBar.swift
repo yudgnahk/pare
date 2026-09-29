@@ -15,7 +15,7 @@ struct DiskBreadcrumbBar: View {
         HStack(spacing: 8) {
             IconActionButton(systemImage: "chevron.up", help: "Up one level", isEnabled: canGoUp, action: onGoUp)
 
-            IconTile(symbol: "folder.fill", swatch: AppTheme.Swatch.accent, size: 16)
+            IconTile(symbol: "folder.fill", swatch: DiskKindStyle.swatch(for: .folder), size: 18)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
