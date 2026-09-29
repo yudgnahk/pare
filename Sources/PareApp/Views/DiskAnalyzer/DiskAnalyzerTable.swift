@@ -2,8 +2,7 @@ import SwiftUI
 import PareCore
 
 /// Sortable table for one Disk Analyzer level: Name (tile + name), Size (share bar + bytes),
-/// Items, Modified and Kind. Drives selection and sort order via bindings so 3.15 can compose it
-/// with the breadcrumb/filter bar and inspector.
+/// Items, Modified and Kind. Selection and sort order are driven via bindings.
 struct DiskAnalyzerTable: View {
     let entries: [DiskEntry]
     let levelTotalBytes: Int64
@@ -149,9 +148,7 @@ struct DiskAnalyzerTable: View {
         } else if let only = selected.first, selected.count == 1 {
             singleSelectionMenu(only)
         } else {
-            ForEach(selected, id: \.id) { entry in
-                reviewMenuItem(entry)
-            }
+            multiSelectionMenu(selected)
         }
     }
 
@@ -164,6 +161,29 @@ struct DiskAnalyzerTable: View {
         Button("Copy Path") { onCopyPath(entry) }
         Divider()
         reviewMenuItem(entry)
+    }
+
+    @ViewBuilder
+    private func multiSelectionMenu(_ selected: [DiskEntry]) -> some View {
+        let addable = selected.filter(isAddableToReview)
+        let skipped = selected.count - addable.count
+        if addable.isEmpty {
+            Button("None of these can be added to Review") {}.disabled(true)
+        } else {
+            Button("Add \(addable.count) items to Review") {
+                addable.forEach(onAddToReview)
+            }
+            if skipped > 0 {
+                Button("\(skipped) not in Smart Scan, skipped") {}.disabled(true)
+            }
+        }
+    }
+
+    private func isAddableToReview(_ entry: DiskEntry) -> Bool {
+        switch reviewResolution(entry) {
+        case .covered, .insideFinding: return true
+        case .notCandidate, .noScan: return false
+        }
     }
 
     @ViewBuilder
