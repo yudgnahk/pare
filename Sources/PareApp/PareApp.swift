@@ -65,11 +65,6 @@ struct MainShellView: View {
                 .frame(width: max(200, AppTheme.Spacing.sidebarWidth * scale.spacingFactor))
                 .frame(maxHeight: .infinity)
 
-            Rectangle()
-                .fill(AppTheme.Fill.control)
-                .frame(width: 1)
-                .frame(maxHeight: .infinity)
-
             ZStack {
                 AppBackgroundView()
                 // No `.id(selection)` here: stamping the pane with the selection
