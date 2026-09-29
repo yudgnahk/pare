@@ -104,6 +104,36 @@ final class DiskReviewResolverTests: XCTestCase {
         }
     }
 
+    func testInsideFindingResolvesAcrossAliasAndDotSegmentSpellings() {
+        let cases: [(name: String, findingPath: String, entryPath: String)] = [
+            ("finding /var, entry /private/var", "/var/folders/ab/T/cache", "/private/var/folders/ab/T/cache/sub/file"),
+            ("finding /private/var, entry /var", "/private/var/folders/ab/T/cache", "/var/folders/ab/T/cache/sub"),
+            ("finding /private/tmp, entry /tmp with dot segments", "/private/tmp/build-cache", "/tmp/x/../build-cache/./obj"),
+        ]
+        for testCase in cases {
+            let finding = makeFinding(path: testCase.findingPath)
+            let result = DiskReviewResolver.resolve(entryPath: testCase.entryPath, findings: [finding])
+            guard case .insideFinding(let matched) = result else {
+                XCTFail("\(testCase.name): expected .insideFinding, got \(result)")
+                continue
+            }
+            XCTAssertEqual(matched.path, finding.path, testCase.name)
+        }
+    }
+
+    /// Raw component counts tie (6 vs 6) and `max` keeps the first on ties, so only canonical depth picks `inner`.
+    func testNearestFindingUsesCanonicalDepthAcrossAliasSpellings() {
+        let inner = makeFinding(path: "/var/folders/ab/T/cache")
+        let outer = makeFinding(path: "/private/var/folders/ab/T")
+
+        let result = DiskReviewResolver.resolve(entryPath: "/var/folders/ab/T/cache/sub", findings: [outer, inner])
+
+        guard case .insideFinding(let matched) = result else {
+            return XCTFail("expected .insideFinding, got \(result)")
+        }
+        XCTAssertEqual(matched.path, inner.path)
+    }
+
     func testSiblingPrefixNeverMatches() {
         let cases: [(name: String, findingPath: String, entryPath: String)] = [
             ("uvicorn is not uv", "/a/uvicorn", "/a/uv"),

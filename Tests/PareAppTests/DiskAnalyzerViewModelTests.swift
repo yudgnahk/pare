@@ -301,4 +301,48 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
         XCTAssertEqual(vm.visibleEntries.map(\.name), ["keeper.bin"])
         XCTAssertEqual(vm.reviewTrayCount, 0)
     }
+
+    /// Completion drops trashed and no-longer-scanned tray items and clears every cached level, not just the current one.
+    func testCleanupCompletionPrunesTrayAndClearsLevelCache() async throws {
+        let fixture = try HermeticCleanupFixture(name: "DiskAnalyzerViewModelTests-prune")
+        defer { fixture.remove() }
+        let files = try ["trashable.bin", "keeper.bin", "stale.bin"].map { try fixture.makeFile(named: $0) }
+        let findings = files.map { makeFinding(path: $0.path, sizeBytes: 4) }
+        var latestFindings = findings
+        let coordinator = CleanupCoordinator(engine: fixture.makeEngine())
+        let vm = DiskAnalyzerViewModel(findingsProvider: { latestFindings }, coordinator: coordinator)
+        for file in files {
+            vm.addToReview(DiskEntry(
+                id: file.path, url: file, name: file.lastPathComponent, isDirectory: false,
+                isPackage: false, sizeBytes: 4, itemCount: 1, modified: nil, kind: .other
+            ))
+        }
+        XCTAssertEqual(vm.reviewTrayCount, 3)
+
+        // Cache the folder's level, then go up so it stays cached but is no longer current.
+        let folderName = fixture.cacheDirectory.lastPathComponent
+        vm.open(root: fixture.cacheDirectory.deletingLastPathComponent())
+        await waitUntilLoaded(vm)
+        let folderEntry = try XCTUnwrap(vm.visibleEntries.first { $0.name == folderName })
+        vm.open(folderEntry)
+        await waitUntilLoaded(vm)
+        vm.goUp()
+        await waitUntilLoaded(vm)
+
+        latestFindings = [findings[0], findings[1]]
+        let reloaded = expectation(description: "parent level reloaded after cleanup")
+        let subscription = vm.$level
+            .compactMap { $0?.entries.first { $0.name == folderName }?.itemCount }
+            .first { $0 == 2 }
+            .sink { _ in reloaded.fulfill() }
+        coordinator.confirm(.selected, findings: [findings[0]])
+        await fulfillment(of: [reloaded], timeout: 10)
+        subscription.cancel()
+
+        XCTAssertEqual(vm.reviewTrayFindings.map(\.path), [files[1].path])
+        let reloadedFolderEntry = try XCTUnwrap(vm.visibleEntries.first { $0.name == folderName })
+        vm.open(reloadedFolderEntry)
+        await waitUntilLoaded(vm)
+        XCTAssertEqual(vm.visibleEntries.map(\.name).sorted(), ["keeper.bin", "stale.bin"])
+    }
 }

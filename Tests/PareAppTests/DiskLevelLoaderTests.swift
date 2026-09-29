@@ -93,4 +93,66 @@ final class DiskLevelLoaderTests: XCTestCase {
         XCTAssertEqual(localRow.itemCount, 1)
         XCTAssertEqual(level.totalBytes, localRow.sizeBytes)
     }
+
+    private func makeDirectory(_ label: String, fileCount: Int) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "DiskLevelLoaderTests-\(label)-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for index in 0..<fileCount {
+            try Data([0]).write(to: directory.appending(path: "file-\(index).bin"))
+        }
+        return directory
+    }
+
+    func testSecondLoadIsServedFromCacheUntilThatFolderIsInvalidated() async throws {
+        let directory = try makeDirectory("cache", fileCount: 2)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let loader = DiskLevelLoader()
+
+        _ = try await loader.load(directory: directory)
+        try Data([0]).write(to: directory.appending(path: "added-later.bin"))
+        let cached = try await loader.load(directory: directory)
+        await loader.invalidate(directory: directory)
+        let fresh = try await loader.load(directory: directory)
+
+        XCTAssertEqual(cached.entries.count, 2)
+        XCTAssertEqual(fresh.entries.count, 3)
+    }
+
+    func testCancelledLoadThrowsAndIsNotCached() async throws {
+        let directory = try makeDirectory("cancel", fileCount: 3)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let loader = DiskLevelLoader()
+
+        let cancelled = Task { () async throws -> DiskLevelLoader.Level in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await loader.load(directory: directory)
+        }
+        do {
+            _ = try await cancelled.value
+            XCTFail("expected CancellationError")
+        } catch is CancellationError {}
+        try Data([0]).write(to: directory.appending(path: "after-cancel.bin"))
+        let level = try await loader.load(directory: directory)
+
+        XCTAssertEqual(level.entries.count, 4)
+    }
+
+    func testMissingDirectoryThrowsAndLaterLoadSucceeds() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "DiskLevelLoaderTests-missing-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let loader = DiskLevelLoader()
+
+        do {
+            _ = try await loader.load(directory: directory)
+            XCTFail("expected an error for a missing directory")
+        } catch is CancellationError {
+            XCTFail("a missing directory must not look like a cancellation")
+        } catch {}
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let level = try await loader.load(directory: directory)
+
+        XCTAssertTrue(level.entries.isEmpty)
+    }
 }
