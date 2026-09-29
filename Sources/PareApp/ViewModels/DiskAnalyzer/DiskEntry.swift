@@ -14,6 +14,8 @@ struct DiskEntry: Identifiable, Sendable, Hashable {
     let modified: Date?
     let creationDate: Date?
     let hasPartialSize: Bool
+    /// A mounted volume listed from its parent; its size is only measured once the user opens it.
+    let isSeparateVolume: Bool
     let kind: DiskKind
 
     init(
@@ -27,7 +29,8 @@ struct DiskEntry: Identifiable, Sendable, Hashable {
         modified: Date?,
         kind: DiskKind,
         creationDate: Date? = nil,
-        hasPartialSize: Bool = false
+        hasPartialSize: Bool = false,
+        isSeparateVolume: Bool = false
     ) {
         self.id = id
         self.url = url
@@ -39,6 +42,7 @@ struct DiskEntry: Identifiable, Sendable, Hashable {
         self.modified = modified
         self.creationDate = creationDate
         self.hasPartialSize = hasPartialSize
+        self.isSeparateVolume = isSeparateVolume
         self.kind = kind
     }
 

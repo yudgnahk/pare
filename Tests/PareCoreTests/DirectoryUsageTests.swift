@@ -72,4 +72,32 @@ final class DirectoryUsageTests: XCTestCase {
         XCTAssertNil(usage.newestModification)
         XCTAssertTrue(usage.isPartial)
     }
+
+    func testMountPointPredicateSkipsNestedVolumeContents() throws {
+        try FileManager.default.createDirectory(
+            at: tempDir.appendingPathComponent("local"), withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: tempDir.appendingPathComponent("mounted/deep"), withIntermediateDirectories: true
+        )
+        try writeFile(named: "local/a.bin", byteCount: 1024)
+        try writeFile(named: "mounted/b.bin", byteCount: 64 * 1024)
+        try writeFile(named: "mounted/deep/c.bin", byteCount: 64 * 1024)
+        let fakeMount = tempDir.appendingPathComponent("mounted").standardizedFileURL.resolvingSymlinksInPath().path
+
+        let staying = FileSystemUtils.directoryUsage(url: tempDir) {
+            $0.standardizedFileURL.resolvingSymlinksInPath().path == fakeMount
+        }
+        let crossing = FileSystemUtils.directoryUsage(url: tempDir)
+
+        XCTAssertEqual(staying.itemCount, 1)
+        XCTAssertFalse(staying.isPartial)
+        XCTAssertEqual(crossing.itemCount, 3)
+        XCTAssertEqual(crossing.allocatedBytes, FileSystemUtils.directorySize(url: tempDir))
+    }
+
+    func testIsVolumeRootDistinguishesRootFromPlainFolder() {
+        XCTAssertTrue(FileSystemUtils.isVolumeRoot(URL(fileURLWithPath: "/")))
+        XCTAssertFalse(FileSystemUtils.isVolumeRoot(tempDir))
+    }
 }

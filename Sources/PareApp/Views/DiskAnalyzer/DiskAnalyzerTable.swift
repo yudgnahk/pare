@@ -121,7 +121,7 @@ struct DiskAnalyzerTable: View {
     }
 
     private func itemsCell(_ entry: DiskEntry) -> some View {
-        Text(entry.isDirectory ? "\(entry.itemCount)" : "—")
+        Text(entry.isDirectory && !entry.isSeparateVolume ? "\(entry.itemCount)" : "—")
             .font(scale.rowMono)
             .foregroundStyle(AppTheme.textSecondary)
     }

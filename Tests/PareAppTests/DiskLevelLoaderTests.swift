@@ -67,4 +67,30 @@ final class DiskLevelLoaderTests: XCTestCase {
 
         XCTAssertGreaterThan(after.totalBytes, before.totalBytes)
     }
+
+    /// A mounted volume is listed but never deep-walked from its parent.
+    func testMountedVolumeChildIsListedButNotSized() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "DiskLevelLoaderTests-volume-\(UUID().uuidString)")
+        let volume = directory.appending(path: "ExternalDisk")
+        let local = directory.appending(path: "local")
+        try FileManager.default.createDirectory(at: volume, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: local, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data(repeating: 1, count: 64_000).write(to: volume.appending(path: "big.bin"))
+        try Data(repeating: 1, count: 4_000).write(to: local.appending(path: "small.bin"))
+        let loader = DiskLevelLoader(isMountPoint: { $0.lastPathComponent == "ExternalDisk" })
+
+        let level = try await loader.load(directory: directory)
+
+        let volumeRow = try XCTUnwrap(level.entries.first { $0.name == "ExternalDisk" })
+        XCTAssertTrue(volumeRow.isSeparateVolume)
+        XCTAssertTrue(volumeRow.isDirectory)
+        XCTAssertEqual(volumeRow.sizeBytes, 0)
+        XCTAssertEqual(volumeRow.itemCount, 0)
+        let localRow = try XCTUnwrap(level.entries.first { $0.name == "local" })
+        XCTAssertFalse(localRow.isSeparateVolume)
+        XCTAssertEqual(localRow.itemCount, 1)
+        XCTAssertEqual(level.totalBytes, localRow.sizeBytes)
+    }
 }

@@ -48,16 +48,27 @@ public enum FileSystemUtils {
 
     /// Allocated bytes, regular-file count and newest modification, in one enumerator pass
     /// (avoids walking large trees twice for the Disk Analyzer's size + item-count + date columns).
-    public static func directoryUsage(url: URL) -> DirectoryUsage {
-        measureDirectory(url: url, includeModificationDates: true)
+    /// Directories for which `isMountPoint` returns true are skipped, so other volumes are never double-counted.
+    public static func directoryUsage(url: URL, isMountPoint: ((URL) -> Bool)? = nil) -> DirectoryUsage {
+        measureDirectory(url: url, includeModificationDates: true, isMountPoint: isMountPoint)
     }
 
-    private static func measureDirectory(url: URL, includeModificationDates: Bool) -> DirectoryUsage {
-        let fm = FileManager.default
+    /// True when `url` is the root of a mounted volume (external, network, or an APFS sibling like `/System/Volumes/Data`).
+    public static let isVolumeRoot: @Sendable (URL) -> Bool = { url in
+        (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
+    }
+
+    private static func measureDirectory(
+        url: URL,
+        includeModificationDates: Bool,
+        isMountPoint: ((URL) -> Bool)? = nil
+    ) -> DirectoryUsage {
         var keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey]
         if includeModificationDates { keys.append(.contentModificationDateKey) }
+        if isMountPoint != nil { keys += [.isDirectoryKey, .isVolumeKey] }
+        let keySet = Set(keys)
         var isPartial = false
-        guard let enumerator = fm.enumerator(
+        guard let enumerator = FileManager.default.enumerator(
             at: url,
             includingPropertiesForKeys: keys,
             options: [],
@@ -68,23 +79,42 @@ public enum FileSystemUtils {
         ) else {
             return DirectoryUsage(allocatedBytes: 0, itemCount: 0, newestModification: nil, isPartial: true)
         }
-        var total: Int64 = 0
-        var itemCount = 0
-        var newest: Date?
+        var tally = UsageTally()
         var checkedCount = 0
         for case let fileURL as URL in enumerator {
             checkedCount += 1
             if checkedCount % cancellationCheckInterval == 0, Task.isCancelled {
                 break
             }
-            guard let vals = try? fileURL.resourceValues(forKeys: Set(keys)) else {
+            guard let vals = try? fileURL.resourceValues(forKeys: keySet) else {
                 isPartial = true
+                continue
+            }
+            if let isMountPoint, vals.isDirectory == true, isMountPoint(fileURL) {
+                enumerator.skipDescendants()
                 continue
             }
             guard vals.isRegularFile == true else {
                 continue
             }
-            total += allocatedBytes(from: vals)
+            tally.add(vals, includeModificationDates: includeModificationDates)
+        }
+        return DirectoryUsage(
+            allocatedBytes: tally.total,
+            itemCount: tally.itemCount,
+            newestModification: tally.newest,
+            isPartial: isPartial || Task.isCancelled
+        )
+    }
+
+    /// Running totals for one `measureDirectory` walk; a local accumulator keeps the hot loop allocation-free.
+    private struct UsageTally {
+        var total: Int64 = 0
+        var itemCount = 0
+        var newest: Date?
+
+        mutating func add(_ vals: URLResourceValues, includeModificationDates: Bool) {
+            total += FileSystemUtils.allocatedBytes(from: vals)
             itemCount += 1
             if includeModificationDates,
                let modified = vals.contentModificationDate,
@@ -92,12 +122,6 @@ public enum FileSystemUtils {
                 newest = modified
             }
         }
-        return DirectoryUsage(
-            allocatedBytes: total,
-            itemCount: itemCount,
-            newestModification: newest,
-            isPartial: isPartial || Task.isCancelled
-        )
     }
 
     /// Bytes actually allocated on disk for a file.
@@ -117,7 +141,7 @@ public enum FileSystemUtils {
         return Int64(size)
     }
 
-    private static func allocatedBytes(from values: URLResourceValues) -> Int64 {
+    fileprivate static func allocatedBytes(from values: URLResourceValues) -> Int64 {
         if let allocated = values.totalFileAllocatedSize {
             return Int64(allocated)
         }

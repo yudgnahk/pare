@@ -2,7 +2,7 @@ import Foundation
 import PareCore
 
 /// Loads one Disk Analyzer directory level off the main actor: sizes children with
-/// `FileSystemUtils.directoryUsage`, reports progress, and caches completed levels for back/forward.
+/// `FileSystemUtils.directoryUsage` (never crossing into other volumes), reports progress, and caches levels.
 final class DiskLevelLoader: Sendable {
 
     struct Level: Sendable {
@@ -19,8 +19,12 @@ final class DiskLevelLoader: Sendable {
     }
 
     private let cache = DiskLevelCache()
+    private let isMountPoint: @Sendable (URL) -> Bool
 
-    init() {}
+    /// `isMountPoint` is injectable so tests can fake a mounted volume without mounting anything.
+    init(isMountPoint: @escaping @Sendable (URL) -> Bool = FileSystemUtils.isVolumeRoot) {
+        self.isMountPoint = isMountPoint
+    }
 
     /// Returns the cached level for `directory` if present, otherwise walks it (cooperatively
     /// cancellable via the calling task) and stores the result before returning.
@@ -29,7 +33,7 @@ final class DiskLevelLoader: Sendable {
         if let cached = await cache.value(for: key) {
             return cached
         }
-        let level = try Self.buildLevel(directory: directory, onProgress: onProgress)
+        let level = try Self.buildLevel(directory: directory, isMountPoint: isMountPoint, onProgress: onProgress)
         try Task.checkCancellation()
         await cache.store(level, for: key)
         return level
@@ -62,11 +66,12 @@ final class DiskLevelLoader: Sendable {
 
     private static let resourceKeys: Set<URLResourceKey> = [
         .isDirectoryKey, .isPackageKey, .contentModificationDateKey, .creationDateKey,
-        .totalFileAllocatedSizeKey, .fileSizeKey,
+        .totalFileAllocatedSizeKey, .fileSizeKey, .isVolumeKey,
     ]
 
     private static func buildLevel(
         directory: URL,
+        isMountPoint: @escaping @Sendable (URL) -> Bool,
         onProgress: (@Sendable (Progress) -> Void)?
     ) throws -> Level {
         let children = try FileManager.default.contentsOfDirectory(
@@ -79,7 +84,7 @@ final class DiskLevelLoader: Sendable {
         entries.reserveCapacity(children.count)
         for (index, childURL) in children.enumerated() {
             if Task.isCancelled { throw CancellationError() }
-            entries.append(makeEntry(url: childURL))
+            entries.append(makeEntry(url: childURL, isMountPoint: isMountPoint))
             if Task.isCancelled { throw CancellationError() }
             onProgress?(Progress(scanned: index + 1, total: children.count))
         }
@@ -96,7 +101,7 @@ final class DiskLevelLoader: Sendable {
         )
     }
 
-    private static func makeEntry(url: URL) -> DiskEntry {
+    private static func makeEntry(url: URL, isMountPoint: @escaping @Sendable (URL) -> Bool) -> DiskEntry {
         let values = try? url.resourceValues(forKeys: resourceKeys)
         let isDirectory = values?.isDirectory ?? false
         let isPackage = values?.isPackage ?? false
@@ -119,9 +124,14 @@ final class DiskLevelLoader: Sendable {
             )
         }
 
+        // Walking another volume from here double-counts it and can hang on a slow mount.
+        if isMountPoint(url) {
+            return separateVolumeEntry(url: url, isPackage: isPackage, modified: ownModified, created: creationDate)
+        }
+
         // A folder's own mtime only reflects its direct child list, not deep edits, so the
         // recursive `newestModification` is what "most recently touched" should mean here.
-        let usage = FileSystemUtils.directoryUsage(url: url)
+        let usage = FileSystemUtils.directoryUsage(url: url, isMountPoint: isMountPoint)
         return DiskEntry(
             id: DiskEntry.standardizedID(for: url),
             url: url,
@@ -134,6 +144,23 @@ final class DiskLevelLoader: Sendable {
             kind: DiskKind(isDirectory: true, isPackage: isPackage, pathExtension: url.pathExtension),
             creationDate: creationDate,
             hasPartialSize: usage.isPartial || values == nil
+        )
+    }
+
+    /// Row for a mounted volume: listed but not sized until the user opens it.
+    private static func separateVolumeEntry(url: URL, isPackage: Bool, modified: Date?, created: Date?) -> DiskEntry {
+        DiskEntry(
+            id: DiskEntry.standardizedID(for: url),
+            url: url,
+            name: url.lastPathComponent,
+            isDirectory: true,
+            isPackage: isPackage,
+            sizeBytes: 0,
+            itemCount: 0,
+            modified: modified,
+            kind: DiskKind(isDirectory: true, isPackage: isPackage, pathExtension: url.pathExtension),
+            creationDate: created,
+            isSeparateVolume: true
         )
     }
 }
