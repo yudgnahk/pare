@@ -50,28 +50,28 @@ struct DiskAnalyzerTable: View {
             TableColumn("Name", sortUsing: DiskColumnComparator(field: .name)) { entry in
                 nameCell(entry)
             }
-            .width(min: 180, ideal: 280)
+            .width(min: 150, ideal: 200)
             TableColumn("Size", sortUsing: DiskColumnComparator(field: .size)) { entry in
                 sizeCell(entry)
             }
-            .width(min: 150, ideal: 170)
+            .width(min: 136, ideal: 150)
             TableColumn("Items", sortUsing: DiskColumnComparator(field: .items)) { entry in
                 itemsCell(entry)
             }
-            .width(min: 56, ideal: 72)
+            .width(min: 52, ideal: 64)
             TableColumn("Modified", sortUsing: DiskColumnComparator(field: .modified)) { entry in
                 Text(Self.modifiedText(entry.modified))
                     .font(scale.caption)
                     .monospacedDigit()
                     .foregroundStyle(AppTheme.textSecondary)
             }
-            .width(min: 90, ideal: 110)
+            .width(min: 88, ideal: 100)
             TableColumn("Kind", sortUsing: DiskColumnComparator(field: .kind)) { entry in
                 Text(Self.kindLabel(entry.kind))
                     .font(scale.caption)
                     .foregroundStyle(AppTheme.textSecondary)
             }
-            .width(min: 70, ideal: 90)
+            .width(min: 64, ideal: 80)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .contextMenu(forSelectionType: String.self) { ids in
@@ -118,7 +118,7 @@ struct DiskAnalyzerTable: View {
                         .frame(width: max(4, geo.size.width * shareOfLevel(entry)), height: 4)
                 }
             }
-            .frame(width: 56, height: 4)
+            .frame(width: 48, height: 4)
 
             Text(entry.sizeBytes == 0 ? "—" : ScanReportPresenter.formatBytes(entry.sizeBytes))
                 .font(scale.font(13, weight: .semibold, design: .rounded))
