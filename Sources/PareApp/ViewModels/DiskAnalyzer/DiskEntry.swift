@@ -1,5 +1,6 @@
 import Foundation
 import UniformTypeIdentifiers
+import PareCore
 
 /// One row in the Disk Analyzer table for a real file or folder.
 struct DiskEntry: Identifiable, Sendable, Hashable {
@@ -41,14 +42,9 @@ struct DiskEntry: Identifiable, Sendable, Hashable {
         self.kind = kind
     }
 
-    /// `/private/var`-safe identity so a directory and its resolved symlink spelling never appear as two rows.
+    /// Row identity: canonical `/private` spelling but the leaf left unresolved, so a symlink never shares its target's id.
     static func standardizedID(for url: URL) -> String {
-        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
-        guard !path.hasPrefix("/private") else { return path }
-        for root in ["/tmp", "/var", "/etc"] where path == root || path.hasPrefix(root + "/") {
-            return "/private" + path
-        }
-        return path
+        ScanPolicy.canonicalPathURL(url).path
     }
 
 }
