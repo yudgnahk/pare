@@ -29,7 +29,8 @@ enum SnapshotRenderer {
 
     private static func renderAll(to directory: URL) async {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        for scene in scenes {
+        let only = ProcessInfo.processInfo.environment["PARE_SNAPSHOT_ONLY"]?.split(separator: ",").map(String.init)
+        for scene in scenes where only?.contains(where: { scene.name.hasPrefix($0) }) ?? true {
             for (suffix, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                 let store = AppModelStore()
                 scene.prepare(store)
@@ -58,6 +59,7 @@ enum SnapshotRenderer {
             defer: false
         )
         window.appearance = NSAppearance(named: appearance)
+        window.backgroundColor = .windowBackgroundColor
         let host = NSHostingView(rootView: wrapped)
         host.frame = NSRect(origin: .zero, size: size)
         window.contentView = host

@@ -6,6 +6,7 @@ import PareCore
 struct ScanDashboardView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
     @StateObject private var exclusionListViewModel = ExclusionListViewModel()
+    @StateObject private var volume = VolumeUsageModel()
     @Environment(\.pareDisplayScale) private var scale
     @State private var showSettings = false
     @State private var showProjectPaths = false
@@ -28,7 +29,7 @@ struct ScanDashboardView: View {
             Color.clear
 
             if showsHero {
-                HeroScanView(viewModel: viewModel) {
+                HeroScanView(viewModel: viewModel, volume: volume) {
                     exclusionListViewModel.load()
                     showSettings = true
                 }
