@@ -224,9 +224,10 @@ final class DiskAnalyzerViewModel: ObservableObject {
     }
 
     private func isAncestorOrSame(_ ancestor: String, _ child: String) -> Bool {
-        let parent = URL(fileURLWithPath: ancestor).standardizedFileURL.pathComponents
-        let path = URL(fileURLWithPath: child).standardizedFileURL.pathComponents
-        return path.count >= parent.count && Array(path.prefix(parent.count)) == parent
+        ScanPolicy.isCanonicallyEqualToOrDescendant(
+            candidate: URL(fileURLWithPath: child),
+            root: URL(fileURLWithPath: ancestor)
+        )
     }
 
     private func loadLevel(breadcrumb: DiskBreadcrumb) {

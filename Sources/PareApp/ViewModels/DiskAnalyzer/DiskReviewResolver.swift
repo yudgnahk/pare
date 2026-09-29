@@ -22,18 +22,17 @@ enum DiskReviewResolver {
     static func resolve(entryPath: String, findings: [ScanFinding]) -> DiskReviewResolution {
         guard !findings.isEmpty else { return .noScan }
 
-        let entryURL = URL(fileURLWithPath: entryPath)
         let candidates = findings.filter { $0.riskLevel != .advanced }
 
         let covering = candidates.filter { finding in
-            contains(finding.path, root: entryURL.path)
+            contains(finding.path, root: entryPath)
         }
         if !covering.isEmpty {
             return .covered(covering)
         }
 
         if let container = candidates
-            .filter({ contains(entryURL.path, root: $0.path) })
+            .filter({ contains(entryPath, root: $0.path) })
             .max(by: { componentCount($0.path) < componentCount($1.path) }) {
             return .insideFinding(container)
         }
@@ -42,13 +41,13 @@ enum DiskReviewResolver {
     }
 
     private static func contains(_ candidate: String, root: String) -> Bool {
-        let candidateParts = URL(fileURLWithPath: candidate).standardizedFileURL.pathComponents
-        let rootParts = URL(fileURLWithPath: root).standardizedFileURL.pathComponents
-        return candidateParts.count >= rootParts.count
-            && Array(candidateParts.prefix(rootParts.count)) == rootParts
+        ScanPolicy.isCanonicallyEqualToOrDescendant(
+            candidate: URL(fileURLWithPath: candidate),
+            root: URL(fileURLWithPath: root)
+        )
     }
 
     private static func componentCount(_ path: String) -> Int {
-        URL(fileURLWithPath: path).standardizedFileURL.pathComponents.count
+        ScanPolicy.canonicalPathURL(URL(fileURLWithPath: path)).pathComponents.count
     }
 }

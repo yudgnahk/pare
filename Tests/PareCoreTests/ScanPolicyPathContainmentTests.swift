@@ -1,0 +1,48 @@
+import XCTest
+@testable import PareCore
+
+final class ScanPolicyPathContainmentTests: XCTestCase {
+
+    func testCanonicalPathURLMapsPrivateAliases() {
+        let cases: [(name: String, input: String, expected: String)] = [
+            ("var alias", "/var/folders/ab/T/x", "/private/var/folders/ab/T/x"),
+            ("tmp alias", "/tmp/build", "/private/tmp/build"),
+            ("etc alias", "/etc/hosts", "/private/etc/hosts"),
+            ("bare var", "/var", "/private/var"),
+            ("already private", "/private/var/folders/x", "/private/var/folders/x"),
+            ("not an alias prefix", "/variable/x", "/variable/x"),
+            ("home path untouched", "/Users/k/Library/Caches", "/Users/k/Library/Caches"),
+            ("dot segments", "/var/folders/../folders/x/./y", "/private/var/folders/x/y"),
+        ]
+        for testCase in cases {
+            XCTContext.runActivity(named: testCase.name) { _ in
+                let result = ScanPolicy.canonicalPathURL(URL(fileURLWithPath: testCase.input))
+                XCTAssertEqual(result.path, testCase.expected)
+            }
+        }
+    }
+
+    func testCanonicalContainment() {
+        let cases: [(name: String, candidate: String, root: String, expected: Bool)] = [
+            ("var vs private var", "/private/var/folders/x/cache", "/var/folders/x", true),
+            ("private var vs var", "/var/folders/x/cache", "/private/var/folders/x", true),
+            ("tmp vs private tmp", "/private/tmp/a/b", "/tmp/a", true),
+            ("exact alias match", "/var/folders/x", "/private/var/folders/x", true),
+            ("case-insensitive", "/Users/k/Library/Caches/build/item", "/Users/k/Library/Caches/Build", true),
+            ("sibling prefix uvicorn", "/a/uvicorn", "/a/uv", false),
+            ("sibling prefix uv-backup", "/a/uv-backup/x", "/a/uv", false),
+            ("parent is not inside child", "/a", "/a/uv", false),
+            ("alias-like sibling", "/private/variable/x", "/var", false),
+            ("unrelated", "/Users/k/Desktop", "/Users/k/Downloads", false),
+        ]
+        for testCase in cases {
+            XCTContext.runActivity(named: testCase.name) { _ in
+                let result = ScanPolicy.isCanonicallyEqualToOrDescendant(
+                    candidate: URL(fileURLWithPath: testCase.candidate),
+                    root: URL(fileURLWithPath: testCase.root)
+                )
+                XCTAssertEqual(result, testCase.expected)
+            }
+        }
+    }
+}
