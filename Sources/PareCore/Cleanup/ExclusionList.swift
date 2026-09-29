@@ -33,16 +33,26 @@ public struct ExclusionEntry: Codable, Sendable, Identifiable {
         self.addedAt = addedAt
     }
 
-    /// Returns true when this entry covers `candidatePath`.
+    /// Returns true when this entry covers `candidatePath`, including its `/System/Volumes/Data` spelling.
     public func matches(_ candidatePath: String) -> Bool {
         let lhs = path.lowercased()
         let rhs = candidatePath.lowercased()
+        let direct = matchType == .exact ? lhs == rhs : rhs.hasPrefix(lhs)
+        // Canonicalising allocates URLs, so only pay for it when a Data-volume spelling is involved (per-file hot path).
+        guard !direct, Self.usesDataVolumeSpelling(lhs) || Self.usesDataVolumeSpelling(rhs) else { return direct }
+        let entryURL = URL(fileURLWithPath: path)
+        let candidateURL = URL(fileURLWithPath: candidatePath)
         switch matchType {
         case .exact:
-            return lhs == rhs
+            return ScanPolicy.canonicalPathURL(entryURL).path.lowercased()
+                == ScanPolicy.canonicalPathURL(candidateURL).path.lowercased()
         case .prefix:
-            return rhs.hasPrefix(lhs)
+            return ScanPolicy.isCanonicallyEqualToOrDescendant(candidate: candidateURL, root: entryURL)
         }
+    }
+
+    private static func usesDataVolumeSpelling(_ lowercasedPath: String) -> Bool {
+        lowercasedPath.hasPrefix(ScanPolicy.dataVolumeRoot.lowercased() + "/")
     }
 }
 

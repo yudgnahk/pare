@@ -48,7 +48,7 @@ struct DiskEntry: Identifiable, Sendable, Hashable {
 
     /// Row identity: canonical `/private` spelling but the leaf left unresolved, so a symlink never shares its target's id.
     static func standardizedID(for url: URL) -> String {
-        ScanPolicy.canonicalPathURL(url).path
+        ScanPolicy.canonicalPathURL(url, normalizingFirmlinks: false).path
     }
 
 }

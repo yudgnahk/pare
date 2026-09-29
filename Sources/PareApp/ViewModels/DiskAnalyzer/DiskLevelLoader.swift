@@ -57,7 +57,7 @@ final class DiskLevelLoader: Sendable {
 
     /// A folder and its symlinked spelling are the same level, so the key resolves every component.
     private static func cacheKey(for directory: URL) -> String {
-        ScanPolicy.canonicalPathURL(directory.standardizedFileURL.resolvingSymlinksInPath()).path
+        ScanPolicy.canonicalPathURL(directory.standardizedFileURL.resolvingSymlinksInPath(), normalizingFirmlinks: false).path
     }
 
     func invalidateAll() async {
