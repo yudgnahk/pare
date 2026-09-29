@@ -49,7 +49,6 @@ struct DiskBreadcrumbBar: View {
         .buttonStyle(.plain)
         .disabled(isLast)
         .help(crumb.url.path)
-        .help(crumb.url.path)
     }
 }
 
