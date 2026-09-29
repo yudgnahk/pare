@@ -19,20 +19,26 @@ enum DiskReviewResolver {
 
     /// `.advanced` findings are excluded up front so they can never surface as covered or as
     /// the blocking finding for `.insideFinding` — CleanupEngine hard-blocks their deletion anyway.
-    static func resolve(entryPath: String, findings: [ScanFinding]) -> DiskReviewResolution {
+    /// `isCaseSensitive` answers for the entry's volume; injected so tests need no case-sensitive volume.
+    static func resolve(
+        entryPath: String,
+        findings: [ScanFinding],
+        isCaseSensitive: (String) -> Bool = ScanPolicy.volumeSupportsCaseSensitiveNames(atPath:)
+    ) -> DiskReviewResolution {
         guard !findings.isEmpty else { return .noScan }
 
         let candidates = findings.filter { $0.riskLevel != .advanced }
+        let caseSensitive = isCaseSensitive(entryPath)
 
         let covering = candidates.filter { finding in
-            contains(finding.path, root: entryPath)
+            contains(finding.path, root: entryPath, caseSensitive: caseSensitive)
         }
         if !covering.isEmpty {
             return .covered(covering)
         }
 
         if let container = candidates
-            .filter({ contains(entryPath, root: $0.path) })
+            .filter({ contains(entryPath, root: $0.path, caseSensitive: caseSensitive) })
             .max(by: { componentCount($0.path) < componentCount($1.path) }) {
             return .insideFinding(container)
         }
@@ -40,10 +46,11 @@ enum DiskReviewResolver {
         return .notCandidate
     }
 
-    private static func contains(_ candidate: String, root: String) -> Bool {
+    private static func contains(_ candidate: String, root: String, caseSensitive: Bool) -> Bool {
         ScanPolicy.isCanonicallyEqualToOrDescendant(
             candidate: URL(fileURLWithPath: candidate),
-            root: URL(fileURLWithPath: root)
+            root: URL(fileURLWithPath: root),
+            caseSensitive: caseSensitive
         )
     }
 

@@ -16,8 +16,31 @@ extension ScanPolicy {
     }
 
     /// `isEqualToOrDescendant` after `canonicalPathURL` on both sides, so `/var/…` matches `/private/var/…`.
-    public static func isCanonicallyEqualToOrDescendant(candidate: URL, root: URL) -> Bool {
-        isEqualToOrDescendant(candidate: canonicalPathURL(candidate), root: canonicalPathURL(root))
+    public static func isCanonicallyEqualToOrDescendant(
+        candidate: URL,
+        root: URL,
+        caseSensitive: Bool = false
+    ) -> Bool {
+        isEqualToOrDescendant(
+            candidate: canonicalPathURL(candidate),
+            root: canonicalPathURL(root),
+            caseSensitive: caseSensitive
+        )
+    }
+
+    /// Whether the volume holding `path` (or its nearest existing ancestor) distinguishes name case.
+    /// Unknown answers count as case-sensitive: stricter matching can only drop matches, never add them.
+    public static func volumeSupportsCaseSensitiveNames(atPath path: String) -> Bool {
+        var url = URL(fileURLWithPath: path).standardizedFileURL
+        while true {
+            if let values = try? url.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]),
+               let caseSensitive = values.volumeSupportsCaseSensitiveNames {
+                return caseSensitive
+            }
+            let parent = url.deletingLastPathComponent()
+            guard parent.path != url.path else { return true }
+            url = parent
+        }
     }
 
     /// macOS-owned `/private` alias roots — exempt so every temp or `/var/folders` path is not blocked.

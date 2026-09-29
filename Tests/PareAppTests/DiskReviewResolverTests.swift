@@ -74,12 +74,13 @@ final class DiskReviewResolverTests: XCTestCase {
         XCTAssertEqual(matched.path, nearest.path)
     }
 
-    /// Matches `ScanPolicy.isEqualToOrDescendant`, which compares components case-insensitively.
+    /// On a case-insensitive volume, containment ignores case like `ScanPolicy.isEqualToOrDescendant`.
     func testPathContainmentIsCaseInsensitiveLikeScanPolicy() {
         let finding = makeFinding(path: "/Users/k/Library/Caches/Build")
         let result = DiskReviewResolver.resolve(
             entryPath: "/Users/k/Library/Caches/build/item",
-            findings: [finding]
+            findings: [finding],
+            isCaseSensitive: { _ in false }
         )
         guard case .insideFinding(let matched) = result else {
             return XCTFail("expected .insideFinding, got \(result)")
@@ -190,6 +191,60 @@ final class DiskReviewResolverTests: XCTestCase {
 
         guard case .notCandidate = result else {
             return XCTFail("expected .notCandidate, got \(result)")
+        }
+    }
+    // MARK: - Volume case sensitivity
+
+    private let lowerFinding = "/Users/k/Library/Caches/com.foo"
+
+    private func resolve(_ entryPath: String, caseSensitive: Bool) -> DiskReviewResolution {
+        DiskReviewResolver.resolve(
+            entryPath: entryPath,
+            findings: [makeFinding(path: lowerFinding)],
+            isCaseSensitive: { _ in caseSensitive }
+        )
+    }
+
+    func testCaseSensitiveVolumeDoesNotMapSiblingWithDifferentCase() {
+        guard case .notCandidate = resolve("/Users/k/Library/Caches/com.Foo", caseSensitive: true) else {
+            return XCTFail("com.Foo must not resolve to com.foo on a case-sensitive volume")
+        }
+        guard case .notCandidate = resolve("/Users/k/Library/Caches/com.Foo/data.bin", caseSensitive: true) else {
+            return XCTFail("a child of com.Foo must not be inside com.foo on a case-sensitive volume")
+        }
+        guard case .notCandidate = resolve("/Users/k/Library/caches", caseSensitive: true) else {
+            return XCTFail("a differently cased ancestor must not cover com.foo on a case-sensitive volume")
+        }
+    }
+
+    func testCaseSensitiveVolumeStillMatchesExactCase() {
+        guard case .covered(let covered) = resolve(lowerFinding, caseSensitive: true) else {
+            return XCTFail("exact-case entry must be covered")
+        }
+        XCTAssertEqual(covered.map(\.path), [lowerFinding])
+        guard case .covered = resolve("/Users/k/Library/Caches", caseSensitive: true) else {
+            return XCTFail("exact-case ancestor must cover the finding")
+        }
+        guard case .insideFinding(let container) = resolve(lowerFinding + "/data.bin", caseSensitive: true) else {
+            return XCTFail("exact-case child must be inside the finding")
+        }
+        XCTAssertEqual(container.path, lowerFinding)
+    }
+
+    func testCaseInsensitiveVolumeMatchesAcrossCase() {
+        guard case .covered(let covered) = resolve("/Users/k/Library/Caches/com.Foo", caseSensitive: false) else {
+            return XCTFail("com.Foo is the same item as com.foo on a case-insensitive volume")
+        }
+        XCTAssertEqual(covered.map(\.path), [lowerFinding])
+        guard case .covered = resolve("/Users/k/Library/caches", caseSensitive: false) else {
+            return XCTFail("differently cased ancestor must cover on a case-insensitive volume")
+        }
+        guard case .insideFinding(let container) = resolve("/Users/k/Library/Caches/COM.FOO/data.bin", caseSensitive: false) else {
+            return XCTFail("differently cased child must be inside the finding on a case-insensitive volume")
+        }
+        XCTAssertEqual(container.path, lowerFinding)
+        guard case .notCandidate = resolve("/Users/k/Library/Caches/com.foobar", caseSensitive: false) else {
+            return XCTFail("component matching must not treat com.foobar as com.foo")
         }
     }
 }
