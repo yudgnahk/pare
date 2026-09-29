@@ -103,12 +103,17 @@ enum DiskReviewTrayConfirmation {
         paths: [String],
         formatBytes: (Int64) -> String
     ) -> CleanConfirmationSheet.Config {
-        let itemWord = count == 1 ? "item" : "items"
+        let itemWord = count == 1 ? "Smart Scan finding" : "Smart Scan findings"
         var infoLines: [CleanConfirmationSheet.InfoLine] = [
             .init(
                 icon: "tray.and.arrow.down.fill",
                 color: AppTheme.accent,
                 text: "\(count) \(itemWord) (\(formatBytes(totalBytes))) will be moved to the Trash."
+            ),
+            .init(
+                icon: "folder",
+                color: AppTheme.accent,
+                text: "Each finding is cleaned whole, including anything inside it you did not select."
             ),
             .init(
                 icon: "arrow.uturn.backward",

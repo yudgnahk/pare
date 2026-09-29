@@ -108,10 +108,18 @@ final class ScanDashboardViewModel: ObservableObject {
     var isUndoing: Bool { cleanup.isUndoing }
     var canUndo: Bool { cleanup.canUndo }
 
-    /// Drives the single cleanup confirmation sheet (`.sheet(item:)`).
+    /// Drives the single cleanup confirmation sheet (`.sheet(item:)`); hides Disk Analyzer requests.
     var pendingCleanup: PendingCleanup? {
-        get { cleanup.pending }
-        set { cleanup.pending = newValue }
+        get { cleanup.pending.flatMap { $0.isSmartScan ? $0 : nil } }
+        set {
+            if let newValue {
+                guard newValue.isSmartScan else { return }
+                cleanup.pending = newValue
+            } else if pendingCleanup != nil {
+                // Escape nils the binding before onDismiss, so this path must reset state too.
+                cleanup.cancelPending()
+            }
+        }
     }
 
     /// Number of safe-risk findings from the last scan (Quick Clean candidates).
@@ -575,7 +583,7 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// One confirm path for all three cleanup kinds (was three duplicate bodies).
     func confirmPendingCleanup() {
-        guard let kind = cleanup.pending else { return }
+        guard let kind = pendingCleanup else { return }
         guard state == .success else {
             cleanup.pending = nil
             return
@@ -587,11 +595,14 @@ final class ScanDashboardViewModel: ObservableObject {
         case .selected:
             // Expand folder ids → paths only here (background-friendly), not during UI scroll.
             findings = selectedFindingsForClean()
+        case .diskReview:
+            return
         }
         cleanup.confirm(kind, findings: findings)
     }
 
     func cancelPendingCleanup() {
+        guard pendingCleanup != nil else { return }
         cleanup.cancelPending()
     }
 

@@ -66,7 +66,7 @@ struct DiskInspectorPane: View {
                 .foregroundStyle(AppTheme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(formatBytes(entry.sizeBytes))
+            Text(entry.isSeparateVolume ? "Not sized" : formatBytes(entry.sizeBytes))
                 .font(scale.font(20, weight: .bold, design: .rounded))
                 .foregroundStyle(AppTheme.accentText)
         }
@@ -77,11 +77,13 @@ struct DiskInspectorPane: View {
 
     private func detailsGrid(_ entry: DiskEntry) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            detailRow("Items", entry.isDirectory ? "\(entry.itemCount)" : "1")
+            detailRow("Items", entry.isSeparateVolume ? "—" : (entry.isDirectory ? "\(entry.itemCount)" : "1"))
             detailRow("Kind", entry.kind.label)
             detailRow("Modified", formattedDate(entry.modified))
             detailRow("Created", formattedDate(entry.creationDate))
-            if entry.hasPartialSize {
+            if entry.isSeparateVolume {
+                reasonText("This is a separate volume. Open it to measure its size.")
+            } else if entry.hasPartialSize {
                 reasonText("Some items could not be read. The size shown is partial.")
             }
             detailRow("Location", entry.url.deletingLastPathComponent().path, wraps: true)

@@ -174,8 +174,14 @@ extension ScanPolicy {
     /// `…/.cache/uv/archive-v0` but never `…/.cache/uvicorn` or `…/.cache/uv-backup`.
     /// New cache policies must use this instead of substring `path.contains` matching.
     public static func isEqualToOrDescendant(candidate: URL, root: URL) -> Bool {
-        let candidateComponents = candidate.standardizedFileURL.pathComponents.map { $0.lowercased() }
-        let rootComponents = root.standardizedFileURL.pathComponents.map { $0.lowercased() }
+        isEqualToOrDescendant(candidate: candidate, root: root, caseSensitive: false)
+    }
+
+    /// Component containment that honours the volume's case sensitivity when `caseSensitive` is true.
+    public static func isEqualToOrDescendant(candidate: URL, root: URL, caseSensitive: Bool) -> Bool {
+        let fold: (String) -> String = caseSensitive ? { $0 } : { $0.lowercased() }
+        let candidateComponents = candidate.standardizedFileURL.pathComponents.map(fold)
+        let rootComponents = root.standardizedFileURL.pathComponents.map(fold)
         guard !rootComponents.isEmpty, candidateComponents.count >= rootComponents.count else { return false }
         return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
     }

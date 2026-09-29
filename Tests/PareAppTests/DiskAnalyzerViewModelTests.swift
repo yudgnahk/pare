@@ -269,11 +269,58 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
         ))
         XCTAssertEqual(vm.reviewTrayCount, 1)
 
+        vm.requestReviewCleanup()
+        XCTAssertEqual(coordinator.pending, .diskReview)
         vm.confirmReviewCleanup()
         await waitForCleanupToFinish(coordinator)
 
         XCTAssertEqual(coordinator.state, .done(bytesFreed: 4, skippedCount: 0))
         XCTAssertTrue((try? fixture.store.loadAll())?.isEmpty == false)
+    }
+
+    // MARK: - Pending requests are screen-scoped
+
+    /// A Smart Scan request must never be confirmed with the tray's findings.
+    func testConfirmReviewCleanupIgnoresSmartScanSelectedRequest() {
+        let path = "/Users/k/Library/Caches/tray"
+        let finding = makeFinding(path: path)
+        let coordinator = CleanupCoordinator(engine: CleanupEngine())
+        let vm = makeViewModel(findings: [finding], coordinator: coordinator)
+        vm.addToReview(DiskEntry(
+            id: path, url: URL(fileURLWithPath: path), name: "tray", isDirectory: true,
+            isPackage: false, sizeBytes: finding.sizeBytes, itemCount: 1, modified: nil, kind: .folder
+        ))
+        coordinator.request(.selected)
+
+        XCTAssertNil(vm.pendingCleanup)
+        vm.confirmReviewCleanup()
+        vm.pendingCleanup = nil
+        vm.cancelPendingCleanup()
+
+        XCTAssertEqual(coordinator.pending, .selected)
+        XCTAssertEqual(coordinator.state, .confirming)
+        XCTAssertEqual(vm.reviewTrayCount, 1)
+    }
+
+    /// Escape nils the sheet binding before `onDismiss` runs; the state must still return to idle.
+    func testEscapeDismissResetsDiskReviewRequestToIdle() {
+        let path = "/Users/k/Library/Caches/tray"
+        let finding = makeFinding(path: path)
+        let coordinator = CleanupCoordinator(engine: CleanupEngine())
+        let vm = makeViewModel(findings: [finding], coordinator: coordinator)
+        vm.addToReview(DiskEntry(
+            id: path, url: URL(fileURLWithPath: path), name: "tray", isDirectory: true,
+            isPackage: false, sizeBytes: finding.sizeBytes, itemCount: 1, modified: nil, kind: .folder
+        ))
+        vm.requestReviewCleanup()
+        XCTAssertEqual(vm.pendingCleanup, .diskReview)
+
+        vm.pendingCleanup = nil
+        vm.cancelPendingCleanup()
+
+        XCTAssertNil(coordinator.pending)
+        XCTAssertEqual(coordinator.state, .idle)
+        XCTAssertEqual(vm.reviewTrayCount, 1)
     }
 
     /// Any cleanup on the shared coordinator must drop cached levels so trashed items disappear.
@@ -294,11 +341,56 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
             .first { level in !level.entries.contains { $0.name == "trashable.bin" } }
             .sink { _ in reloaded.fulfill() }
         vm.addToReview(entry)
+        vm.requestReviewCleanup()
         vm.confirmReviewCleanup()
         await fulfillment(of: [reloaded], timeout: 10)
         subscription.cancel()
 
         XCTAssertEqual(vm.visibleEntries.map(\.name), ["keeper.bin"])
         XCTAssertEqual(vm.reviewTrayCount, 0)
+    }
+
+    /// Completion drops trashed and no-longer-scanned tray items and clears every cached level, not just the current one.
+    func testCleanupCompletionPrunesTrayAndClearsLevelCache() async throws {
+        let fixture = try HermeticCleanupFixture(name: "DiskAnalyzerViewModelTests-prune")
+        defer { fixture.remove() }
+        let files = try ["trashable.bin", "keeper.bin", "stale.bin"].map { try fixture.makeFile(named: $0) }
+        let findings = files.map { makeFinding(path: $0.path, sizeBytes: 4) }
+        var latestFindings = findings
+        let coordinator = CleanupCoordinator(engine: fixture.makeEngine())
+        let vm = DiskAnalyzerViewModel(findingsProvider: { latestFindings }, coordinator: coordinator)
+        for file in files {
+            vm.addToReview(DiskEntry(
+                id: file.path, url: file, name: file.lastPathComponent, isDirectory: false,
+                isPackage: false, sizeBytes: 4, itemCount: 1, modified: nil, kind: .other
+            ))
+        }
+        XCTAssertEqual(vm.reviewTrayCount, 3)
+
+        // Cache the folder's level, then go up so it stays cached but is no longer current.
+        let folderName = fixture.cacheDirectory.lastPathComponent
+        vm.open(root: fixture.cacheDirectory.deletingLastPathComponent())
+        await waitUntilLoaded(vm)
+        let folderEntry = try XCTUnwrap(vm.visibleEntries.first { $0.name == folderName })
+        vm.open(folderEntry)
+        await waitUntilLoaded(vm)
+        vm.goUp()
+        await waitUntilLoaded(vm)
+
+        latestFindings = [findings[0], findings[1]]
+        let reloaded = expectation(description: "parent level reloaded after cleanup")
+        let subscription = vm.$level
+            .compactMap { $0?.entries.first { $0.name == folderName }?.itemCount }
+            .first { $0 == 2 }
+            .sink { _ in reloaded.fulfill() }
+        coordinator.confirm(.selected, findings: [findings[0]])
+        await fulfillment(of: [reloaded], timeout: 10)
+        subscription.cancel()
+
+        XCTAssertEqual(vm.reviewTrayFindings.map(\.path), [files[1].path])
+        let reloadedFolderEntry = try XCTUnwrap(vm.visibleEntries.first { $0.name == folderName })
+        vm.open(reloadedFolderEntry)
+        await waitUntilLoaded(vm)
+        XCTAssertEqual(vm.visibleEntries.map(\.name).sorted(), ["keeper.bin", "stale.bin"])
     }
 }

@@ -26,7 +26,7 @@ struct DiskBreadcrumb: Equatable {
 
     /// `resolvingSymlinksInPath()` strips `/private`, so re-apply the policy's canonical alias form.
     private static func canonicalize(_ url: URL) -> URL {
-        ScanPolicy.canonicalPathURL(url.standardizedFileURL.resolvingSymlinksInPath())
+        ScanPolicy.canonicalPathURL(url.standardizedFileURL.resolvingSymlinksInPath(), normalizingFirmlinks: false)
     }
 
     /// Crumbs from root through current, inclusive of both endpoints.

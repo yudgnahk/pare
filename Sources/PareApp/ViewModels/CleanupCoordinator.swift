@@ -7,8 +7,13 @@ enum PendingCleanup: String, Identifiable, Equatable {
     case quick
     case deep
     case selected
+    /// Disk Analyzer tray; distinct from `.selected` so neither screen can confirm the other's request.
+    case diskReview
 
     var id: String { rawValue }
+
+    /// Whether Smart Scan's dashboard owns this request (confirms it with its own findings).
+    var isSmartScan: Bool { self != .diskReview }
 }
 
 /// Drives the cleanup lifecycle (confirm → clean → done/undo) against
@@ -98,7 +103,7 @@ final class CleanupCoordinator: ObservableObject {
                         profileName: "all",
                         confirmed: true
                     )
-                case .selected:
+                case .selected, .diskReview:
                     result = try await engine.clean(findings: findings, profileName: "all")
                 }
                 lastTransaction = result.transaction

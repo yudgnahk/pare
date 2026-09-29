@@ -129,7 +129,7 @@ struct DiskAnalyzerTable: View {
     }
 
     private func itemsCell(_ entry: DiskEntry) -> some View {
-        Text(entry.isDirectory ? "\(entry.itemCount)" : "—")
+        Text(entry.isDirectory && !entry.isSeparateVolume ? "\(entry.itemCount)" : "—")
             .font(scale.caption)
             .monospacedDigit()
             .foregroundStyle(AppTheme.textSecondary)
@@ -178,8 +178,12 @@ struct DiskAnalyzerTable: View {
         if addable.isEmpty {
             Button("None of these can be added to Review") {}.disabled(true)
         } else {
-            Button("Add \(addable.count) items to Review") {
+            let batch = DiskReviewBatchSummary(resolutions: addable.map(reviewResolution))
+            Button(batch.addLabel(formatBytes: ScanReportPresenter.formatBytes)) {
                 addable.forEach(onAddToReview)
+            }
+            if let warning = batch.reviewRiskWarning {
+                Button(warning) {}.disabled(true)
             }
             if skipped > 0 {
                 Button("\(skipped) not in Smart Scan, skipped") {}.disabled(true)

@@ -41,4 +41,77 @@ final class ScanPolicyPathContainmentTests: XCTestCase {
             XCTAssertEqual(result, testCase.expected, testCase.name)
         }
     }
+
+    func testCanonicalPathURLNormalizesDataVolumeFirmlinks() {
+        let cases: [(name: String, input: String, expected: String)] = [
+            ("Users", "/System/Volumes/Data/Users/x", "/Users/x"),
+            ("Users root", "/System/Volumes/Data/Users", "/Users"),
+            ("Applications", "/System/Volumes/Data/Applications/Foo.app", "/Applications/Foo.app"),
+            ("Library", "/System/Volumes/Data/Library/Caches/x", "/Library/Caches/x"),
+            ("private then alias form", "/System/Volumes/Data/private/var/folders/x", "/private/var/folders/x"),
+            ("usr/local", "/System/Volumes/Data/usr/local/bin", "/usr/local/bin"),
+            ("opt", "/System/Volumes/Data/opt/homebrew", "/opt/homebrew"),
+            ("Volumes", "/System/Volumes/Data/Volumes/Ext", "/Volumes/Ext"),
+            ("cores", "/System/Volumes/Data/cores/core.1", "/cores/core.1"),
+            ("component prefix only", "/System/Volumes/Data/Usersfoo/x", "/System/Volumes/Data/Usersfoo/x"),
+            ("Data root untouched", "/System/Volumes/Data", "/System/Volumes/Data"),
+            ("non-firmlink child untouched", "/System/Volumes/Data/usr/bin", "/System/Volumes/Data/usr/bin"),
+        ]
+        for testCase in cases {
+            let result = ScanPolicy.canonicalPathURL(URL(fileURLWithPath: testCase.input))
+            XCTAssertEqual(result.path, testCase.expected, testCase.name)
+        }
+        XCTAssertEqual(
+            ScanPolicy.canonicalPathURL(URL(fileURLWithPath: "/System/Volumes/Data/Users/x"), normalizingFirmlinks: false).path,
+            "/System/Volumes/Data/Users/x"
+        )
+    }
+
+    func testDataVolumeSpellingIsCanonicallyEqualToFirmlinkSpelling() {
+        XCTAssertTrue(ScanPolicy.isCanonicallyEqualToOrDescendant(
+            candidate: URL(fileURLWithPath: "/System/Volumes/Data/Users/x"),
+            root: URL(fileURLWithPath: "/Users/x")
+        ))
+        XCTAssertTrue(ScanPolicy.isCanonicallyEqualToOrDescendant(
+            candidate: URL(fileURLWithPath: "/Users/x/cache"),
+            root: URL(fileURLWithPath: "/System/Volumes/Data/Users/x")
+        ))
+    }
+
+    func testFirmlinkPairsParseFileAndFallBackWhenEmpty() {
+        let parsed = ScanPolicy.firmlinkPairs(fromFile: "/Users\tUsers\n/usr/local\tusr/local\n\nmalformed line\n")
+        XCTAssertEqual(parsed.map(\.root), ["/usr/local", "/Users"])
+        XCTAssertEqual(parsed.map(\.data), ["/System/Volumes/Data/usr/local", "/System/Volumes/Data/Users"])
+
+        let fallbackRoots = Set(ScanPolicy.firmlinkPairs(fromFile: "").map(\.root))
+        for root in ["/Users", "/Applications", "/Library", "/private", "/usr/local", "/opt", "/cores", "/Volumes"] {
+            XCTAssertTrue(fallbackRoots.contains(root), root)
+        }
+        XCTAssertEqual(
+            ScanPolicy.firmlinkNormalizedPath("/System/Volumes/Data/Users/x", pairs: ScanPolicy.firmlinkPairs(fromFile: "")),
+            "/Users/x"
+        )
+    }
+
+    func testHasSymbolicLinkComponent() throws {
+        let root = URL(fileURLWithPath: "/private/tmp/SymlinkComponent-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let real = root.appending(path: "real/cache")
+        try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let link = root.appending(path: "link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appending(path: "real"))
+        let tmpAliasSpelling = "/tmp/" + root.lastPathComponent + "/real/cache"
+
+        let cases: [(name: String, path: String, expected: Bool)] = [
+            ("plain directory", real.path, false),
+            ("link in the middle", link.appending(path: "cache").path, true),
+            ("link as leaf", link.path, true),
+            ("/tmp system alias", tmpAliasSpelling, false),
+            ("/var system alias", NSTemporaryDirectory(), false),
+            ("missing path", root.appending(path: "missing/x").path, false),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(ScanPolicy.hasSymbolicLinkComponent(atPath: testCase.path), testCase.expected, testCase.name)
+        }
+    }
 }

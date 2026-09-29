@@ -228,8 +228,46 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         guard case .some(.symbolicLinkBlocked(_)) = result.skipped.first?.error else {
             return XCTFail("expected symlink path to be blocked")
         }
+        XCTAssertEqual(
+            result.skipped.first?.reason,
+            "Skipped: path goes through a symbolic link: \(alias.appending(path: "payload.bin").path)"
+        )
         XCTAssertTrue(FileManager.default.fileExists(atPath: target.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: alias.path))
+    }
+
+    /// `/var` is a system alias for `/private/var`; a finding spelled through it must still be trashed.
+    func testVarFoldersAliasSpellingIsNotTreatedAsUserSymlink() async throws {
+        let canonicalTemp = ScanPolicy.canonicalPathURL(
+            URL(fileURLWithPath: NSTemporaryDirectory()).resolvingSymlinksInPath()
+        ).path
+        guard canonicalTemp.hasPrefix("/private/var/folders/") else {
+            throw XCTSkip("temporary directory is not under /var/folders")
+        }
+        let base = URL(fileURLWithPath: String(canonicalTemp.dropFirst("/private".count)))
+            .appending(path: "CleanupVarAlias-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let cache = try makeDirectory(at: base.appending(path: "Library/Caches/alias-cache"))
+        let trash = root.appending(path: "FakeTrash")
+        try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
+        let engine = CleanupEngine(
+            store: CleanupTransactionStore(directory: storeDir),
+            projectRootsProvider: { [] },
+            exclusionsProvider: { .empty },
+            now: { .distantFuture },
+            trashItem: { url in
+                let destination = trash.appending(path: url.lastPathComponent)
+                try FileManager.default.moveItem(at: url, to: destination)
+                return destination
+            }
+        )
+
+        XCTAssertTrue(cache.path.hasPrefix("/var/folders/"))
+        let result = try await engine.clean(findings: [finding(for: cache, category: .userCaches)], profileName: "test")
+
+        XCTAssertEqual(result.succeeded.map(\.originalPath), [cache.path], "\(result.skipped.map(\.reason))")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cache.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: trash.appending(path: "alias-cache").path))
     }
 
     // MARK: - R0.4: durable undo record
