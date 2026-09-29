@@ -62,6 +62,11 @@ extension ScanDashboardView {
                 text: "\(viewModel.deepCleanCandidatesCount) file\(viewModel.deepCleanCandidatesCount == 1 ? "" : "s") will be moved to Trash (\(viewModel.reviewRiskCandidatesCount) review-risk)."
             ),
             .init(
+                icon: "checklist",
+                color: AppTheme.review,
+                text: "Deep Clean ignores your selection: every Safe and Review item is included, even ones you unticked."
+            ),
+            .init(
                 icon: "exclamationmark.shield",
                 color: AppTheme.warning,
                 text: "ADVANCED findings (e.g. Docker VM data) are never touched."

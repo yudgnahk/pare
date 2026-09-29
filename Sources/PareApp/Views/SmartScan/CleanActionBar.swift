@@ -99,17 +99,17 @@ struct CleanActionBar: View {
     @ViewBuilder
     private var deepCleanButton: some View {
         if viewModel.reviewRiskCandidatesCount > 0 {
-            SecondaryActionButton(title: "Deep Clean…", systemImage: "bolt", role: .destructive, isEnabled: !viewModel.isCleaning) {
+            SecondaryActionButton(title: "Deep Clean All…", systemImage: "bolt", role: .destructive, isEnabled: !viewModel.isCleaning) {
                 viewModel.requestDeepClean()
             }
-            .help("Safe + Review items. Opens a confirmation first.")
+            .help("All Safe + Review items, regardless of selection. Opens a confirmation first.")
         }
     }
 
     @ViewBuilder
     private var quickCleanButton: some View {
         if viewModel.quickCleanCandidatesCount > 0 {
-            SecondaryActionButton(title: "Quick Clean", systemImage: "checkmark.shield", role: .accent, isEnabled: !viewModel.isCleaning) {
+            SecondaryActionButton(title: "Quick Clean All", systemImage: "checkmark.shield", role: .accent, isEnabled: !viewModel.isCleaning) {
                 viewModel.requestQuickClean()
             }
             .help("All Safe items, regardless of selection. Opens a confirmation first.")
