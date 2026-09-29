@@ -94,6 +94,37 @@ final class DiskTableQueryTests: XCTestCase {
         XCTAssertEqual(result.map(\.name), ["Apple", "Zebra"])
     }
 
+    func testNameSortIsNaturalLikeFinder() {
+        let cases: [(name: String, order: DiskSortDescriptor, expected: [String])] = [
+            ("ascending", .nameAscending, ["entry-1", "entry-2", "entry-10"]),
+            ("descending", DiskSortDescriptor(field: .name, ascending: false), ["entry-10", "entry-2", "entry-1"]),
+            ("size tie falls back to natural name", DiskSortDescriptor(field: .size, ascending: true),
+             ["entry-1", "entry-2", "entry-10"]),
+        ]
+        let entries = [entry("entry-10", size: 5), entry("entry-2", size: 5), entry("entry-1", size: 5)]
+        for testCase in cases {
+            let result = DiskTableQuery.apply(
+                entries: entries, search: "", kind: nil, sizeFloor: .any, sortOrder: testCase.order
+            )
+            XCTAssertEqual(result.map(\.name), testCase.expected, testCase.name)
+        }
+    }
+
+    /// The Table header comparator must agree with the query that orders the rows.
+    func testOrderingMatchesAppliedSort() {
+        let entries = [entry("entry-10", size: 5), entry("Entry-2", size: 5), entry("entry-1", size: 9)]
+        for field in DiskSortField.allCases {
+            for ascending in [true, false] {
+                let order = DiskSortDescriptor(field: field, ascending: ascending)
+                let applied = DiskTableQuery.apply(
+                    entries: entries, search: "", kind: nil, sizeFloor: .any, sortOrder: order
+                )
+                let sorted = entries.sorted { DiskTableQuery.ordering($0, $1, by: order) == .orderedAscending }
+                XCTAssertEqual(applied.map(\.name), sorted.map(\.name), "\(field) ascending=\(ascending)")
+            }
+        }
+    }
+
     func testSortsByModifiedWithNilTreatedAsOldest() {
         let older = Date(timeIntervalSince1970: 0)
         let entries = [entry("dated", modified: older), entry("undated", modified: nil)]

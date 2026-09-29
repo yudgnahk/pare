@@ -48,7 +48,7 @@ enum DiskTableQuery {
                 && entry.sizeBytes >= sizeFloor.minimumBytes
         }
 
-        return filtered.sorted { compare($0, $1, by: sortOrder) }
+        return filtered.sorted { ordering($0, $1, by: sortOrder) == .orderedAscending }
     }
 
     private static func matchesSearch(_ entry: DiskEntry, normalizedSearch: String) -> Bool {
@@ -66,19 +66,20 @@ enum DiskTableQuery {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
     }
 
-    private static func compare(_ lhs: DiskEntry, _ rhs: DiskEntry, by order: DiskSortDescriptor) -> Bool {
+    /// Full row order (field, direction, then ascending natural-name tiebreak); shared with the Table's header comparator.
+    static func ordering(_ lhs: DiskEntry, _ rhs: DiskEntry, by order: DiskSortDescriptor) -> ComparisonResult {
         let primary = primaryOrdering(lhs, rhs, field: order.field)
         if primary != .orderedSame {
-            return order.ascending ? primary == .orderedAscending : primary == .orderedDescending
+            return order.ascending ? primary : primary.reversed
         }
-        return normalize(lhs.name) < normalize(rhs.name)
+        let byName = compareNames(lhs, rhs)
+        return byName != .orderedSame ? byName : compareStrings(lhs.id, rhs.id)
     }
 
-    /// Also used by `DiskColumnComparator` (SwiftUI Table header sort state) to avoid duplicating field-ordering logic.
-    static func primaryOrdering(_ lhs: DiskEntry, _ rhs: DiskEntry, field: DiskSortField) -> ComparisonResult {
+    private static func primaryOrdering(_ lhs: DiskEntry, _ rhs: DiskEntry, field: DiskSortField) -> ComparisonResult {
         switch field {
         case .name:
-            return compareStrings(normalize(lhs.name), normalize(rhs.name))
+            return compareNames(lhs, rhs)
         case .size:
             return compareInt64(lhs.sizeBytes, rhs.sizeBytes)
         case .items:
@@ -88,6 +89,11 @@ enum DiskTableQuery {
         case .kind:
             return compareStrings(lhs.kind.rawValue, rhs.kind.rawValue)
         }
+    }
+
+    /// Finder-style: "entry-2" before "entry-10", case- and diacritic-insensitive.
+    private static func compareNames(_ lhs: DiskEntry, _ rhs: DiskEntry) -> ComparisonResult {
+        normalize(lhs.name).localizedStandardCompare(normalize(rhs.name))
     }
 
     private static func compareStrings(_ a: String, _ b: String) -> ComparisonResult {
@@ -109,6 +115,16 @@ enum DiskTableQuery {
         case let (l?, r?):
             if l == r { return .orderedSame }
             return l < r ? .orderedAscending : .orderedDescending
+        }
+    }
+}
+
+private extension ComparisonResult {
+    var reversed: ComparisonResult {
+        switch self {
+        case .orderedAscending: return .orderedDescending
+        case .orderedDescending: return .orderedAscending
+        case .orderedSame: return .orderedSame
         }
     }
 }

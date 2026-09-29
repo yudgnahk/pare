@@ -231,19 +231,7 @@ private struct DiskColumnComparator: SortComparator, Equatable {
 
     // Delegates to DiskTableQuery, which drives actual row order; this only feeds header sort-indicator state.
     func compare(_ lhs: DiskEntry, _ rhs: DiskEntry) -> ComparisonResult {
-        let ascendingResult = DiskTableQuery.primaryOrdering(lhs, rhs, field: field)
-        guard ascendingResult != .orderedSame else { return .orderedSame }
-        return order == .forward ? ascendingResult : ascendingResult.reversed
-    }
-}
-
-private extension ComparisonResult {
-    var reversed: ComparisonResult {
-        switch self {
-        case .orderedAscending: return .orderedDescending
-        case .orderedDescending: return .orderedAscending
-        case .orderedSame: return .orderedSame
-        }
+        DiskTableQuery.ordering(lhs, rhs, by: descriptor)
     }
 }
 
