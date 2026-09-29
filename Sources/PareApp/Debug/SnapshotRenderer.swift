@@ -14,6 +14,7 @@ enum SnapshotRenderer {
         let destination: AppDestination
         /// Long enough for appear springs and count-ups to settle before capture.
         var settleSeconds: Double = 2.4
+        var height: CGFloat = 800
         let prepare: @MainActor (AppModelStore) -> Void
     }
 
@@ -46,6 +47,7 @@ enum SnapshotRenderer {
         appearance: NSAppearance.Name,
         to url: URL
     ) async {
+        let size = CGSize(width: Self.size.width, height: scene.height)
         let root = MainShellView(selection: .constant(scene.destination), models: store)
         let wrapped = DisplayScaleReader { root }
             .environmentObject(TextZoomController())
@@ -93,6 +95,9 @@ extension SnapshotRenderer {
                 store.scan.applySnapshotScanning(step: 2, completed: 21, total: 36, title: "Browser caches…")
             },
             Scene(name: "03-smart-scan-results", destination: .smartScan) { store in
+                store.scan.applySnapshotResults(SnapshotFixtures.scanReport)
+            },
+            Scene(name: "03b-smart-scan-results-full", destination: .smartScan, height: 1500) { store in
                 store.scan.applySnapshotResults(SnapshotFixtures.scanReport)
             },
             Scene(name: "04-smart-scan-cleaned", destination: .smartScan) { store in

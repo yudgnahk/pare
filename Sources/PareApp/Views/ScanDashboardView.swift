@@ -379,7 +379,7 @@ struct ScanDashboardView: View {
             DisclosureSelectRow(
                 style: .tool,
                 title: group.toolName,
-                badgeText: "\(group.folderCount) folders",
+                badgeText: "\(group.folderCount) folder\(group.folderCount == 1 ? "" : "s")",
                 sizeText: viewModel.formattedBytes(group.totalBytes),
                 isExpanded: isExpanded,
                 selection: triState(selectionState),
@@ -444,13 +444,13 @@ struct ScanDashboardView: View {
         if viewModel.usesToolGrouping(for: summary.category) {
             let tools = viewModel.toolGroups(for: summary.category).count
             if tools > 0 {
-                return "\(tools) tools"
+                return "\(tools) tool\(tools == 1 ? "" : "s")"
             }
         }
         if summary.folderCount > 0 {
-            return "\(summary.folderCount) folders"
+            return "\(summary.folderCount) folder\(summary.folderCount == 1 ? "" : "s")"
         }
-        return "\(summary.fileCount) items"
+        return "\(summary.fileCount) item\(summary.fileCount == 1 ? "" : "s")"
     }
 
 

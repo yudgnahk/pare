@@ -106,4 +106,8 @@ PARE_SNAPSHOT_DIR=docs/design/screenshots/ui-wow .build/debug/PareApp   # DEBUG 
 ```
 
 Scenes come from `Sources/PareApp/Debug/SnapshotRenderer.swift`, and scan data from `SnapshotFixtures`
-(nothing is scanned or cleaned). Disk usage in the ring is the real startup volume.
+(nothing is scanned or cleaned). Disk usage in the ring is the real startup volume. Add
+`PARE_SNAPSHOT_ONLY=01,03` to render a subset. In snapshots, the sidebar vibrancy and the action
+bar's material are replaced with opaque fills, because offscreen capture can't blur. Most committed
+PNGs are palette-quantized to keep the repo small, so gradients show slight dithering that the real
+app doesn't have.

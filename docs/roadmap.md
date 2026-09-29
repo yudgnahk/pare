@@ -395,6 +395,16 @@ Make Pare look and feel like a native, premium Mac utility. Plan: `docs/plans/20
 - [x] "Add to Review" accepts scan-covered items only (`DiskReviewResolver` + `ScanPolicy.isEqualToOrDescendant`); `.insideFinding` shows an explicit "Add \"‹parent›\" (size) to Review" button so the user knows the whole parent finding — not just the selected item — gets queued
 - [x] Branch `feat/ui-redesign-phase-3-disk-analyzer`, review pending
 
+### 11.4 — "Wow" pass (Tidewater direction)
+Audit + direction: `docs/design/ui-wow-audit.md`; screenshots: `docs/design/screenshots/ui-wow/`.
+- [x] Tokens: apricot `warm`/`warmText`, CTA + ring gradients, `Elevation`, motion (`reveal`, `countUp`, `ringFill`, `breathe`), `MotionPolicy` (Reduce Motion), `display`/`eyebrow` type; contrast tests extended
+- [x] Smart Scan hero: live startup-disk `DiskUsageRing` around `ScanOrbButton`; scanning turns it into an honest rule-count `ScanProgressRing` with step chips
+- [x] Results: `ScanSummaryHero` (reclaimable share on the disk ring, counting total, `CategoryShareBar`), decision tiles, floating `CleanActionBar` (all clean actions, still sheet-confirmed), `CleanResultCard`
+- [x] Shell: sidebar accent selection + `StorageMeter`; calmer page ground; refreshed `GlassCard`
+- [x] Modules: shared `PageHeader`/`ModuleChrome`, halo `EmptyStateView`, `LoadingStateView`, Maintenance Run buttons, Disk Analyzer column widths
+- [x] DEBUG `SnapshotRenderer` (`PARE_SNAPSHOT_DIR=… .build/debug/PareApp`) for light/dark PNGs without screen recording
+- [ ] Manual: run `make run-app`, then check vibrancy, hover/press states, sheets and Reduce Motion on real hardware
+
 ---
 
 ## Always-On (every phase)
