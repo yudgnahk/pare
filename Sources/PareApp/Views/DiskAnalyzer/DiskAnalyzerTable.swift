@@ -13,7 +13,7 @@ struct DiskAnalyzerTable: View {
     let onAddToReview: (DiskEntry) -> Void
     let reviewResolution: (DiskEntry) -> DiskReviewResolution
 
-    @Binding var selection: Set<String>
+    @Binding var selection: Set<DiskEntryID>
     @Binding var sortOrder: DiskSortDescriptor
 
     @State private var tableSortOrder: [DiskColumnComparator]
@@ -22,7 +22,7 @@ struct DiskAnalyzerTable: View {
     init(
         entries: [DiskEntry],
         levelTotalBytes: Int64,
-        selection: Binding<Set<String>>,
+        selection: Binding<Set<DiskEntryID>>,
         sortOrder: Binding<DiskSortDescriptor>,
         kindStyle: @escaping (DiskKind) -> (symbol: String, swatch: ThemeSwatch),
         onOpen: @escaping (DiskEntry) -> Void,
@@ -67,7 +67,7 @@ struct DiskAnalyzerTable: View {
             }
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
-        .contextMenu(forSelectionType: String.self) { ids in
+        .contextMenu(forSelectionType: DiskEntryID.self) { ids in
             contextMenuContent(for: ids)
         } primaryAction: { ids in
             guard let id = ids.first, let entry = entry(for: id) else { return }
@@ -141,7 +141,7 @@ struct DiskAnalyzerTable: View {
     // MARK: - Context menu
 
     @ViewBuilder
-    private func contextMenuContent(for ids: Set<String>) -> some View {
+    private func contextMenuContent(for ids: Set<DiskEntryID>) -> some View {
         let selected = ids.compactMap(entry(for:))
         if selected.isEmpty {
             EmptyView()
@@ -206,7 +206,7 @@ struct DiskAnalyzerTable: View {
         }
     }
 
-    private func entry(for id: String) -> DiskEntry? {
+    private func entry(for id: DiskEntryID) -> DiskEntry? {
         entries.first { $0.id == id }
     }
 

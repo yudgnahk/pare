@@ -2,9 +2,31 @@ import Foundation
 import UniformTypeIdentifiers
 import PareCore
 
+/// Row identity compared by exact UTF-8 bytes: `String ==` treats NFC and NFD names (both possible on exFAT/SMB) as equal.
+struct DiskEntryID: Hashable, Sendable, ExpressibleByStringLiteral {
+    let path: String
+
+    init(_ path: String) {
+        self.path = path
+    }
+
+    init(stringLiteral value: String) {
+        self.init(value)
+    }
+
+    static func == (lhs: DiskEntryID, rhs: DiskEntryID) -> Bool {
+        lhs.path.utf8.elementsEqual(rhs.path.utf8)
+    }
+
+    func hash(into hasher: inout Hasher) {
+        var bytes = path
+        bytes.withUTF8 { hasher.combine(bytes: UnsafeRawBufferPointer($0)) }
+    }
+}
+
 /// One row in the Disk Analyzer table for a real file or folder.
 struct DiskEntry: Identifiable, Sendable, Hashable {
-    let id: String
+    let id: DiskEntryID
     let url: URL
     let name: String
     let isDirectory: Bool
@@ -32,7 +54,7 @@ struct DiskEntry: Identifiable, Sendable, Hashable {
         hasPartialSize: Bool = false,
         isSeparateVolume: Bool = false
     ) {
-        self.id = id
+        self.id = DiskEntryID(id)
         self.url = url
         self.name = name
         self.isDirectory = isDirectory

@@ -73,7 +73,9 @@ enum DiskTableQuery {
             return order.ascending ? primary : primary.reversed
         }
         let byName = compareNames(lhs, rhs)
-        return byName != .orderedSame ? byName : compareStrings(lhs.id, rhs.id)
+        guard byName == .orderedSame else { return byName }
+        let byPath = compareStrings(lhs.id.path, rhs.id.path)
+        return byPath != .orderedSame ? byPath : compareBytes(lhs.id.path, rhs.id.path)
     }
 
     private static func primaryOrdering(_ lhs: DiskEntry, _ rhs: DiskEntry, field: DiskSortField) -> ComparisonResult {
@@ -99,6 +101,12 @@ enum DiskTableQuery {
     private static func compareStrings(_ a: String, _ b: String) -> ComparisonResult {
         if a == b { return .orderedSame }
         return a < b ? .orderedAscending : .orderedDescending
+    }
+
+    /// Final tiebreak for canonically equal NFC/NFD paths, so the order stays total.
+    private static func compareBytes(_ a: String, _ b: String) -> ComparisonResult {
+        if a.utf8.elementsEqual(b.utf8) { return .orderedSame }
+        return a.utf8.lexicographicallyPrecedes(b.utf8) ? .orderedAscending : .orderedDescending
     }
 
     private static func compareInt64(_ a: Int64, _ b: Int64) -> ComparisonResult {

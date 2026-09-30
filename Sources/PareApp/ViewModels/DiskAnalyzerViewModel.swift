@@ -23,7 +23,7 @@ final class DiskAnalyzerViewModel: ObservableObject {
     @Published var kindFilter: DiskKind?
     @Published var sizeFloor: DiskSizeFloor = .any
     @Published var sortOrder = DiskSortDescriptor.nameAscending
-    @Published var selection: Set<String> = []
+    @Published var selection: Set<DiskEntryID> = []
 
     /// Findings currently staged for cleanup, keyed by path so re-adding an
     /// already-covered entry never double-counts its bytes.
