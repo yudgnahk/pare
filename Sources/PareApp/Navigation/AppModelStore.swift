@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 /// App-level owner of every screen's view model.
@@ -19,6 +20,7 @@ final class AppModelStore: ObservableObject {
     let maintenance = MaintenanceViewModel()
     lazy var disk = DiskAnalyzerViewModel(
         findingsProvider: { [scan] in scan.latestFindingsSnapshot },
+        smartScanRunning: scan.$state.map { $0 == .scanning }.eraseToAnyPublisher(),
         coordinator: cleanup
     )
 

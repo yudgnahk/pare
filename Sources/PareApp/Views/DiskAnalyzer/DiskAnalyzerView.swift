@@ -269,7 +269,8 @@ struct DiskAnalyzerView: View {
                     onClear: { viewModel.clearReview() },
                     onReviewAndClean: { viewModel.requestReviewCleanup() },
                     onRemove: { viewModel.removeFromReview(path: $0.path) },
-                    isCleaning: viewModel.cleanupIsBusy
+                    isCleaning: viewModel.cleanupIsBusy,
+                    blockedReason: viewModel.reviewCleanupBlockedReason
                 )
             }
         }
