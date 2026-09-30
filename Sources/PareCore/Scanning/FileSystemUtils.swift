@@ -39,9 +39,6 @@ public enum FileSystemUtils {
         return .orderedSame
     }
 
-    /// Entries between cooperative `Task.isCancelled` checks while sizing a directory.
-    private static let cancellationCheckInterval = 1
-
     public static func directorySize(url: URL) -> Int64 {
         measureDirectory(url: url, includeModificationDates: false).allocatedBytes
     }
@@ -104,10 +101,9 @@ public enum FileSystemUtils {
             return DirectoryUsage(allocatedBytes: 0, itemCount: 0, newestModification: nil, isPartial: true)
         }
         var tally = UsageTally()
-        var checkedCount = 0
         for case let fileURL as URL in enumerator {
-            checkedCount += 1
-            if checkedCount % cancellationCheckInterval == 0, Task.isCancelled {
+            // Checked on every entry so a cancelled walk of a huge tree stops promptly.
+            if Task.isCancelled {
                 break
             }
             guard let vals = try? fileURL.resourceValues(forKeys: keySet) else {

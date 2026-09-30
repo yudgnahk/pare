@@ -112,6 +112,21 @@ final class DirectoryUsageTests: XCTestCase {
         XCTAssertFalse(prefetched.isPartial)
     }
 
+    /// Cancellation is checked before the first entry, so a cancelled walk counts nothing.
+    func testCancelledWalkStopsBeforeFirstEntryAndIsPartial() async throws {
+        try writeFile(named: "a.bin", byteCount: 1024)
+        try writeFile(named: "b.bin", byteCount: 1024)
+        let root: URL = tempDir
+
+        let usage = await Task { () -> DirectoryUsage in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return FileSystemUtils.directoryUsage(url: root)
+        }.value
+
+        XCTAssertEqual(usage.itemCount, 0)
+        XCTAssertTrue(usage.isPartial)
+    }
+
     func testIsVolumeRootDistinguishesRootFromPlainFolder() {
         XCTAssertTrue(FileSystemUtils.isVolumeRoot(URL(fileURLWithPath: "/")))
         XCTAssertFalse(FileSystemUtils.isVolumeRoot(tempDir))
