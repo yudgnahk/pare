@@ -183,6 +183,7 @@ struct DiskAnalyzerView: View {
     }
 
     private func skipDetailsText(skippedCount: Int) -> String? {
+        if let explanation = viewModel.cleanupSymlinkSkipExplanation { return explanation }
         let reasons = viewModel.cleanupSkippedReasons.prefix(3)
         let omitted = max(0, skippedCount - reasons.count)
         let lines = [

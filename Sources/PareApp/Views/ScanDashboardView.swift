@@ -323,7 +323,9 @@ struct ScanDashboardView: View {
             StatusBanner(
                 kind: .success,
                 title: "Cleaned \(viewModel.formattedBytes(bytesFreed))",
-                detail: skippedCount > 0 ? "\(skippedCount) items skipped (policy check)." : nil,
+                detail: skippedCount > 0
+                    ? viewModel.cleanup.symlinkSkipExplanation ?? "\(skippedCount) items skipped (policy check)."
+                    : nil,
                 onDismiss: { viewModel.dismissCleanupResult() }
             ) {
                 if viewModel.canUndo {
