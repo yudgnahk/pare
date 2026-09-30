@@ -1,7 +1,8 @@
+import SwiftUI
+
 #if DEBUG
 import AppKit
 import PareCore
-import SwiftUI
 
 /// DEBUG-only: `PARE_SNAPSHOT_DIR=<dir> PareApp` renders key screens to PNG in light + dark, then quits.
 @MainActor
