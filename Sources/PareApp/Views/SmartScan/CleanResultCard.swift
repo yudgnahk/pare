@@ -6,6 +6,8 @@ struct CleanResultCard: View {
     let skippedCount: Int
     let canUndo: Bool
     let onUndo: () -> Void
+    /// Replaces the generic skip count when one symlinked ancestor blocked every item.
+    var skipExplanation: String?
     let onDismiss: () -> Void
 
     @Environment(\.pareDisplayScale) private var scale
@@ -46,6 +48,7 @@ struct CleanResultCard: View {
     private var detail: String {
         let base = "Moved to the Trash. Nothing is erased until you empty it."
         guard skippedCount > 0 else { return base }
+        if let skipExplanation { return base + " " + skipExplanation }
         return base + " \(skippedCount) item\(skippedCount == 1 ? " was" : "s were") skipped by the safety check."
     }
 

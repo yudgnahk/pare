@@ -13,6 +13,8 @@ struct DiskReviewTray: View {
     let onReviewAndClean: () -> Void
     var onRemove: (ScanFinding) -> Void = { _ in }
     var isCleaning = false
+    /// Non-nil disables Review & Clean and explains why in its tooltip.
+    var blockedReason: String?
 
     @Environment(\.pareDisplayScale) private var scale
 
@@ -71,6 +73,13 @@ struct DiskReviewTray: View {
                 .font(scale.caption)
                 .foregroundStyle(AppTheme.textSecondary)
 
+            if let blockedReason {
+                Text(blockedReason)
+                    .font(scale.caption)
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .lineLimit(1)
+            }
+
             Spacer(minLength: AppTheme.Spacing.sm)
 
             SecondaryActionButton(title: "Clear", systemImage: "xmark", isEnabled: !isCleaning, action: onClear)
@@ -78,9 +87,10 @@ struct DiskReviewTray: View {
                 title: "Review & Clean",
                 systemImage: "checkmark.circle.fill",
                 role: reviewRiskCount > 0 ? .destructive : .accent,
-                isEnabled: !isCleaning,
+                isEnabled: !isCleaning && blockedReason == nil,
                 action: onReviewAndClean
             )
+            .help(blockedReason ?? "Review the staged findings before moving them to the Trash")
         }
     }
 

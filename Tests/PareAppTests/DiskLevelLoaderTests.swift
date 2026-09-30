@@ -47,7 +47,7 @@ final class DiskLevelLoaderTests: XCTestCase {
         XCTAssertEqual(level.entries.count, 2)
         XCTAssertEqual(Set(level.entries.map(\.id)).count, 2)
         let link = try XCTUnwrap(level.entries.first { $0.name == "libz.dylib" })
-        XCTAssertEqual(URL(fileURLWithPath: link.id).lastPathComponent, "libz.dylib")
+        XCTAssertEqual(URL(fileURLWithPath: link.id.path).lastPathComponent, "libz.dylib")
     }
 
     /// Refresh must drop stale ancestor sizes too, not only the current folder.

@@ -323,6 +323,59 @@ final class DiskAnalyzerViewModelTests: XCTestCase {
         XCTAssertEqual(vm.reviewTrayCount, 1)
     }
 
+    /// Smart Scan's findings are stale mid-scan, and a cleanup would cancel that scan.
+    func testReviewCleanupIsBlockedWhileSmartScanRuns() {
+        let path = "/nonexistent/pare-test/Caches/tray"
+        let finding = makeFinding(path: path)
+        let scanRunning = CurrentValueSubject<Bool, Never>(true)
+        let coordinator = CleanupCoordinator(engine: CleanupEngine())
+        let vm = DiskAnalyzerViewModel(
+            findingsProvider: { [finding] },
+            smartScanRunning: scanRunning.eraseToAnyPublisher(),
+            coordinator: coordinator
+        )
+        vm.addToReview(DiskEntry(
+            id: path, url: URL(fileURLWithPath: path), name: "tray", isDirectory: true,
+            isPackage: false, sizeBytes: finding.sizeBytes, itemCount: 1, modified: nil, kind: .folder
+        ))
+
+        XCTAssertNotNil(vm.reviewCleanupBlockedReason)
+        vm.requestReviewCleanup()
+        XCTAssertNil(coordinator.pending)
+        XCTAssertEqual(coordinator.state, .idle)
+
+        scanRunning.send(false)
+        XCTAssertNil(vm.reviewCleanupBlockedReason)
+        vm.requestReviewCleanup()
+        XCTAssertEqual(coordinator.pending, .diskReview)
+    }
+
+    /// A scan started after the sheet opened must also stop the confirm.
+    func testConfirmReviewCleanupCancelsWhenSmartScanStartedAfterRequest() {
+        let path = "/nonexistent/pare-test/Caches/tray"
+        let finding = makeFinding(path: path)
+        let scanRunning = CurrentValueSubject<Bool, Never>(false)
+        let coordinator = CleanupCoordinator(engine: CleanupEngine())
+        let vm = DiskAnalyzerViewModel(
+            findingsProvider: { [finding] },
+            smartScanRunning: scanRunning.eraseToAnyPublisher(),
+            coordinator: coordinator
+        )
+        vm.addToReview(DiskEntry(
+            id: path, url: URL(fileURLWithPath: path), name: "tray", isDirectory: true,
+            isPackage: false, sizeBytes: finding.sizeBytes, itemCount: 1, modified: nil, kind: .folder
+        ))
+        vm.requestReviewCleanup()
+        XCTAssertEqual(coordinator.pending, .diskReview)
+
+        scanRunning.send(true)
+        vm.confirmReviewCleanup()
+
+        XCTAssertNil(coordinator.pending)
+        XCTAssertEqual(coordinator.state, .idle)
+        XCTAssertEqual(vm.reviewTrayCount, 1)
+    }
+
     /// Any cleanup on the shared coordinator must drop cached levels so trashed items disappear.
     func testCleanupCompletionReloadsLevelWithoutTrashedItem() async throws {
         let fixture = try HermeticCleanupFixture(name: "DiskAnalyzerViewModelTests-reload")

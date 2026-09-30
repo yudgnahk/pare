@@ -19,11 +19,11 @@ final class DiskLevelLoader: Sendable {
     }
 
     private let cache = DiskLevelCache()
-    private let isMountPoint: @Sendable (URL) -> Bool
+    private let mountPoints: FileSystemUtils.MountPointCheck
 
-    /// `isMountPoint` is injectable so tests can fake a mounted volume without mounting anything.
-    init(isMountPoint: @escaping @Sendable (URL) -> Bool = FileSystemUtils.isVolumeRoot) {
-        self.isMountPoint = isMountPoint
+    /// Production reads the prefetched `isVolume`; tests pass `isMountPoint` to fake a mount without mounting anything.
+    init(isMountPoint: (@Sendable (URL) -> Bool)? = nil) {
+        self.mountPoints = isMountPoint.map { .custom($0) } ?? .prefetchedVolumeFlag
     }
 
     /// Returns the cached level for `directory` if present, otherwise walks it (cooperatively
@@ -33,7 +33,7 @@ final class DiskLevelLoader: Sendable {
         if let cached = await cache.value(for: key) {
             return cached
         }
-        let level = try Self.buildLevel(directory: directory, isMountPoint: isMountPoint, onProgress: onProgress)
+        let level = try Self.buildLevel(directory: directory, mountPoints: mountPoints, onProgress: onProgress)
         try Task.checkCancellation()
         await cache.store(level, for: key)
         return level
@@ -71,7 +71,7 @@ final class DiskLevelLoader: Sendable {
 
     private static func buildLevel(
         directory: URL,
-        isMountPoint: @escaping @Sendable (URL) -> Bool,
+        mountPoints: FileSystemUtils.MountPointCheck,
         onProgress: (@Sendable (Progress) -> Void)?
     ) throws -> Level {
         let children = try FileManager.default.contentsOfDirectory(
@@ -84,7 +84,7 @@ final class DiskLevelLoader: Sendable {
         entries.reserveCapacity(children.count)
         for (index, childURL) in children.enumerated() {
             if Task.isCancelled { throw CancellationError() }
-            entries.append(makeEntry(url: childURL, isMountPoint: isMountPoint))
+            entries.append(makeEntry(url: childURL, mountPoints: mountPoints))
             if Task.isCancelled { throw CancellationError() }
             onProgress?(Progress(scanned: index + 1, total: children.count))
         }
@@ -101,7 +101,7 @@ final class DiskLevelLoader: Sendable {
         )
     }
 
-    private static func makeEntry(url: URL, isMountPoint: @escaping @Sendable (URL) -> Bool) -> DiskEntry {
+    private static func makeEntry(url: URL, mountPoints: FileSystemUtils.MountPointCheck) -> DiskEntry {
         let values = try? url.resourceValues(forKeys: resourceKeys)
         let isDirectory = values?.isDirectory ?? false
         let isPackage = values?.isPackage ?? false
@@ -125,13 +125,13 @@ final class DiskLevelLoader: Sendable {
         }
 
         // Walking another volume from here double-counts it and can hang on a slow mount.
-        if isMountPoint(url) {
+        if isVolumeRoot(url, values: values, mountPoints: mountPoints) {
             return separateVolumeEntry(url: url, isPackage: isPackage, modified: ownModified, created: creationDate)
         }
 
         // A folder's own mtime only reflects its direct child list, not deep edits, so the
         // recursive `newestModification` is what "most recently touched" should mean here.
-        let usage = FileSystemUtils.directoryUsage(url: url, isMountPoint: isMountPoint)
+        let usage = FileSystemUtils.directoryUsage(url: url, mountPoints: mountPoints)
         return DiskEntry(
             id: DiskEntry.standardizedID(for: url),
             url: url,
@@ -145,6 +145,16 @@ final class DiskLevelLoader: Sendable {
             creationDate: creationDate,
             hasPartialSize: usage.isPartial || values == nil
         )
+    }
+
+    /// Uses the already-fetched `isVolume` unless a test override is set.
+    private static func isVolumeRoot(
+        _ url: URL,
+        values: URLResourceValues?,
+        mountPoints: FileSystemUtils.MountPointCheck
+    ) -> Bool {
+        if case .custom(let predicate) = mountPoints { return predicate(url) }
+        return values?.isVolume == true
     }
 
     /// Row for a mounted volume: listed but not sized until the user opens it.

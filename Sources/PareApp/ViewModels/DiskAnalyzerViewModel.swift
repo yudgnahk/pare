@@ -23,11 +23,13 @@ final class DiskAnalyzerViewModel: ObservableObject {
     @Published var kindFilter: DiskKind?
     @Published var sizeFloor: DiskSizeFloor = .any
     @Published var sortOrder = DiskSortDescriptor.nameAscending
-    @Published var selection: Set<String> = []
+    @Published var selection: Set<DiskEntryID> = []
 
     /// Findings currently staged for cleanup, keyed by path so re-adding an
     /// already-covered entry never double-counts its bytes.
     @Published private(set) var reviewFindingsByPath: [String: ScanFinding] = [:]
+    /// Mid-scan findings are stale, and a cleanup would cancel the scan via `rescanAfterCleanup`.
+    @Published private(set) var isSmartScanRunning = false
 
     let coordinator: CleanupCoordinator
 
@@ -42,12 +44,17 @@ final class DiskAnalyzerViewModel: ObservableObject {
 
     init(
         findingsProvider: @escaping () -> [ScanFinding],
+        smartScanRunning: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher(),
         levelLoader: DiskLevelLoader = DiskLevelLoader(),
         coordinator: CleanupCoordinator = CleanupCoordinator()
     ) {
         self.findingsProvider = findingsProvider
         self.levelLoader = levelLoader
         self.coordinator = coordinator
+        smartScanRunning
+            .removeDuplicates()
+            .sink { [weak self] running in self?.isSmartScanRunning = running }
+            .store(in: &cancellables)
         coordinator.addCompletionHandler { [weak self] in
             self?.handleCleanupCompleted()
         }
@@ -63,6 +70,7 @@ final class DiskAnalyzerViewModel: ObservableObject {
     var canUndo: Bool { coordinator.canUndo }
     var cleanupIsBusy: Bool { coordinator.isCleaning || coordinator.isUndoing }
     var cleanupSkippedReasons: [String] { coordinator.lastResult?.skipped.map(\.reason) ?? [] }
+    var cleanupSymlinkSkipExplanation: String? { coordinator.symlinkSkipExplanation }
     var transactionSaveError: String? { coordinator.transactionSaveError }
 
     /// Drives the tray's confirmation sheet (`.sheet(item:)`); only ever `.diskReview`.
@@ -197,9 +205,14 @@ final class DiskAnalyzerViewModel: ObservableObject {
         reviewFindingsByPath = [:]
     }
 
+    /// Why Review & Clean is unavailable right now, or nil when it may run.
+    var reviewCleanupBlockedReason: String? {
+        isSmartScanRunning ? "Wait for Smart Scan to finish before cleaning." : nil
+    }
+
     /// Opens the confirmation sheet for the tray's contents.
     func requestReviewCleanup() {
-        guard !reviewFindingsByPath.isEmpty, !cleanupIsBusy else { return }
+        guard !reviewFindingsByPath.isEmpty, !cleanupIsBusy, !isSmartScanRunning else { return }
         let latestByPath = Dictionary(findingsProvider().map { ($0.path, $0) }, uniquingKeysWith: { _, latest in latest })
         reviewFindingsByPath = reviewFindingsByPath.compactMapValues { latestByPath[$0.path] }
         guard !reviewFindingsByPath.isEmpty else { return }
@@ -209,6 +222,10 @@ final class DiskAnalyzerViewModel: ObservableObject {
     /// Hands the coordinator exactly the tray's findings, and only for a tray request.
     func confirmReviewCleanup() {
         guard coordinator.pending == .diskReview else { return }
+        guard !isSmartScanRunning else {
+            coordinator.cancelPending()
+            return
+        }
         let latestByPath = Dictionary(findingsProvider().map { ($0.path, $0) }, uniquingKeysWith: { _, latest in latest })
         let current = reviewTrayFindings.compactMap { latestByPath[$0.path] }
             .filter { $0.riskLevel != .advanced }

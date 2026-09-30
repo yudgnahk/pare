@@ -36,6 +36,8 @@ final class CleanupCoordinator: ObservableObject {
     @Published private(set) var state: CleanupState = .idle
     @Published private(set) var transactionSaveError: String?
     @Published private(set) var lastResult: CleanupResult?
+    /// One line replacing N skip rows when a shared symlinked ancestor (e.g. home) blocked every item.
+    @Published private(set) var symlinkSkipExplanation: String?
 
     /// Run after every cleanup or undo; each screen sharing this coordinator registers one.
     private var completionHandlers: [() -> Void] = []
@@ -89,6 +91,7 @@ final class CleanupCoordinator: ObservableObject {
         pending = nil
         state = .cleaning
         lastResult = nil
+        symlinkSkipExplanation = nil
         transactionSaveError = nil
 
         Task(priority: .userInitiated) {
@@ -108,6 +111,7 @@ final class CleanupCoordinator: ObservableObject {
                 }
                 lastTransaction = result.transaction
                 lastResult = result
+                symlinkSkipExplanation = SymlinkSkipSummary.message(for: result.skipped)
                 transactionSaveError = result.transactionSaveError
                 state = .done(
                     bytesFreed: result.totalBytesFreed,

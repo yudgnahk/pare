@@ -85,15 +85,46 @@ final class DirectoryUsageTests: XCTestCase {
         try writeFile(named: "mounted/deep/c.bin", byteCount: 64 * 1024)
         let fakeMount = tempDir.appendingPathComponent("mounted").standardizedFileURL.resolvingSymlinksInPath().path
 
-        let staying = FileSystemUtils.directoryUsage(url: tempDir) {
+        let staying = FileSystemUtils.directoryUsage(url: tempDir, mountPoints: .custom({
             $0.standardizedFileURL.resolvingSymlinksInPath().path == fakeMount
-        }
+        }))
         let crossing = FileSystemUtils.directoryUsage(url: tempDir)
 
         XCTAssertEqual(staying.itemCount, 1)
         XCTAssertFalse(staying.isPartial)
         XCTAssertEqual(crossing.itemCount, 3)
         XCTAssertEqual(crossing.allocatedBytes, FileSystemUtils.directorySize(url: tempDir))
+    }
+
+    /// Production's prefetched `isVolume` must not flag plain folders, or it would under-count them.
+    func testPrefetchedVolumeFlagKeepsPlainFoldersInTheTotal() throws {
+        try FileManager.default.createDirectory(
+            at: tempDir.appendingPathComponent("nested/deeper"), withIntermediateDirectories: true
+        )
+        try writeFile(named: "nested/a.bin", byteCount: 1024)
+        try writeFile(named: "nested/deeper/b.bin", byteCount: 4096)
+
+        let prefetched = FileSystemUtils.directoryUsage(url: tempDir, mountPoints: .prefetchedVolumeFlag)
+        let crossing = FileSystemUtils.directoryUsage(url: tempDir)
+
+        XCTAssertEqual(prefetched.itemCount, 2)
+        XCTAssertEqual(prefetched.allocatedBytes, crossing.allocatedBytes)
+        XCTAssertFalse(prefetched.isPartial)
+    }
+
+    /// Cancellation is checked before the first entry, so a cancelled walk counts nothing.
+    func testCancelledWalkStopsBeforeFirstEntryAndIsPartial() async throws {
+        try writeFile(named: "a.bin", byteCount: 1024)
+        try writeFile(named: "b.bin", byteCount: 1024)
+        let root: URL = tempDir
+
+        let usage = await Task { () -> DirectoryUsage in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return FileSystemUtils.directoryUsage(url: root)
+        }.value
+
+        XCTAssertEqual(usage.itemCount, 0)
+        XCTAssertTrue(usage.isPartial)
     }
 
     func testIsVolumeRootDistinguishesRootFromPlainFolder() {
