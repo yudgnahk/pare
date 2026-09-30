@@ -58,3 +58,6 @@ jobs:
         with:
           name: coverage-summary
           path: coverage-summary.txt
+
+      - name: Release build excludes DEBUG snapshot hooks
+        run: scripts/check-release-snapshot-hooks.sh
