@@ -104,6 +104,16 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     var cleanupState: CleanupCoordinator.CleanupState { cleanup.state }
+
+    /// Whether clean actions may be requested; the request methods silently ignore clicks otherwise.
+    var canRequestCleanup: Bool {
+        Self.cleanupActionsEnabled(state: state, isCleaning: cleanup.isCleaning, isUndoing: cleanup.isUndoing)
+    }
+
+    /// Mirrors the `state == .success` guard in `requestQuickClean`/`requestDeepClean`/`requestCleanSelected`.
+    static func cleanupActionsEnabled(state: ScanState, isCleaning: Bool, isUndoing: Bool) -> Bool {
+        state == .success && !isCleaning && !isUndoing
+    }
     var isCleaning: Bool { cleanup.isCleaning }
     var isUndoing: Bool { cleanup.isUndoing }
     var canUndo: Bool { cleanup.canUndo }

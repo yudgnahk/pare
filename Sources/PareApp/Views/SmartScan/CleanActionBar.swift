@@ -8,6 +8,7 @@ struct CleanActionBar: View {
     @Environment(\.isSnapshotRendering) private var isSnapshotRendering
 
     private var hasSelection: Bool { viewModel.selectedCandidatesCount > 0 }
+    private var actionsEnabled: Bool { viewModel.canRequestCleanup }
 
     var body: some View {
         HStack(spacing: AppTheme.Spacing.md) {
@@ -46,7 +47,7 @@ struct CleanActionBar: View {
             .font(scale.font(14, weight: .semibold))
             .lineLimit(1)
 
-            Text("Everything goes to the Trash first")
+            Text(viewModel.isScanning ? "Scanning… clean actions return when it finishes" : "Everything goes to the Trash first")
                 .font(scale.font(11, weight: .medium))
                 .foregroundStyle(AppTheme.textTertiary)
                 .lineLimit(1)
@@ -63,6 +64,7 @@ struct CleanActionBar: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .foregroundStyle(AppTheme.textPrimary)
+        .disabled(!actionsEnabled)
         .help("Change which items are selected")
     }
 
@@ -94,12 +96,13 @@ struct CleanActionBar: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .disabled(!actionsEnabled)
     }
 
     @ViewBuilder
     private var deepCleanButton: some View {
         if viewModel.reviewRiskCandidatesCount > 0 {
-            SecondaryActionButton(title: "Deep Clean All…", systemImage: "bolt", role: .destructive, isEnabled: !viewModel.isCleaning) {
+            SecondaryActionButton(title: "Deep Clean All…", systemImage: "bolt", role: .destructive, isEnabled: actionsEnabled) {
                 viewModel.requestDeepClean()
             }
             .help("All Safe + Review items, regardless of selection. Opens a confirmation first.")
@@ -109,7 +112,7 @@ struct CleanActionBar: View {
     @ViewBuilder
     private var quickCleanButton: some View {
         if viewModel.quickCleanCandidatesCount > 0 {
-            SecondaryActionButton(title: "Quick Clean All", systemImage: "checkmark.shield", role: .accent, isEnabled: !viewModel.isCleaning) {
+            SecondaryActionButton(title: "Quick Clean All", systemImage: "checkmark.shield", role: .accent, isEnabled: actionsEnabled) {
                 viewModel.requestQuickClean()
             }
             .help("All Safe items, regardless of selection. Opens a confirmation first.")
@@ -123,7 +126,7 @@ struct CleanActionBar: View {
             isLoading: viewModel.isCleaning,
             style: .compact,
             tint: .success,
-            isEnabled: hasSelection
+            isEnabled: hasSelection && actionsEnabled
         ) {
             viewModel.requestCleanSelected()
         }
