@@ -47,9 +47,15 @@ final class HistoryViewModel: ObservableObject {
         restoringItemID = nil
     }
 
+    /// Deletes every record; on failure keeps the list and shows a message without the store path.
     func clearAll() {
-        try? store.deleteAll()
-        transactions = []
+        do {
+            try store.deleteAll()
+            transactions = []
+        } catch {
+            NSLog("Clearing cleanup history failed: \(error.localizedDescription)")
+            errorMessage = "Could not clear cleanup history. Some records may remain; try again."
+        }
     }
 
     func formattedDate(_ date: Date) -> String {

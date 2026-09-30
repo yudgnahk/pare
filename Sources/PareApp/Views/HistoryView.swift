@@ -8,6 +8,7 @@ struct HistoryView: View {
     @Environment(\.pareDisplayScale) private var scale
     @State private var expandedIDs: Set<UUID> = []
     @State private var exportError: String?
+    @State private var confirmingClear = false
 
     var body: some View {
         ModuleChrome(
@@ -95,7 +96,17 @@ struct HistoryView: View {
                 systemImage: "trash",
                 role: .destructive
             ) {
-                viewModel.clearAll()
+                confirmingClear = true
+            }
+            .confirmationDialog(
+                "Clear all cleanup history?",
+                isPresented: $confirmingClear,
+                titleVisibility: .visible
+            ) {
+                Button("Clear History", role: .destructive) { viewModel.clearAll() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Restore records will be lost. Items already in the Trash stay there, but Pare can no longer put them back.")
             }
             .help("Delete all history records. Items already in the Trash stay there but can no longer be restored from Pare.")
         }

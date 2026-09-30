@@ -67,6 +67,31 @@ final class HistoryViewModelTests: XCTestCase {
         XCTAssertTrue(try store.loadAll().isEmpty)
     }
 
+    /// A failed clear must be visible, keep the records on screen, and not leak the store path.
+    func testClearAllFailureSurfacesGenericErrorAndKeepsTransactions() throws {
+        try store.save(makeTransaction(secondsAgo: 60))
+        let vm = HistoryViewModel(store: store)
+        XCTAssertEqual(vm.transactions.count, 1)
+        // A regular file where the directory should be makes deleteAll throw.
+        try FileManager.default.removeItem(at: storeDir)
+        try Data("not a directory".utf8).write(to: storeDir)
+
+        vm.clearAll()
+
+        let message = try XCTUnwrap(vm.errorMessage)
+        XCTAssertFalse(message.contains(storeDir.path), message)
+        XCTAssertEqual(vm.transactions.count, 1)
+    }
+
+    func testClearAllSuccessLeavesNoError() throws {
+        try store.save(makeTransaction(secondsAgo: 60))
+        let vm = HistoryViewModel(store: store)
+
+        vm.clearAll()
+
+        XCTAssertNil(vm.errorMessage)
+    }
+
     // MARK: - Restore failure surfaces an error
 
     func testRestoreItemWithoutTrashPathSetsErrorMessage() async {
