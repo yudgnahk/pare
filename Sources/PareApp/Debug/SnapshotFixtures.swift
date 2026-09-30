@@ -2,9 +2,11 @@
 import Foundation
 import PareCore
 
-/// Deterministic, plausible scan data for DEBUG screenshots; paths are illustrative only.
+/// Deterministic, plausible scan data for DEBUG screenshots, rooted at a path that cannot exist.
 enum SnapshotFixtures {
-    private static let home = NSHomeDirectory()
+    static let root = "/nonexistent/pare-fixture"
+    private static let home = root + "/home"
+    private static let trash = root + "/Trash"
     private static let gb: Int64 = 1_073_741_824
     private static let mb: Int64 = 1_048_576
 
@@ -55,6 +57,26 @@ enum SnapshotFixtures {
         Row(category: .temporaryFiles, risk: .safe, path: "/Library/Caches/TemporaryItems", bytes: 150 * mb)
     ]
 
+    /// Model store whose cleanup and history engines can never move, restore or record a real file.
+    @MainActor
+    static func makeModelStore() -> AppModelStore {
+        let store = CleanupTransactionStore(directory: URL(fileURLWithPath: root + "/transactions"))
+        return AppModelStore(
+            cleanup: CleanupCoordinator(engine: inertEngine(store: store)),
+            history: HistoryViewModel(store: store, engine: inertEngine(store: store))
+        )
+    }
+
+    /// Engine with no project roots or exclusions and a Trash move that always refuses.
+    static func inertEngine(store: CleanupTransactionStore) -> CleanupEngine {
+        CleanupEngine(
+            store: store,
+            projectRootsProvider: { [] },
+            exclusionsProvider: { .empty },
+            trashItem: { _ in throw CocoaError(.featureUnsupported) }
+        )
+    }
+
     static func historyTransactions() -> [CleanupTransaction] {
         let day: TimeInterval = 86_400
         return [
@@ -63,8 +85,8 @@ enum SnapshotFixtures {
                 profileName: "all",
                 isDryRun: false,
                 items: [
-                    CleanupItem(originalPath: home + "/Library/Developer/Xcode/DerivedData", trashedPath: "/tmp/x", sizeBytes: 5 * gb, reason: "Build artifacts", riskLevel: .safe),
-                    CleanupItem(originalPath: home + "/.npm/_cacache", trashedPath: "/tmp/y", sizeBytes: 2 * gb, reason: "Package cache", riskLevel: .safe)
+                    CleanupItem(originalPath: home + "/Library/Developer/Xcode/DerivedData", trashedPath: trash + "/x", sizeBytes: 5 * gb, reason: "Build artifacts", riskLevel: .safe),
+                    CleanupItem(originalPath: home + "/.npm/_cacache", trashedPath: trash + "/y", sizeBytes: 2 * gb, reason: "Package cache", riskLevel: .safe)
                 ]
             ),
             CleanupTransaction(
@@ -72,7 +94,7 @@ enum SnapshotFixtures {
                 profileName: "all",
                 isDryRun: false,
                 items: [
-                    CleanupItem(originalPath: home + "/Library/Caches/com.spotify.client", trashedPath: "/tmp/z", sizeBytes: 700 * mb, reason: "App cache", riskLevel: .safe)
+                    CleanupItem(originalPath: home + "/Library/Caches/com.spotify.client", trashedPath: trash + "/z", sizeBytes: 700 * mb, reason: "App cache", riskLevel: .safe)
                 ]
             )
         ]

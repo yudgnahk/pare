@@ -8,10 +8,11 @@ final class HistoryViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
 
     private let store: CleanupTransactionStore
-    private let engine = CleanupEngine()
+    private let engine: CleanupEngine
 
-    init(store: CleanupTransactionStore = .shared) {
+    init(store: CleanupTransactionStore = .shared, engine: CleanupEngine = CleanupEngine()) {
         self.store = store
+        self.engine = engine
         load()
     }
 

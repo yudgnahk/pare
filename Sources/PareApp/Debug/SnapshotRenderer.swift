@@ -33,7 +33,7 @@ enum SnapshotRenderer {
         let only = ProcessInfo.processInfo.environment["PARE_SNAPSHOT_ONLY"]?.split(separator: ",").map(String.init)
         for scene in scenes where only?.contains(where: { scene.name.hasPrefix($0) }) ?? true {
             for (suffix, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                let store = AppModelStore()
+                let store = SnapshotFixtures.makeModelStore()
                 scene.prepare(store)
                 let url = directory.appendingPathComponent("\(scene.name)-\(suffix).png")
                 await render(store: store, scene: scene, appearance: appearanceName, to: url)

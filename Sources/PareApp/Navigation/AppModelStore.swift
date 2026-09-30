@@ -14,7 +14,7 @@ final class AppModelStore: ObservableObject {
     /// One coordinator for Smart Scan and the Disk Analyzer: one busy guard, and each refreshes after the other cleans.
     let cleanup: CleanupCoordinator
     let scan: ScanDashboardViewModel
-    let history = HistoryViewModel()
+    let history: HistoryViewModel
     let apps = AppManagerViewModel()
     let homebrew = HomebrewManagerViewModel()
     let maintenance = MaintenanceViewModel()
@@ -24,9 +24,11 @@ final class AppModelStore: ObservableObject {
         coordinator: cleanup
     )
 
-    init() {
-        let cleanup = CleanupCoordinator()
+    /// Injectable so the DEBUG snapshot renderer can run on an engine that never touches real files.
+    init(cleanup: CleanupCoordinator? = nil, history: HistoryViewModel? = nil) {
+        let cleanup = cleanup ?? CleanupCoordinator()
         self.cleanup = cleanup
         self.scan = ScanDashboardViewModel(cleanup: cleanup)
+        self.history = history ?? HistoryViewModel()
     }
 }
