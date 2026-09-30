@@ -46,11 +46,34 @@ public enum FileSystemUtils {
         measureDirectory(url: url, includeModificationDates: false).allocatedBytes
     }
 
+    /// How a walk treats directories that are the root of another mounted volume.
+    public enum MountPointCheck: Sendable {
+        /// Walk into other volumes (scan-rule sizing).
+        case none
+        /// Skip nested volumes using the enumerator's prefetched `isVolume` value.
+        case prefetchedVolumeFlag
+        /// Test override: skip directories the closure flags as mount points.
+        case custom(@Sendable (URL) -> Bool)
+
+        fileprivate func isMountPoint(_ url: URL, _ vals: URLResourceValues) -> Bool {
+            switch self {
+            case .none: return false
+            case .prefetchedVolumeFlag: return vals.isVolume == true
+            case .custom(let predicate): return predicate(url)
+            }
+        }
+
+        fileprivate var isActive: Bool {
+            if case .none = self { return false }
+            return true
+        }
+    }
+
     /// Allocated bytes, regular-file count and newest modification, in one enumerator pass
     /// (avoids walking large trees twice for the Disk Analyzer's size + item-count + date columns).
-    /// Directories for which `isMountPoint` returns true are skipped, so other volumes are never double-counted.
-    public static func directoryUsage(url: URL, isMountPoint: ((URL) -> Bool)? = nil) -> DirectoryUsage {
-        measureDirectory(url: url, includeModificationDates: true, isMountPoint: isMountPoint)
+    /// Directories that `mountPoints` flags are skipped, so other volumes are never double-counted.
+    public static func directoryUsage(url: URL, mountPoints: MountPointCheck = .none) -> DirectoryUsage {
+        measureDirectory(url: url, includeModificationDates: true, mountPoints: mountPoints)
     }
 
     /// True when `url` is the root of a mounted volume (external, network, or an APFS sibling like `/System/Volumes/Data`).
@@ -61,11 +84,12 @@ public enum FileSystemUtils {
     private static func measureDirectory(
         url: URL,
         includeModificationDates: Bool,
-        isMountPoint: ((URL) -> Bool)? = nil
+        mountPoints: MountPointCheck = .none
     ) -> DirectoryUsage {
         var keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey]
         if includeModificationDates { keys.append(.contentModificationDateKey) }
-        if isMountPoint != nil { keys += [.isDirectoryKey, .isVolumeKey] }
+        let checksMountPoints = mountPoints.isActive
+        if checksMountPoints { keys += [.isDirectoryKey, .isVolumeKey] }
         let keySet = Set(keys)
         var isPartial = false
         guard let enumerator = FileManager.default.enumerator(
@@ -90,7 +114,7 @@ public enum FileSystemUtils {
                 isPartial = true
                 continue
             }
-            if let isMountPoint, vals.isDirectory == true, isMountPoint(fileURL) {
+            if checksMountPoints, vals.isDirectory == true, mountPoints.isMountPoint(fileURL, vals) {
                 enumerator.skipDescendants()
                 continue
             }
