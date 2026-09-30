@@ -166,7 +166,7 @@ struct HeroScanView: View {
         HStack(spacing: 8) {
             TrustChip(icon: "checkmark.shield.fill", text: "Risk-labelled findings")
             TrustChip(icon: "trash.fill", text: "Trash first, never erased")
-            TrustChip(icon: "arrow.uturn.backward", text: "Undo anytime")
+            TrustChip(icon: "arrow.uturn.backward", text: "Undo last clean")
         }
     }
 

@@ -9,7 +9,7 @@ struct MaintenanceView: View {
         VStack(spacing: 0) {
             PageHeader(
                 destination: .maintenance,
-                subtitle: "One-shot system actions. None of them delete your files."
+                subtitle: "One-shot system actions. Prune actions delete permanently and skip the Trash."
             )
             ScrollView {
                 actionCards
