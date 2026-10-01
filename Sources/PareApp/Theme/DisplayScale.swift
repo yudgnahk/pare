@@ -69,8 +69,12 @@ struct DisplayScale: Equatable {
     // Hierarchy is intentionally tight so module titles don’t dwarf body/list text.
     // pageTitle (modules) < heroTitle (welcome only); body/rows sit close to section.
 
+    /// Hero numbers (reclaimable total, freed bytes).
+    var display: Font { font(44, weight: .bold, design: .rounded) }
     /// Welcome / marketing headline only (Smart Scan home).
     var heroTitle: Font { font(26, weight: .bold, design: .rounded) }
+    /// Uppercase section eyebrows; pair with `.tracking(1.1)`.
+    var eyebrow: Font { font(11, weight: .bold, design: .rounded) }
     /// Module screen titles (Apps, Homebrew, Settings, …).
     var pageTitle: Font { font(21, weight: .bold, design: .rounded) }
     /// Confirmation / management sheet titles.

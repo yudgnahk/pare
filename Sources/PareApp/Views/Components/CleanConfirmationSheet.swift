@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Parameterized dark-themed clean confirmation sheet.
+/// Parameterized, appearance-adaptive clean confirmation sheet.
 ///
 /// One component replaces the three ~85%-identical sheets (Quick Clean,
 /// Deep Clean, Clean Selected): icon header, optional warning banner,
@@ -33,7 +33,7 @@ struct CleanConfirmationSheet: View {
         var infoLines: [InfoLine]
         var confirmTitle: String = "Move to Trash"
         var confirmTint: Color = AppTheme.success
-        var confirmForeground: Color = .black
+        var confirmForeground: Color = AppTheme.onAccent
         var size = Size()
     }
 
@@ -77,15 +77,17 @@ struct CleanConfirmationSheet: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(config.headerTint.opacity(0.18))
-                    .frame(width: 48, height: 48)
-                Image(systemName: config.headerIcon)
-                    .foregroundStyle(config.headerTint)
-                    .font(scale.font(20, weight: .semibold))
-            }
+        HStack(spacing: 16) {
+            Image(systemName: config.headerIcon)
+                .foregroundStyle(config.headerTint)
+                .font(scale.font(22, weight: .semibold))
+                .frame(width: 52, height: 52)
+                .background(config.headerTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(config.headerTint.opacity(0.25), lineWidth: 1)
+                )
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(config.title)
@@ -143,28 +145,41 @@ struct CleanConfirmationSheet: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Button("Cancel", action: onCancel)
-                .buttonStyle(.borderless)
-                .font(scale.font(14, weight: .semibold))
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    AppTheme.Fill.control,
-                    in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
-                )
-                .keyboardShortcut(.cancelAction)
+            Button(action: onCancel) {
+                Text("Cancel")
+                    .font(scale.font(14, weight: .semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(AppTheme.Fill.control, in: RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                            .strokeBorder(AppTheme.Hairline.strong, lineWidth: 1)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
+            }
+            .buttonStyle(PressableButtonStyle())
+            .keyboardShortcut(.cancelAction)
 
-            Button(config.confirmTitle, action: onConfirm)
-                .font(scale.font(14, weight: .bold))
-                .foregroundStyle(config.confirmForeground)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    config.confirmTint,
-                    in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
-                )
-                .buttonStyle(.borderless)
+            // No default-key shortcut: moving files must always be a deliberate click.
+            Button(action: onConfirm) {
+                Label(config.confirmTitle, systemImage: "trash")
+                    .font(scale.font(14, weight: .bold))
+                    .foregroundStyle(config.confirmForeground)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                            .fill(config.confirmTint)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                                    .fill(LinearGradient(colors: [AppTheme.sheen.opacity(0.16), .clear], startPoint: .top, endPoint: .center))
+                            )
+                    )
+                    .shadow(color: config.confirmTint.opacity(0.3), radius: 8, y: 4)
+                    .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
+            }
+            .buttonStyle(PressableButtonStyle())
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -219,7 +234,7 @@ struct CleanConfirmationSheet_Previews: PreviewProvider {
                         )
                     ],
                     confirmTint: AppTheme.review,
-                    confirmForeground: .white,
+                    confirmForeground: AppTheme.onAccent,
                     size: .init(
                         minWidth: 420,
                         idealWidth: 480,

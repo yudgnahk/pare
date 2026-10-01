@@ -21,6 +21,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case undoRecordUnavailable(String)
     /// The file does not exist on disk when cleanup is attempted.
     case fileNotFound(String)
+    /// The path goes through a symbolic link, which could redirect the Trash move to another item.
+    case symbolicLinkBlocked(String)
     /// The Trash move failed with an underlying system error.
     case trashFailed(String, Error)
     /// Undo failed — the associated value describes what went wrong.
@@ -46,6 +48,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "Could not persist undo record — cleanup aborted (\(detail))"
         case .fileNotFound(let path):
             return "File not found: \(path)"
+        case .symbolicLinkBlocked(let path):
+            return "Skipped: path goes through a symbolic link: \(path)"
         case .trashFailed(let path, let error):
             return "Failed to move to Trash: \(path) — \(error.localizedDescription)"
         case .restoreFailed(let reason):
@@ -123,6 +127,8 @@ public actor CleanupEngine {
     /// Injectable clock for age re-checks — tests shift this instead of
     /// back-dating real files. Defaults to the wall clock.
     private let now: @Sendable () -> Date
+    /// Moves one item to the Trash and returns where it landed; injectable so tests never touch the real Trash.
+    private let trashItem: @Sendable (URL) throws -> URL?
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -132,7 +138,8 @@ public actor CleanupEngine {
         store: CleanupTransactionStore = .shared,
         projectRootsProvider: (@Sendable () async -> [String])? = nil,
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
-        now: @escaping @Sendable () -> Date = { Date() }
+        now: @escaping @Sendable () -> Date = { Date() },
+        trashItem: (@Sendable (URL) throws -> URL?)? = nil
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -143,6 +150,13 @@ public actor CleanupEngine {
             (try? ExclusionStore.shared.load()) ?? .empty
         }
         self.now = now
+        self.trashItem = trashItem ?? Self.moveToSystemTrash
+    }
+
+    private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
+        var trashURL: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &trashURL)
+        return trashURL as URL?
     }
 
     // MARK: - Quick Clean (safe-risk only)
@@ -236,7 +250,7 @@ public actor CleanupEngine {
             let url = URL(fileURLWithPath: finding.path)
 
             // User exclusions always win — even if the finding predates the exclusion.
-            if exclusions.isExcluded(finding.path) {
+            if exclusions.blocksRemoval(of: finding.path) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .excludedByUser(finding.path)))
                 continue
             }
@@ -276,6 +290,10 @@ public actor CleanupEngine {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .fileNotFound(finding.path)))
                 continue
             }
+            if ScanPolicy.hasSymbolicLinkComponent(atPath: finding.path) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .symbolicLinkBlocked(finding.path)))
+                continue
+            }
 
             // Re-verify minimum age for categories that require it.
             // Wrong-platform binaries/dirs are exempted: a Windows installer in ~/Downloads
@@ -313,12 +331,15 @@ public actor CleanupEngine {
                     riskLevel: finding.riskLevel
                 ))
             } else {
-                var trashURL: NSURL?
                 do {
-                    try FileManager.default.trashItem(at: url, resultingItemURL: &trashURL)
+                    guard !ScanPolicy.hasSymbolicLinkComponent(atPath: finding.path) else {
+                        skipped.append(CleanupSkippedItem(path: finding.path, error: .symbolicLinkBlocked(finding.path)))
+                        continue
+                    }
+                    let trashURL = try trashItem(url)
                     succeeded.append(CleanupItem(
                         originalPath: finding.path,
-                        trashedPath: (trashURL as URL?)?.path,
+                        trashedPath: trashURL?.path,
                         sizeBytes: finding.sizeBytes,
                         reason: finding.reason,
                         riskLevel: finding.riskLevel

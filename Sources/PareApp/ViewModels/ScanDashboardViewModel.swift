@@ -62,14 +62,16 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Shared FDA state machine (also used by Settings).
     let permissions = PermissionCoachingModel()
-    /// Cleanup lifecycle (pending sheet + engine calls + undo).
-    let cleanup = CleanupCoordinator()
+    /// Cleanup lifecycle (pending sheet + engine calls + undo), shared with the Disk Analyzer.
+    let cleanup: CleanupCoordinator
 
     /// Cached clean-candidate totals (recomputed per scan / exclusion — not per sheet render).
     private(set) var candidateStats = CandidateStats()
 
     /// Raw findings kept after scan so cleanup can reference them.
     private var latestFindings: [ScanFinding] = []
+    /// Read-only view of the latest scan's findings, for other view models (e.g. Disk Analyzer).
+    var latestFindingsSnapshot: [ScanFinding] { latestFindings }
     /// O(1) path → finding lookup (not published).
     private var findingsByPath: [String: ScanFinding] = [:]
     /// Private path expansion map — never exposed to SwiftUI views.
@@ -82,7 +84,8 @@ final class ScanDashboardViewModel: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
 
-    init() {
+    init(cleanup: CleanupCoordinator = CleanupCoordinator()) {
+        self.cleanup = cleanup
         // Child observable objects publish through the dashboard so existing
         // `@ObservedObject var viewModel` views keep re-rendering.
         permissions.objectWillChange
@@ -91,7 +94,7 @@ final class ScanDashboardViewModel: ObservableObject {
         cleanup.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
-        cleanup.onCleanupCompleted = { [weak self] in self?.runScan() }
+        cleanup.addCompletionHandler { [weak self] in self?.rescanAfterCleanup() }
     }
 
     // MARK: - Derived state
@@ -101,14 +104,32 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     var cleanupState: CleanupCoordinator.CleanupState { cleanup.state }
+
+    /// Whether clean actions may be requested; the request methods silently ignore clicks otherwise.
+    var canRequestCleanup: Bool {
+        Self.cleanupActionsEnabled(state: state, isCleaning: cleanup.isCleaning, isUndoing: cleanup.isUndoing)
+    }
+
+    /// Mirrors the `state == .success` guard in `requestQuickClean`/`requestDeepClean`/`requestCleanSelected`.
+    static func cleanupActionsEnabled(state: ScanState, isCleaning: Bool, isUndoing: Bool) -> Bool {
+        state == .success && !isCleaning && !isUndoing
+    }
     var isCleaning: Bool { cleanup.isCleaning }
     var isUndoing: Bool { cleanup.isUndoing }
     var canUndo: Bool { cleanup.canUndo }
 
-    /// Drives the single cleanup confirmation sheet (`.sheet(item:)`).
+    /// Drives the single cleanup confirmation sheet (`.sheet(item:)`); hides Disk Analyzer requests.
     var pendingCleanup: PendingCleanup? {
-        get { cleanup.pending }
-        set { cleanup.pending = newValue }
+        get { cleanup.pending.flatMap { $0.isSmartScan ? $0 : nil } }
+        set {
+            if let newValue {
+                guard newValue.isSmartScan else { return }
+                cleanup.pending = newValue
+            } else if pendingCleanup != nil {
+                // Escape nils the binding before onDismiss, so this path must reset state too.
+                cleanup.cancelPending()
+            }
+        }
     }
 
     /// Number of safe-risk findings from the last scan (Quick Clean candidates).
@@ -359,6 +380,12 @@ final class ScanDashboardViewModel: ObservableObject {
         emptyScanCoachingStyle = permissions.emptyScanStyle()
     }
 
+    /// A scan in flight (e.g. during a Disk Analyzer clean) may still list what was just trashed.
+    private func rescanAfterCleanup() {
+        if isScanning { cancelScan() }
+        runScan()
+    }
+
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
@@ -566,7 +593,7 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// One confirm path for all three cleanup kinds (was three duplicate bodies).
     func confirmPendingCleanup() {
-        guard let kind = cleanup.pending else { return }
+        guard let kind = pendingCleanup else { return }
         guard state == .success else {
             cleanup.pending = nil
             return
@@ -578,11 +605,14 @@ final class ScanDashboardViewModel: ObservableObject {
         case .selected:
             // Expand folder ids → paths only here (background-friendly), not during UI scroll.
             findings = selectedFindingsForClean()
+        case .diskReview:
+            return
         }
         cleanup.confirm(kind, findings: findings)
     }
 
     func cancelPendingCleanup() {
+        guard pendingCleanup != nil else { return }
         cleanup.cancelPending()
     }
 
@@ -664,3 +694,25 @@ final class ScanDashboardViewModel: ObservableObject {
         return Double(bytes) / Double(totalReclaimableBytes)
     }
 }
+
+#if DEBUG
+// MARK: - Snapshot fixtures (DEBUG only)
+
+extension ScanDashboardViewModel {
+    /// Loads a canned report through the real results pipeline so snapshots show production layout.
+    func applySnapshotResults(_ report: ScanReport, duration: TimeInterval = 14.2) {
+        let prepared = Self.prepareScanResults(from: report)
+        let finishedAt = Date()
+        applyPreparedScanResults(prepared, startedAt: finishedAt.addingTimeInterval(-duration), finishedAt: finishedAt)
+    }
+
+    /// Freezes the hero in its scanning state without starting a real scan.
+    func applySnapshotScanning(step: Int, completed: Int, total: Int, title: String) {
+        state = .scanning
+        scanStep = step
+        scanRulesCompleted = completed
+        scanRulesTotal = total
+        scanStepTitle = title
+    }
+}
+#endif

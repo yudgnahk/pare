@@ -6,46 +6,21 @@ struct MaintenanceView: View {
     @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
-        ZStack {
-            // Shell provides AppBackgroundView.
-
+        VStack(spacing: 0) {
+            PageHeader(
+                destination: .maintenance,
+                subtitle: "One-shot system actions. Prune actions delete permanently and skip the Trash."
+            )
             ScrollView {
-                VStack(spacing: AppTheme.Spacing.xl) {
-                    headerCard
-                    actionCards
-                }
-                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                .padding(.vertical, AppTheme.Spacing.pageVertical)
-                .frame(maxWidth: .infinity)
+                actionCards
+                    .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                    .padding(.top, AppTheme.Spacing.sm)
+                    .padding(.bottom, AppTheme.Spacing.pageVertical)
+                    .frame(maxWidth: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { viewModel.onAppear() }
-    }
-
-    // MARK: - Header
-
-    private var headerCard: some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                    .fill(AppTheme.accent.opacity(0.14))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "wrench.and.screwdriver")
-                    .font(scale.font(17, weight: .semibold))
-                    .foregroundStyle(AppTheme.accent)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Maintenance")
-                    .font(scale.pageTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
-                Text("One-shot system actions — no file deletions")
-                    .font(scale.caption)
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
     }
 
     // MARK: - Action cards
@@ -54,7 +29,7 @@ struct MaintenanceView: View {
         // Adaptive columns: 1 on compact 13–14", 2 on 15"+, 3 on wide desktops.
         LazyVGrid(
             columns: [
-                GridItem(.adaptive(minimum: AppTheme.Breakpoint.cardMin), spacing: AppTheme.Spacing.lg)
+                GridItem(.adaptive(minimum: AppTheme.Breakpoint.cardMin), spacing: AppTheme.Spacing.lg, alignment: .top)
             ],
             spacing: AppTheme.Spacing.lg
         ) {
@@ -96,14 +71,15 @@ private struct ActionCard: View {
 
     private var topRow: some View {
         HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                    .fill(iconColor.opacity(0.18))
-                    .frame(width: 40, height: 40)
-                Image(systemName: action.systemImage)
-                    .font(scale.font(17, weight: .medium))
-                    .foregroundStyle(iconColor)
-            }
+            Image(systemName: action.systemImage)
+                .font(scale.font(17, weight: .medium))
+                .foregroundStyle(iconColor)
+                .frame(width: 40, height: 40)
+                .background(iconColor.opacity(0.14), in: RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                        .strokeBorder(iconColor.opacity(0.22), lineWidth: 1)
+                )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(action.title)
@@ -114,9 +90,7 @@ private struct ActionCard: View {
                 statusBadge
             }
 
-            Spacer(minLength: 8)
-            runButton
-                .layoutPriority(1)
+            Spacer(minLength: 0)
         }
     }
 
@@ -136,9 +110,12 @@ private struct ActionCard: View {
                 .font(scale.font(11))
             Text("≈ \(action.estimatedSeconds)s")
                 .font(scale.caption)
+                .monospacedDigit()
+            Spacer(minLength: 8)
+            runButton
         }
-        .foregroundStyle(AppTheme.textSecondary.opacity(0.7))
-        .padding(.top, 6)
+        .foregroundStyle(AppTheme.textTertiary)
+        .padding(.top, 12)
     }
 
     // MARK: Status badge
@@ -171,32 +148,15 @@ private struct ActionCard: View {
     // MARK: Run button
 
     private var runButton: some View {
-        Button(action: { viewModel.runAction(action) }) {
-            Group {
-                if state == .running {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(AppTheme.textPrimary)
-                        .frame(width: 16, height: 16)
-                } else {
-                    Image(systemName: state == .success ? "arrow.clockwise" : "play.fill")
-                        .font(scale.font(12, weight: .semibold))
-                }
-            }
-            .frame(width: 32, height: 32)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .fill(runButtonColor.opacity(0.22))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                    .strokeBorder(runButtonColor.opacity(0.35), lineWidth: 1)
-            )
+        SecondaryActionButton(
+            title: state == .running ? "Running…" : (state == .success ? "Run Again" : "Run"),
+            systemImage: state == .success ? "arrow.clockwise" : "play.fill",
+            isLoading: state == .running,
+            role: .accent
+        ) {
+            viewModel.runAction(action)
         }
-        .buttonStyle(.plain)
-        .disabled(state == .running)
-        .foregroundStyle(runButtonColor)
-        .help(state == .success ? "Run again" : "Run")
+        .help(action.title)
     }
 
     // MARK: Log view
@@ -237,7 +197,7 @@ private struct ActionCard: View {
                     .frame(maxHeight: 160)
                     .background(
                         RoundedRectangle(cornerRadius: AppTheme.Radius.sm, style: .continuous)
-                            .fill(Color.black.opacity(0.25))
+                            .fill(AppTheme.Fill.subtle)
                     )
                     .onChange(of: log.count) { _ in
                         withAnimation { proxy.scrollTo("bottom") }
@@ -259,14 +219,6 @@ private struct ActionCard: View {
         }
     }
 
-    private var runButtonColor: Color {
-        switch state {
-        case .idle: return AppTheme.accent
-        case .running: return AppTheme.textSecondary
-        case .success: return AppTheme.success
-        case .failed: return AppTheme.review
-        }
-    }
 
     private func logLineColor(_ line: String) -> Color {
         if line.hasPrefix("✓") || line.contains("done") || line.contains("complete") {

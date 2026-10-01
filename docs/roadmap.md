@@ -369,6 +369,44 @@ Largest persistent volumes are `data-api_arango_data` (12.61 GB) and `data-api_r
 
 ---
 
+## Phase 11 — UI Redesign (Adaptive Theme, Category Tiles, Disk Analyzer)
+
+Make Pare look and feel like a native, premium Mac utility. Plan: `docs/plans/2026-09-26-ui-redesign-plan.md`; task log: `docs/plans/2026-09-26-ui-redesign-tasks.md`.
+
+### 11.1 — Adaptive light/dark tokens
+- [x] `ThemeSwatch`/`RGBA`/`WCAG.contrastRatio` (`Theme/ThemeSwatch.swift`) + `ThemeContrastTests`
+- [x] `AppTheme` repointed to `AppTheme.Swatch`, adding `onAccent`, `accentText`, `cardFill`, `Shadow`, `Background`
+- [x] Nine components fixed for hardcoded black/white/literal colors (`AppBackgroundView`, `GlassCard`, `PrimaryActionButton`, `CleanConfirmationSheet`, `HomebrewManagerView`, `MaintenanceView`, `TextZoomController`)
+- [x] Light-mode audit — PR #31
+
+### 11.2 — Category colors, icon tiles, sidebar vibrancy
+- [x] `CategoryStyle` rewrite (swatch/symbol per `ScanCategory`, `chartPalette`) + `CategoryStyleTests`
+- [x] `IconTile` squircle component; `DestinationStyle` for sidebar destinations
+- [x] `SidebarMaterial` (`NSVisualEffectView` `.sidebar`/`.behindWindow`) + `SidebarView` redesign
+- [x] `ScanDashboardView`, `DeviceBackupsCard`, `DisclosureSelectRow`, `ToolShareChart` migrated to tiles/swatches
+- [x] Branch `feat/ui-redesign-phase-2-category-tiles`, review pending
+
+### 11.3 — Disk Analyzer redesign
+- [x] Safety fix: removed direct `FileManager.trashItem` call; all cleanup now flows tray → `CleanupCoordinator` → `CleanupEngine`
+- [x] `FileSystemUtils.directoryUsage`, `DiskEntry`/`DiskKind`, `DiskTableQuery`, `DiskBreadcrumb`, `DiskReviewResolver`, `DiskLevelLoader` (one-level-at-a-time, off-main-actor sizing, per-path cache)
+- [x] `DiskAnalyzerViewModel` rewrite: crumbs, filter/sort pipeline, deduplicated review tray, owns a `CleanupCoordinator`
+- [x] `DiskFilterBar`, `DiskBreadcrumbBar`, `DiskAnalyzerTable` (sortable, `contextMenu(forSelectionType:)`), `DiskInspectorPane`, `DiskReviewTray`, `Theme/DiskKindStyle`
+- [x] `DiskAnalyzerView` composition: header summary, filter bar, breadcrumb, table \| inspector (280 pt, collapses under 1100 pt window width), review tray, `CleanConfirmationSheet`, result banner
+- [x] "Add to Review" accepts scan-covered items only (`DiskReviewResolver` + `ScanPolicy.isEqualToOrDescendant`); `.insideFinding` shows an explicit "Add \"‹parent›\" (size) to Review" button so the user knows the whole parent finding — not just the selected item — gets queued
+- [x] Branch `feat/ui-redesign-phase-3-disk-analyzer`, review pending
+
+### 11.4 — "Wow" pass (Tidewater direction)
+Audit + direction: `docs/design/ui-wow-audit.md`; screenshots: `docs/design/screenshots/ui-wow/`.
+- [x] Tokens: apricot `warm`/`warmText`, CTA + ring gradients, `Elevation`, motion (`reveal`, `countUp`, `ringFill`, `breathe`), `MotionPolicy` (Reduce Motion), `display`/`eyebrow` type; contrast tests extended
+- [x] Smart Scan hero: live startup-disk `DiskUsageRing` around `ScanOrbButton`; scanning turns it into an honest rule-count `ScanProgressRing` with step chips
+- [x] Results: `ScanSummaryHero` (reclaimable share on the disk ring, counting total, `CategoryShareBar`), decision tiles, floating `CleanActionBar` (all clean actions, still sheet-confirmed), `CleanResultCard`
+- [x] Shell: sidebar accent selection + `StorageMeter`; calmer page ground; refreshed `GlassCard`
+- [x] Modules: shared `PageHeader`/`ModuleChrome`, halo `EmptyStateView`, `LoadingStateView`, Maintenance Run buttons, Disk Analyzer column widths
+- [x] DEBUG `SnapshotRenderer` (`PARE_SNAPSHOT_DIR=… .build/debug/PareApp`) for light/dark PNGs without screen recording
+- [ ] Manual: run `make run-app`, then check vibrancy, hover/press states, sheets and Reduce Motion on real hardware
+
+---
+
 ## Always-On (every phase)
 
 - [ ] `make build` passes before any PR

@@ -7,8 +7,13 @@ enum PendingCleanup: String, Identifiable, Equatable {
     case quick
     case deep
     case selected
+    /// Disk Analyzer tray; distinct from `.selected` so neither screen can confirm the other's request.
+    case diskReview
 
     var id: String { rawValue }
+
+    /// Whether Smart Scan's dashboard owns this request (confirms it with its own findings).
+    var isSmartScan: Bool { self != .diskReview }
 }
 
 /// Drives the cleanup lifecycle (confirm → clean → done/undo) against
@@ -29,13 +34,22 @@ final class CleanupCoordinator: ObservableObject {
     /// Non-nil drives the confirmation sheet (`.sheet(item:)`).
     @Published var pending: PendingCleanup?
     @Published private(set) var state: CleanupState = .idle
+    @Published private(set) var transactionSaveError: String?
+    @Published private(set) var lastResult: CleanupResult?
+    /// One line replacing N skip rows when a shared symlinked ancestor (e.g. home) blocked every item.
+    @Published private(set) var symlinkSkipExplanation: String?
 
-    /// Called after a cleanup or undo completes so the owner can rescan.
-    var onCleanupCompleted: (() -> Void)?
+    /// Run after every cleanup or undo; each screen sharing this coordinator registers one.
+    private var completionHandlers: [() -> Void] = []
 
     /// Most recent transaction, used to offer undo.
     private var lastTransaction: CleanupTransaction?
-    private let engine = CleanupEngine()
+    private let engine: CleanupEngine
+
+    /// Engine is injectable so tests can pass one backed by a temp-directory store.
+    init(engine: CleanupEngine = CleanupEngine()) {
+        self.engine = engine
+    }
 
     var isCleaning: Bool {
         if case .cleaning = state { return true }
@@ -52,9 +66,14 @@ final class CleanupCoordinator: ObservableObject {
         return false
     }
 
+    func addCompletionHandler(_ handler: @escaping () -> Void) {
+        completionHandlers = completionHandlers + [handler]
+    }
+
     // MARK: - Lifecycle
 
     func request(_ kind: PendingCleanup) {
+        guard !isCleaning, !isUndoing else { return }
         pending = kind
         state = .confirming
     }
@@ -68,8 +87,12 @@ final class CleanupCoordinator: ObservableObject {
 
     /// Runs the pending cleanup with the findings the owner resolved for it.
     func confirm(_ kind: PendingCleanup, findings: [ScanFinding]) {
+        guard !isCleaning, !isUndoing else { return }
         pending = nil
         state = .cleaning
+        lastResult = nil
+        symlinkSkipExplanation = nil
+        transactionSaveError = nil
 
         Task(priority: .userInitiated) {
             do {
@@ -83,16 +106,18 @@ final class CleanupCoordinator: ObservableObject {
                         profileName: "all",
                         confirmed: true
                     )
-                case .selected:
+                case .selected, .diskReview:
                     result = try await engine.clean(findings: findings, profileName: "all")
                 }
                 lastTransaction = result.transaction
+                lastResult = result
+                symlinkSkipExplanation = SymlinkSkipSummary.message(for: result.skipped)
+                transactionSaveError = result.transactionSaveError
                 state = .done(
                     bytesFreed: result.totalBytesFreed,
                     skippedCount: result.skipped.count
                 )
-                // Re-run scan to refresh results after cleanup.
-                onCleanupCompleted?()
+                notifyCompletion()
             } catch {
                 state = .error(error.localizedDescription)
             }
@@ -100,7 +125,7 @@ final class CleanupCoordinator: ObservableObject {
     }
 
     func undoLastCleanup() {
-        guard let tx = lastTransaction, !tx.isDryRun else { return }
+        guard !isCleaning, !isUndoing, let tx = lastTransaction, !tx.isDryRun else { return }
         state = .undoing
 
         Task(priority: .userInitiated) {
@@ -108,7 +133,7 @@ final class CleanupCoordinator: ObservableObject {
             lastTransaction = failed.isEmpty ? nil : tx
             // Undo honesty (R0.7): failed restores must never be presented as success.
             state = .undone(restoredCount: restored.count, failedCount: failed.count)
-            onCleanupCompleted?()
+            notifyCompletion()
         }
     }
 
@@ -116,4 +141,14 @@ final class CleanupCoordinator: ObservableObject {
         state = .idle
     }
 
+    #if DEBUG
+    /// Lets the snapshot renderer show result states without touching the filesystem.
+    func applySnapshotState(_ snapshot: CleanupState) {
+        state = snapshot
+    }
+    #endif
+
+    private func notifyCompletion() {
+        completionHandlers.forEach { $0() }
+    }
 }

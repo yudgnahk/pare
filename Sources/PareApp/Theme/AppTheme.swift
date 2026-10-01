@@ -1,110 +1,210 @@
 import SwiftUI
 
-/// Central design tokens for Pare — teal / navy premium utility aesthetic.
+/// Central design tokens for Pare — "Tidewater": calm seafoam with a sunlit apricot accent.
 ///
-/// Color source of truth: `docs/brand-guide.html`. Semantic tokens below point
-/// at the brand palette; views must never hardcode colors, radii, or paddings.
+/// Color source of truth: `docs/brand-guide.html` + `docs/design/ui-wow-audit.md`.
+/// Views must never hardcode colors, radii, or paddings.
 enum AppTheme {
-    // MARK: - Brand palette (docs/brand-guide.html)
+    // MARK: - Adaptive swatches (light/dark pairs; source of truth for semantic colors)
 
-    /// Raw brand colors. Prefer the semantic tokens (`base`, `panel`, `accent`,
-    /// `textPrimary`, …) in views; reach for `Brand` only when defining new
-    /// semantic tokens.
-    enum Brand {
-        /// Page ground.
-        static let ink = Color(hex: 0x0D1520)
-        /// Recessed / secondary surface.
-        static let marine = Color(hex: 0x152030)
-        /// Raised surface (cards, panels).
-        static let surface = Color(hex: 0x1A2D40)
-        /// Primary mark — Pare seafoam accent.
-        static let seafoam = Color(hex: 0x5CC8BC)
-        /// Highlight ("Mist").
-        static let seafoamLight = Color(hex: 0x8DE8E0)
-        /// Deep accent for gradients and pressed states.
-        static let seafoamDeep = Color(hex: 0x238C82)
-        /// Typography.
-        static let chalk = Color(hex: 0xE4EDF2)
-        /// Warm typography accents.
-        static let chalkWarm = Color(hex: 0xEDF2F5)
-        /// Secondary text (brand); use with care on dark grounds (contrast).
-        static let fog = Color(hex: 0x7A9BB0)
+    /// Raw light/dark pairs behind every semantic token. Tests read these directly,
+    /// with no `NSColor` resolution involved.
+    enum Swatch {
+        static let base = ThemeSwatch(light: RGBA(0xF2F5F4), dark: RGBA(0x0D1520))
+        static let panel = ThemeSwatch(light: RGBA(0xFFFFFF), dark: RGBA(0x1A2B3C))
+        static let panelSecondary = ThemeSwatch(light: RGBA(0xE8EEEE), dark: RGBA(0x152030))
+        static let cardFill = ThemeSwatch(light: RGBA(0xFFFFFF, alpha: 0.88), dark: RGBA(0x1A2B3C, alpha: 0.66))
+        static let sidebar = ThemeSwatch(light: RGBA(0xE9EFEE), dark: RGBA(0x121C28))
+        static let sidebarSelected = ThemeSwatch(light: RGBA(0xD3EBE7), dark: RGBA(0x1F4757))
+
+        static let textPrimary = ThemeSwatch(light: RGBA(0x14202B), dark: RGBA(0xE4EDF2))
+        static let textSecondary = ThemeSwatch(light: RGBA(0x43566A), dark: RGBA(0xA9BCC9))
+        static let textTertiary = ThemeSwatch(light: RGBA(0x53677A), dark: RGBA(0x8499A9))
+
+        static let accent = ThemeSwatch(light: RGBA(0x17706A), dark: RGBA(0x5CC8BC))
+        static let accentDeep = ThemeSwatch(light: RGBA(0x0F5A55), dark: RGBA(0x238C82))
+        static let onAccent = ThemeSwatch(light: RGBA(0xFFFFFF), dark: RGBA(0x0D1520))
+        /// Decorative seafoam for rings and glows — never used as text.
+        static let accentBright = ThemeSwatch(light: RGBA(0x3FB3A7), dark: RGBA(0x5CC8BC))
+        /// Primary CTA gradient; `onAccent` must clear 3:1 (large text) on both stops.
+        static let ctaTop = ThemeSwatch(light: RGBA(0x1F8A80), dark: RGBA(0x5CC8BC))
+        static let ctaBottom = ThemeSwatch(light: RGBA(0x0F5A55), dark: RGBA(0x3AA99D))
+
+        /// Apricot marks reclaimable space; `warm` is decorative, `warmText` is text-safe.
+        static let warm = ThemeSwatch(light: RGBA(0xEFA06B), dark: RGBA(0xF2AE7E))
+        static let warmText = ThemeSwatch(light: RGBA(0x9A4A12), dark: RGBA(0xF4B58A))
+
+        static let success = ThemeSwatch(light: RGBA(0x1A7542), dark: RGBA(0x57DB94))
+        static let warning = ThemeSwatch(light: RGBA(0x8F5500), dark: RGBA(0xF7BD4F))
+        static let review = ThemeSwatch(light: RGBA(0xB8352A), dark: RGBA(0xFA7A6B))
+
+        static let tableHeaderBackground = ThemeSwatch(light: RGBA(0x152030, alpha: 0.04), dark: RGBA(0x000000, alpha: 0.12))
+
+        static let hairlineFaint = ThemeSwatch(light: RGBA(0x152030, alpha: 0.05), dark: RGBA(0xFFFFFF, alpha: 0.04))
+        static let hairlineStandard = ThemeSwatch(light: RGBA(0x152030, alpha: 0.09), dark: RGBA(0xFFFFFF, alpha: 0.07))
+        static let hairlineStrong = ThemeSwatch(light: RGBA(0x152030, alpha: 0.16), dark: RGBA(0xFFFFFF, alpha: 0.14))
+
+        static let fillSubtle = ThemeSwatch(light: RGBA(0x152030, alpha: 0.04), dark: RGBA(0xFFFFFF, alpha: 0.06))
+        static let fillControl = ThemeSwatch(light: RGBA(0x152030, alpha: 0.06), dark: RGBA(0xFFFFFF, alpha: 0.08))
+        static let fillHover = ThemeSwatch(light: RGBA(0x152030, alpha: 0.08), dark: RGBA(0xFFFFFF, alpha: 0.10))
+        static let fillSelected = ThemeSwatch(light: RGBA(0x152030, alpha: 0.12), dark: RGBA(0xFFFFFF, alpha: 0.18))
+
+        static let shadowCard = ThemeSwatch(light: RGBA(0x152030, alpha: 0.08), dark: RGBA(0x000000, alpha: 0.20))
+        static let backgroundVignette = ThemeSwatch(light: RGBA(0x000000, alpha: 0), dark: RGBA(0x000000, alpha: 0.22))
+        static let backgroundBloom = ThemeSwatch(light: RGBA(0x3FB3A7, alpha: 0.14), dark: RGBA(0x5CC8BC, alpha: 0.16))
+        static let backgroundWarmBloom = ThemeSwatch(light: RGBA(0xEFA06B, alpha: 0.12), dark: RGBA(0xF2AE7E, alpha: 0.07))
+        /// Specular sheen on filled CTAs; white in both modes by design.
+        static let sheen = ThemeSwatch(0xFFFFFF)
+        static let cardHighlight = ThemeSwatch(light: RGBA(0xFFFFFF, alpha: 0.9), dark: RGBA(0xFFFFFF, alpha: 0.10))
     }
 
     // MARK: - Semantic colors
 
-    static let base = Brand.ink
-    static let panel = Brand.surface
-    static let panelSecondary = Brand.marine
-    static let sidebar = Brand.marine
-    static let sidebarSelected = Color(hex: 0x1F4757)
-    static let textPrimary = Brand.chalk
-    static let textSecondary = Brand.chalk.opacity(0.72)
-    static let textTertiary = Brand.chalk.opacity(0.48)
+    static let base = Swatch.base.color
+    static let panel = Swatch.panel.color
+    static let panelSecondary = Swatch.panelSecondary.color
+    static let cardFill = Swatch.cardFill.color
+    static let sidebar = Swatch.sidebar.color
+    static let sidebarSelected = Swatch.sidebarSelected.color
+    static let textPrimary = Swatch.textPrimary.color
+    static let textSecondary = Swatch.textSecondary.color
+    static let textTertiary = Swatch.textTertiary.color
     /// Pare seafoam accent
-    static let accent = Brand.seafoam
-    static let accentDeep = Brand.seafoamDeep
-    static let success = Color(red: 0.34, green: 0.86, blue: 0.58)
-    static let warning = Color(red: 0.97, green: 0.74, blue: 0.31)
-    static let review = Color(red: 0.98, green: 0.48, blue: 0.42)
+    static let accent = Swatch.accent.color
+    /// Accent used as text (buttons, links, active states) rather than a fill.
+    static let accentText = Swatch.accent.color
+    static let accentDeep = Swatch.accentDeep.color
+    /// Text/glyph color drawn on top of `accent`, `success` or `review` fills.
+    static let onAccent = Swatch.onAccent.color
+    static let accentBright = Swatch.accentBright.color
+    /// Reclaimable-space accent (arcs, bars, blooms).
+    static let warm = Swatch.warm.color
+    /// Reclaimable-space labels.
+    static let warmText = Swatch.warmText.color
+    static let success = Swatch.success.color
+    static let warning = Swatch.warning.color
+    static let review = Swatch.review.color
 
     /// Column-header strip behind sortable tables (Apps, Homebrew).
-    static let tableHeaderBackground = Color.black.opacity(0.12)
+    static let tableHeaderBackground = Swatch.tableHeaderBackground.color
 
     static let pageGradient = LinearGradient(
-        colors: [
-            Brand.ink,
-            Brand.marine,
-            Brand.surface
-        ],
+        colors: [base, panelSecondary, panel],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    static let heroGlow = RadialGradient(
-        colors: [
-            accent.opacity(0.35),
-            accentDeep.opacity(0.12),
-            .clear
-        ],
+    /// Glossy top-light on filled buttons and the scan orb (apply with opacity).
+    static let sheen = Swatch.sheen.color
+
+    /// Fill for the single most important action on a screen (Scan, Clean).
+    static let ctaGradient = LinearGradient(
+        colors: [Swatch.ctaTop.color, Swatch.ctaBottom.color],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    /// Seafoam sweep for disk and progress rings.
+    static let ringGradient = AngularGradient(
+        colors: [accentDeep, accentBright, accentBright, accentDeep],
         center: .center,
-        startRadius: 20,
-        endRadius: 280
+        startAngle: .degrees(-90),
+        endAngle: .degrees(270)
+    )
+
+    /// Horizontal counterpart of `ringGradient` for meters and bars.
+    static let barGradient = LinearGradient(
+        colors: [accentDeep, accentBright],
+        startPoint: .leading,
+        endPoint: .trailing
     )
 
     // MARK: - Hairlines (strokes / dividers)
 
-    /// Consolidated hairline strokes — replaces the ad-hoc white alphas that
-    /// used to be scattered across views.
+    /// Consolidated hairline strokes — adapts per appearance instead of a fixed white alpha.
     enum Hairline {
         /// Barely-there separators and resting row washes.
-        static let faint = Color.white.opacity(0.04)
-        /// Standard 1 pt strokes / dividers — brand `--border` (white 7%).
-        static let standard = Color.white.opacity(0.07)
+        static let faint = Swatch.hairlineFaint.color
+        /// Standard 1 pt strokes / dividers.
+        static let standard = Swatch.hairlineStandard.color
         /// Emphasized strokes (hovered capsules, prominent borders).
-        static let strong = Color.white.opacity(0.14)
+        static let strong = Swatch.hairlineStrong.color
     }
 
     // MARK: - Translucent fills (chips, rows, controls)
 
     enum Fill {
         /// Resting chip / row background.
-        static let subtle = Color.white.opacity(0.06)
+        static let subtle = Swatch.fillSubtle.color
         /// Slightly raised control background (capsule chips, pills).
-        static let control = Color.white.opacity(0.08)
+        static let control = Swatch.fillControl.color
         /// Hover highlight for rows and controls.
-        static let hover = Color.white.opacity(0.10)
+        static let hover = Swatch.fillHover.color
         /// Selected segment / tab background.
-        static let selected = Color.white.opacity(0.18)
+        static let selected = Swatch.fillSelected.color
+    }
+
+    // MARK: - Shadows
+
+    enum Shadow {
+        /// Drop shadow under raised cards.
+        static let card = Swatch.shadowCard.color
+        /// One-pixel top-edge sheen on raised surfaces.
+        static let highlight = Swatch.cardHighlight.color
+    }
+
+    // MARK: - Elevation
+
+    /// Shadow presets: resting rows, raised cards, floating bars / hero CTA.
+    enum Elevation {
+        case subtle, raised, floating
+
+        var radius: CGFloat {
+            switch self {
+            case .subtle: return 6
+            case .raised: return 16
+            case .floating: return 28
+            }
+        }
+
+        var y: CGFloat {
+            switch self {
+            case .subtle: return 2
+            case .raised: return 8
+            case .floating: return 12
+            }
+        }
+
+        var opacity: Double {
+            switch self {
+            case .subtle: return 0.6
+            case .raised: return 1
+            case .floating: return 1.4
+            }
+        }
+    }
+
+    // MARK: - Background layers (page ground effects)
+
+    enum Background {
+        /// Darkening wash at the page edges; clear in light mode.
+        static let vignette = Swatch.backgroundVignette.color
+        /// Faint accent glow behind hero content.
+        static let bloom = Swatch.backgroundBloom.color
+        /// Apricot counterweight, bottom-leading.
+        static let warmBloom = Swatch.backgroundWarmBloom.color
     }
 
     // MARK: - Spacing
 
     enum Spacing {
+        static let xs: CGFloat = 4
         static let sm: CGFloat = 8
         static let md: CGFloat = 12
         static let lg: CGFloat = 16
         static let xl: CGFloat = 24
+        static let xxl: CGFloat = 32
+        static let xxxl: CGFloat = 48
         static let pageHorizontal: CGFloat = 28
         static let pageVertical: CGFloat = 22
         /// Default GlassCard content padding.
@@ -128,7 +228,11 @@ enum AppTheme {
         static let chipCompact: CGFloat = 7
         /// Tiny status badges (pinned / auto / MAS).
         static let badge: CGFloat = 4
+        /// Standard cards.
+        static let lg: CGFloat = 16
         static let xl: CGFloat = 20
+        /// Hero surfaces and the floating action bar.
+        static let hero: CGFloat = 24
     }
 
     // MARK: - Sheets
@@ -153,7 +257,10 @@ enum AppTheme {
         static let secondaryHeight: CGFloat = 32
         static let iconSize: CGFloat = 28
         static let primaryMinWidth: CGFloat = 112
-        static let ringButtonSize: CGFloat = 96
+        /// Smart Scan hero: disk ring diameter and the scan orb inside it.
+        static let heroRing: CGFloat = 264
+        static let heroOrb: CGFloat = 176
+        static let summaryRing: CGFloat = 132
     }
 
     // MARK: - Motion
@@ -162,7 +269,17 @@ enum AppTheme {
         static let quick = Animation.easeOut(duration: 0.18)
         static let standard = Animation.spring(response: 0.38, dampingFraction: 0.86)
         static let gentle = Animation.spring(response: 0.55, dampingFraction: 0.88)
-        static let ringPulse = Animation.easeInOut(duration: 1.4).repeatForever(autoreverses: true)
+        static let reveal = Animation.spring(response: 0.6, dampingFraction: 0.9)
+        static let countUp = Animation.easeOut(duration: 1.1)
+        static let ringFill = Animation.spring(response: 1.1, dampingFraction: 0.9)
+        static let breathe = Animation.easeInOut(duration: 2.4).repeatForever(autoreverses: true)
+        static let orbit = Animation.linear(duration: 2.2).repeatForever(autoreverses: false)
+        static let staggerStep: Double = 0.05
+
+        /// Staggered reveal for the nth item in a freshly shown list.
+        static func stagger(_ index: Int) -> Animation {
+            reveal.delay(Double(min(index, 8)) * staggerStep)
+        }
     }
 
     // MARK: - Breakpoints

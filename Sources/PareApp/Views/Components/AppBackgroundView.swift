@@ -1,47 +1,34 @@
 import SwiftUI
 
+/// Page ground: mist/ink base with a seafoam bloom top-trailing and an apricot counterweight bottom-leading.
 struct AppBackgroundView: View {
     var body: some View {
         ZStack {
             AppTheme.pageGradient
-                .ignoresSafeArea()
 
-            // Teal bloom — top trailing
             RadialGradient(
-                colors: [
-                    AppTheme.accent.opacity(0.22),
-                    .clear
-                ],
+                colors: [AppTheme.Background.bloom, .clear],
                 center: .topTrailing,
                 startRadius: 10,
-                endRadius: 480
+                endRadius: 560
             )
-            .ignoresSafeArea()
 
-            // Deep navy / success bloom — bottom leading
             RadialGradient(
-                colors: [
-                    AppTheme.accentDeep.opacity(0.28),
-                    .clear
-                ],
+                colors: [AppTheme.Background.warmBloom, .clear],
                 center: .bottomLeading,
-                startRadius: 40,
-                endRadius: 420
+                startRadius: 20,
+                endRadius: 520
             )
-            .ignoresSafeArea()
 
-            // Subtle vignette for depth
             RadialGradient(
-                colors: [
-                    .clear,
-                    Color.black.opacity(0.22)
-                ],
+                colors: [.clear, AppTheme.Background.vignette],
                 center: .center,
-                startRadius: 200,
-                endRadius: 900
+                startRadius: 240,
+                endRadius: 960
             )
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
         }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

@@ -35,9 +35,6 @@ jobs:
       - name: Swift version
         run: swift --version
 
-      - name: Build (all targets)
-        run: swift build --build-tests
-
       - name: Test with coverage
         run: swift test --enable-code-coverage
 
@@ -61,3 +58,6 @@ jobs:
         with:
           name: coverage-summary
           path: coverage-summary.txt
+
+      - name: Release build excludes DEBUG snapshot hooks
+        run: scripts/check-release-snapshot-hooks.sh

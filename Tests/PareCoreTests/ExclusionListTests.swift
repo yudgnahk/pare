@@ -52,6 +52,54 @@ final class ExclusionListTests: XCTestCase {
         XCTAssertFalse(list.isExcluded("/Users/test/Library/Caches/otherapp/data.bin"))
     }
 
+    func testPrefixExclusionBlocksDeletingAnAncestorDirectory() {
+        var list = ExclusionList()
+        list.add(ExclusionEntry(path: "/Users/test/Cache/keep", matchType: .prefix))
+        XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache"))
+        XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache/keep"))
+        XCTAssertFalse(list.blocksRemoval(of: "/Users/test/Caches"))
+    }
+
+    func testExactExclusionBlocksDeletingAnAncestorDirectory() {
+        var list = ExclusionList()
+        list.add(ExclusionEntry(path: "/Users/test/Cache/keep", matchType: .exact))
+        XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache"))
+        XCTAssertTrue(list.blocksRemoval(of: "/Users/test/Cache/keep"))
+    }
+
+    func testBlocksRemovalOfAncestorsIgnoresCaseAndPrivateAliases() {
+        let cases: [(name: String, excluded: String, removed: String, blocked: Bool)] = [
+            ("case differs", "/Users/Test/Cache/Keep", "/users/test/cache", true),
+            ("private alias on exclusion", "/private/var/pare-test/keep", "/var/pare-test", true),
+            ("private alias on removal", "/var/pare-test/keep", "/private/var/pare-test", true),
+            ("sibling with shared prefix", "/Users/test/Cache/keep", "/users/test/Cach", false),
+            ("unrelated sibling", "/Users/test/Cache/keep", "/Users/test/Other", false),
+            ("Data-volume exclusion, root-spelled ancestor", "/System/Volumes/Data/Users/k/Keep", "/Users/k", true),
+            ("root-spelled exclusion, Data-volume ancestor", "/Users/k/Keep", "/System/Volumes/Data/Users/k", true),
+        ]
+        for c in cases {
+            var list = ExclusionList()
+            list.add(ExclusionEntry(path: c.excluded, matchType: .prefix))
+            XCTAssertEqual(list.blocksRemoval(of: c.removed), c.blocked, c.name)
+        }
+    }
+
+    /// An exclusion saved under the Data-volume spelling must still protect the `/Users/...` spelling.
+    func testDataVolumeSpelledExclusionBlocksFirmlinkSpelledFindings() {
+        for matchType in [ExclusionEntry.MatchType.prefix, .exact] {
+            var list = ExclusionList()
+            list.add(ExclusionEntry(path: "/System/Volumes/Data/Users/k/Keep", matchType: matchType))
+            XCTAssertTrue(list.blocksRemoval(of: "/Users/k/Keep"), "\(matchType) exact spelling")
+            XCTAssertTrue(list.isExcluded("/Users/k/Keep"), "\(matchType) isExcluded")
+        }
+        var prefixList = ExclusionList()
+        prefixList.add(ExclusionEntry(path: "/System/Volumes/Data/Users/k/Keep", matchType: .prefix))
+        XCTAssertTrue(prefixList.blocksRemoval(of: "/Users/k/Keep/cache/blob"))
+        XCTAssertTrue(prefixList.isExcluded("/Users/k/Keep/cache/blob"))
+        XCTAssertFalse(prefixList.blocksRemoval(of: "/Users/k/Keeper"))
+        XCTAssertFalse(prefixList.blocksRemoval(of: "/Users/k/Other"))
+    }
+
     func testAddDeduplicatesIdenticalEntries() {
         var list = ExclusionList()
         let e1 = ExclusionEntry(path: "/Users/test/dir", matchType: .prefix)

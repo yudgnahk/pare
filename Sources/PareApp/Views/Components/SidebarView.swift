@@ -4,6 +4,9 @@ import SwiftUI
 struct SidebarView: View {
     @Binding var selection: AppDestination
     @Environment(\.pareDisplayScale) private var scale
+    @Environment(\.isSnapshotRendering) private var isSnapshotRendering
+    @StateObject private var volume = VolumeUsageModel()
+    @State private var hovered: AppDestination?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -13,8 +16,8 @@ struct SidebarView: View {
 
             brandHeader
                 .padding(.horizontal, 16)
-                .padding(.top, 28)
-                .padding(.bottom, 14)
+                .padding(.top, 30)
+                .padding(.bottom, 20)
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
@@ -27,15 +30,14 @@ struct SidebarView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            Divider()
-                .background(AppTheme.Fill.control)
+            footer
                 .padding(.horizontal, 12)
-
-            footerHint
-                .padding(14)
+                .padding(.bottom, 14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(sidebarBackground)
+        .onAppear { volume.refresh() }
+        .onChange(of: selection) { _ in volume.refresh() }
     }
 
     private var brandHeader: some View {
@@ -45,7 +47,7 @@ struct SidebarView: View {
                 Text("Pare")
                     .font(scale.font(16, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.textPrimary)
-                Text("Surgical cleanup")
+                Text("Calm, careful cleanup")
                     .font(scale.font(11, weight: .medium))
                     .foregroundStyle(AppTheme.textTertiary)
             }
@@ -58,8 +60,8 @@ struct SidebarView: View {
     private func sectionBlock(_ section: SidebarSection) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(section.rawValue.uppercased())
-                .font(scale.font(11, weight: .bold, design: .rounded))
-                .tracking(0.9)
+                .font(scale.eyebrow)
+                .tracking(1.1)
                 .foregroundStyle(AppTheme.textTertiary)
                 .padding(.horizontal, 10)
                 .padding(.bottom, 4)
@@ -72,16 +74,14 @@ struct SidebarView: View {
 
     private func sidebarRow(_ destination: AppDestination) -> some View {
         let selected = selection == destination
+        let isHovered = hovered == destination && !selected
         return Button {
             withAnimation(AppTheme.Motion.standard) {
                 selection = destination
             }
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: destination.systemImage)
-                    .font(scale.font(14, weight: .semibold))
-                    .frame(width: 20, alignment: .center)
-                    .foregroundStyle(selected ? AppTheme.accent : AppTheme.textSecondary)
+                IconTile(symbol: destination.systemImage, swatch: DestinationStyle.swatch(for: destination), size: 24)
 
                 Text(destination.title)
                     .font(scale.font(14, weight: selected ? .semibold : .medium))
@@ -89,71 +89,64 @@ struct SidebarView: View {
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
-
-                if selected {
-                    Circle()
-                        .fill(AppTheme.accent)
-                        .frame(width: 6, height: 6)
-                }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
-                    .fill(selected ? AppTheme.sidebarSelected : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
-                    .strokeBorder(
-                        selected ? AppTheme.accent.opacity(0.4) : Color.clear,
-                        lineWidth: 1
-                    )
-            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(rowBackground(selected: selected, hovered: isHovered))
             .contentShape(RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
         }
         .buttonStyle(.plain)
+        .onHover { inside in hovered = inside ? destination : (hovered == destination ? nil : hovered) }
         .animation(AppTheme.Motion.quick, value: selected)
+        .animation(AppTheme.Motion.quick, value: isHovered)
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .help(destination.title)
     }
 
-    private var footerHint: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Text size")
-                .font(scale.font(10, weight: .semibold))
-                .foregroundStyle(AppTheme.textTertiary)
-            Text("⌘+  ·  ⌘−  ·  ⌘0")
-                .font(scale.font(11, weight: .medium, design: .monospaced))
-                .foregroundStyle(AppTheme.textSecondary.opacity(0.8))
+    private func rowBackground(selected: Bool, hovered: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous)
+        return shape
+            .fill(selected ? AppTheme.accent.opacity(0.14) : (hovered ? AppTheme.Fill.subtle : Color.clear))
+            .overlay(shape.strokeBorder(selected ? AppTheme.accent.opacity(0.22) : Color.clear, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var footer: some View {
+        if let usage = volume.usage {
+            StorageMeter(usage: usage)
+                .padding(12)
+                .background(
+                    AppTheme.Fill.subtle,
+                    in: RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
+                )
+                .help("Startup disk usage")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var sidebarBackground: some View {
         ZStack(alignment: .top) {
-            // Solid base so the menu is never transparent/invisible
-            AppTheme.sidebar
+            if isSnapshotRendering {
+                AppTheme.sidebar
+            } else {
+                SidebarMaterial()
+            }
 
+            // Brand gradient over vibrancy; textSecondary must stay >= 4.5:1 at every stop (0.18 top is the tightest).
             LinearGradient(
-                colors: [
-                    AppTheme.accent.opacity(0.10),
-                    Color.clear
+                stops: [
+                    .init(color: AppTheme.accent.opacity(0.18), location: 0.0),
+                    .init(color: AppTheme.accent.opacity(0.08), location: 0.45),
+                    .init(color: AppTheme.accentDeep.opacity(0.05), location: 1.0)
                 ],
                 startPoint: .top,
-                endPoint: .center
+                endPoint: .bottom
             )
 
-            // Right edge depth
             HStack {
                 Spacer()
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.0),
-                        Color.black.opacity(0.18)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: 8)
+                Rectangle()
+                    .fill(AppTheme.Hairline.standard)
+                    .frame(width: 1)
             }
         }
         .ignoresSafeArea()

@@ -13,7 +13,7 @@ struct DeviceBackupsCard: View {
                     HStack(spacing: 10) {
                         Image(systemName: "iphone.and.arrow.forward")
                             .font(scale.font(15, weight: .semibold))
-                            .foregroundStyle(Color.indigo)
+                            .foregroundStyle(CategoryStyle.tint(for: .deviceBackups))
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Device Backups")
@@ -64,7 +64,7 @@ struct DeviceBackupsCard: View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: "iphone")
                 .font(scale.font(14, weight: .medium))
-                .foregroundStyle(Color.indigo.opacity(0.8))
+                .foregroundStyle(CategoryStyle.tint(for: .deviceBackups).opacity(0.8))
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -95,7 +95,7 @@ struct DeviceBackupsCard: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .tint(Color.indigo)
+            .tint(CategoryStyle.tint(for: .deviceBackups))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)

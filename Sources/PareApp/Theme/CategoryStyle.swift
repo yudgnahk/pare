@@ -1,89 +1,103 @@
 import SwiftUI
 import PareCore
 
-/// Single source of truth for category tints and ordered chart colors.
+/// Single source of truth for category tile swatches, symbols, and ordered chart colors.
 ///
-/// The category list ("Browse by category") and the tool-share donut chart both
-/// consume this palette so colors never disagree between views. `ScanCategory`
+/// The category list ("Browse by category"), finding rows, and the Device Backups card
+/// all consume this palette so tiles never disagree between views. `ScanCategory`
 /// lives in PareCore (no UI dependencies), so the color mapping lives here.
 enum CategoryStyle {
-    // MARK: - Named palette values
+    // MARK: - Swatch (light/dark tile fill)
 
-    /// Developer Build Artifacts.
-    static let lavender = Color(red: 0.68, green: 0.57, blue: 0.96)
-    /// Developer Package Caches.
-    static let sky = Color(red: 0.50, green: 0.85, blue: 0.94)
-    /// Developer Simulator Caches.
-    static let sand = Color(red: 0.86, green: 0.66, blue: 0.44)
-    /// Designer Caches.
-    static let coral = Color(red: 0.92, green: 0.62, blue: 0.41)
-    /// Video Builder Caches.
-    static let sage = Color(red: 0.48, green: 0.77, blue: 0.61)
-    /// AI Tool Caches.
-    static let periwinkle = Color(red: 0.56, green: 0.76, blue: 0.98)
-    /// Installer Files.
-    static let gold = Color(red: 0.85, green: 0.75, blue: 0.45)
-    /// Applications.
-    static let violet = Color(red: 0.72, green: 0.55, blue: 0.88)
-    /// Project Artifacts.
-    static let amber = Color(red: 0.94, green: 0.72, blue: 0.37)
+    /// Swatch for a scan category's icon tile.
+    static func swatch(for category: ScanCategory) -> ThemeSwatch {
+        switch category {
+        case .userCaches:
+            return ThemeSwatch(light: RGBA(0x1F8A80), dark: RGBA(0x2A9D92))
+        case .temporaryFiles:
+            return ThemeSwatch(light: RGBA(0xB86E00), dark: RGBA(0xC27A12))
+        case .logsAndCrashReports:
+            return ThemeSwatch(light: RGBA(0xC4453A), dark: RGBA(0xD0584C))
+        case .browserCaches:
+            return ThemeSwatch(light: RGBA(0x2F7FD6), dark: RGBA(0x3D8BE0))
+        case .developerBuildArtifacts:
+            return ThemeSwatch(light: RGBA(0x7650D8), dark: RGBA(0x8660E0))
+        case .developerPackageCaches:
+            return ThemeSwatch(light: RGBA(0x1778A8), dark: RGBA(0x2A8AB8))
+        case .developerSimulatorCaches:
+            return ThemeSwatch(light: RGBA(0x8A6A3E), dark: RGBA(0x9C7A4A))
+        case .designerCaches:
+            return ThemeSwatch(light: RGBA(0xD14E7A), dark: RGBA(0xD85F88))
+        case .videoBuilderCaches:
+            return ThemeSwatch(light: RGBA(0x2E8B57), dark: RGBA(0x3A9863))
+        case .aiToolCaches:
+            return ThemeSwatch(light: RGBA(0x5A5FE0), dark: RGBA(0x6A6FE6))
+        case .installerFiles:
+            return ThemeSwatch(light: RGBA(0x9A7A12), dark: RGBA(0xA88720))
+        case .applications:
+            return ThemeSwatch(light: RGBA(0x9A4FC8), dark: RGBA(0xA75ED2))
+        case .projectArtifacts:
+            return ThemeSwatch(light: RGBA(0xB25E1E), dark: RGBA(0xBE6B2C))
+        case .deviceBackups:
+            return ThemeSwatch(light: RGBA(0x3F6F8F), dark: RGBA(0x5585A6))
+        case .productivityCaches:
+            return ThemeSwatch(light: RGBA(0x5E7F1E), dark: RGBA(0x6E9028))
+        case .launchAgents:
+            return ThemeSwatch(light: RGBA(0x5E6B78), dark: RGBA(0x6E7C8A))
+        }
+    }
+
+    // MARK: - Symbol
+
+    /// SF Symbol for a scan category's icon tile.
+    static func symbol(for category: ScanCategory) -> String {
+        switch category {
+        case .userCaches:
+            return "tray.full.fill"
+        case .temporaryFiles:
+            return "hourglass"
+        case .logsAndCrashReports:
+            return "doc.text.fill"
+        case .browserCaches:
+            return "globe"
+        case .developerBuildArtifacts:
+            return "hammer.fill"
+        case .developerPackageCaches:
+            return "shippingbox.fill"
+        case .developerSimulatorCaches:
+            return "iphone"
+        case .designerCaches:
+            return "paintbrush.pointed.fill"
+        case .videoBuilderCaches:
+            return "film.fill"
+        case .aiToolCaches:
+            return "brain.head.profile"
+        case .installerFiles:
+            return "arrow.down.doc.fill"
+        case .applications:
+            return "app.fill"
+        case .projectArtifacts:
+            return "folder.fill.badge.gearshape"
+        case .deviceBackups:
+            return "externaldrive.fill.badge.timemachine"
+        case .productivityCaches:
+            return "briefcase.fill"
+        case .launchAgents:
+            return "gearshape.2.fill"
+        }
+    }
 
     // MARK: - Category tint
 
-    /// Tint for a scan category — used by category dots, rows, and charts.
+    /// Tint for a scan category — kept for callers predating the swatch-based tile API.
     static func tint(for category: ScanCategory) -> Color {
-        switch category {
-        case .userCaches:
-            return AppTheme.accent
-        case .temporaryFiles:
-            return AppTheme.warning
-        case .logsAndCrashReports:
-            return AppTheme.review
-        case .browserCaches:
-            return AppTheme.success
-        case .developerBuildArtifacts:
-            return lavender
-        case .developerPackageCaches:
-            return sky
-        case .developerSimulatorCaches:
-            return sand
-        case .designerCaches:
-            return coral
-        case .videoBuilderCaches:
-            return sage
-        case .aiToolCaches:
-            return periwinkle
-        case .installerFiles:
-            return gold
-        case .applications:
-            return violet
-        case .projectArtifacts:
-            return amber
-        case .deviceBackups:
-            return Color.indigo
-        case .productivityCaches:
-            return Color.teal
-        case .launchAgents:
-            return Color.orange
-        }
+        swatch(for: category).color
     }
 
     // MARK: - Ordered chart palette
 
-    /// Ordered palette for index-colored charts (e.g. the tool-share donut).
-    /// Drawn from the same named values as `tint(for:)` so list and chart agree.
-    static let chartPalette: [Color] = [
-        AppTheme.accent,
-        sky,
-        lavender,
-        AppTheme.success,
-        AppTheme.warning,
-        coral,
-        sage,
-        sand,
-        Color.teal,
-        Color.indigo.opacity(0.85)
-    ]
+    /// Ordered palette for index-colored charts (e.g. the tool-share donut), one entry per category.
+    static let chartPalette: [Color] = ScanCategory.allCases.map { swatch(for: $0).color }
 
     /// Chart color for a slice / legend index (wraps around).
     static func chartColor(at index: Int) -> Color {
