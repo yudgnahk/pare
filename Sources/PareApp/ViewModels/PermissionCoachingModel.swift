@@ -26,8 +26,20 @@ final class PermissionCoachingModel: ObservableObject {
 
     private static let bannerDismissedKey = "pare.fdaCoaching.dismissed"
 
+    #if DEBUG
+    /// Snapshot renderer pins FDA status so screenshots never depend on (or write) real defaults.
+    static var snapshotStatusOverride: FullDiskAccessStatus?
+    #endif
+
     /// Re-probe Full Disk Access and update banner visibility.
     func refresh() {
+        #if DEBUG
+        if let forced = Self.snapshotStatusOverride {
+            status = forced
+            showBanner = forced == .denied
+            return
+        }
+        #endif
         let status = FullDiskAccessChecker.status()
         self.status = status
 

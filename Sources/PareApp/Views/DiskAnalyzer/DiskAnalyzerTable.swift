@@ -49,22 +49,28 @@ struct DiskAnalyzerTable: View {
             TableColumn("Name", sortUsing: DiskColumnComparator(field: .name)) { entry in
                 nameCell(entry)
             }
+            .width(min: 150, ideal: 200)
             TableColumn("Size", sortUsing: DiskColumnComparator(field: .size)) { entry in
                 sizeCell(entry)
             }
+            .width(min: 136, ideal: 150)
             TableColumn("Items", sortUsing: DiskColumnComparator(field: .items)) { entry in
                 itemsCell(entry)
             }
+            .width(min: 52, ideal: 64)
             TableColumn("Modified", sortUsing: DiskColumnComparator(field: .modified)) { entry in
                 Text(Self.modifiedText(entry.modified))
-                    .font(scale.rowMono)
+                    .font(scale.caption)
+                    .monospacedDigit()
                     .foregroundStyle(AppTheme.textSecondary)
             }
+            .width(min: 88, ideal: 100)
             TableColumn("Kind", sortUsing: DiskColumnComparator(field: .kind)) { entry in
                 Text(entry.kind.label)
-                    .font(scale.rowMono)
+                    .font(scale.caption)
                     .foregroundStyle(AppTheme.textSecondary)
             }
+            .width(min: 64, ideal: 80)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
         .contextMenu(forSelectionType: DiskEntryID.self) { ids in
@@ -103,26 +109,29 @@ struct DiskAnalyzerTable: View {
         HStack(spacing: 8) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(AppTheme.Fill.subtle)
-                        .frame(height: 3)
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    Capsule(style: .continuous)
+                        .fill(AppTheme.Fill.control)
+                        .frame(height: 4)
+                    Capsule(style: .continuous)
                         .fill(shareBarColor(for: entry))
-                        .frame(width: max(3, geo.size.width * shareOfLevel(entry)), height: 3)
+                        .frame(width: max(4, geo.size.width * shareOfLevel(entry)), height: 4)
                 }
             }
-            .frame(width: 60, height: 3)
+            .frame(width: 48, height: 4)
 
             Text(entry.sizeBytes == 0 ? "—" : ScanReportPresenter.formatBytes(entry.sizeBytes))
                 .font(scale.font(13, weight: .semibold, design: .rounded))
+                .monospacedDigit()
                 .foregroundStyle(AppTheme.textPrimary)
-                .frame(minWidth: 64, alignment: .trailing)
+                .lineLimit(1)
+                .frame(minWidth: 72, alignment: .trailing)
         }
     }
 
     private func itemsCell(_ entry: DiskEntry) -> some View {
         Text(entry.isDirectory && !entry.isSeparateVolume ? "\(entry.itemCount)" : "—")
-            .font(scale.rowMono)
+            .font(scale.caption)
+            .monospacedDigit()
             .foregroundStyle(AppTheme.textSecondary)
     }
 
@@ -133,9 +142,8 @@ struct DiskAnalyzerTable: View {
 
     private func shareBarColor(for entry: DiskEntry) -> Color {
         let share = shareOfLevel(entry)
-        if share > 0.5 { return AppTheme.review }
-        if share > 0.25 { return AppTheme.warning }
-        return AppTheme.accent
+        // Apricot flags the heavyweights without implying danger.
+        return share > 0.25 ? AppTheme.warm : AppTheme.accentBright
     }
 
     // MARK: - Context menu

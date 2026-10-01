@@ -34,6 +34,9 @@ struct PareApp: App {
 private final class PareAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         PareBrandLogo.applyDockIconIfAvailable()
+        #if DEBUG
+        _ = SnapshotRenderer.runIfRequested()
+        #endif
     }
 }
 
@@ -51,7 +54,7 @@ struct ContentView: View {
 }
 
 /// Shell that reads `displayScale` from the environment (inside DisplayScaleReader).
-private struct MainShellView: View {
+struct MainShellView: View {
     @Binding var selection: AppDestination
     let models: AppModelStore
     @Environment(\.pareDisplayScale) private var scale
@@ -60,11 +63,6 @@ private struct MainShellView: View {
         HStack(spacing: 0) {
             SidebarView(selection: $selection)
                 .frame(width: max(200, AppTheme.Spacing.sidebarWidth * scale.spacingFactor))
-                .frame(maxHeight: .infinity)
-
-            Rectangle()
-                .fill(AppTheme.Fill.control)
-                .frame(width: 1)
                 .frame(maxHeight: .infinity)
 
             ZStack {

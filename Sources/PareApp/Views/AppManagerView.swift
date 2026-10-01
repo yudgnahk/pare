@@ -55,63 +55,36 @@ struct AppManagerView: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            HStack(alignment: .center, spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous)
-                        .fill(AppTheme.accent.opacity(0.14))
-                        .frame(width: 40, height: 40)
-                    Image(systemName: "square.grid.2x2")
-                        .font(scale.font(17, weight: .semibold))
-                        .foregroundStyle(AppTheme.accent)
+        PageHeader(
+            destination: .apps,
+            title: "App Manager",
+            subtitle: "Browse, update, and cleanly uninstall installed applications"
+        ) {
+            if viewModel.loadState == .loading {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(AppTheme.accent)
+                SecondaryActionButton(title: "Cancel") {
+                    viewModel.cancelLoad()
                 }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("App Manager")
-                        .font(scale.pageTitle)
-                        .foregroundStyle(AppTheme.textPrimary)
-                    Text("Browse, update, and cleanly uninstall installed applications")
-                        .font(scale.caption)
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            } else {
+                if viewModel.loadState == .loaded {
+                    SecondaryActionButton(
+                        title: viewModel.checkingUpdates ? "Checking…" : "Check Updates",
+                        systemImage: "arrow.down.circle",
+                        isLoading: viewModel.checkingUpdates,
+                        role: .accent,
+                        isEnabled: !viewModel.checkingUpdates
+                    ) { viewModel.checkForUpdates() }
                 }
-                Spacer(minLength: 0)
-            }
-
-            HStack(spacing: 8) {
-                if viewModel.loadState == .loading {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(0.7)
-                        .tint(AppTheme.accent)
-                        .frame(height: AppTheme.Control.secondaryHeight)
-
-                    SecondaryActionButton(title: "Cancel") {
-                        viewModel.cancelLoad()
-                    }
-                } else {
-                    PrimaryActionButton(
-                        title: "Refresh",
-                        systemImage: "arrow.clockwise",
-                        isLoading: viewModel.loadState == .loading,
-                        style: .compact
-                    ) { viewModel.loadApps() }
-
-                    if viewModel.loadState == .loaded {
-                        SecondaryActionButton(
-                            title: viewModel.checkingUpdates ? "Checking…" : "Check Updates",
-                            systemImage: "arrow.down.circle",
-                            isLoading: viewModel.checkingUpdates,
-                            role: .accent,
-                            isEnabled: !viewModel.checkingUpdates
-                        ) { viewModel.checkForUpdates() }
-                    }
-                }
-                Spacer(minLength: 0)
+                PrimaryActionButton(
+                    title: "Refresh",
+                    systemImage: "arrow.clockwise",
+                    isLoading: viewModel.loadState == .loading,
+                    style: .compact
+                ) { viewModel.loadApps() }
             }
         }
-        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-        .padding(.top, AppTheme.Spacing.pageVertical)
-        .padding(.bottom, 4)
     }
 
     // MARK: - Filter Bar
@@ -346,16 +319,7 @@ struct AppManagerView: View {
     }
 
     private var loadingPlaceholder: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-                .progressViewStyle(.circular)
-                .scaleEffect(1.4)
-                .tint(AppTheme.accent)
-            Text("Scanning installed applications…")
-                .font(scale.body)
-                .foregroundStyle(AppTheme.textSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        LoadingStateView(message: "Scanning installed applications…", detail: "Reading sizes and last-used dates")
     }
 
     private func emptyPrompt(icon: String, text: String) -> some View {
@@ -426,7 +390,7 @@ private struct AppRow: View {
             // Size
             Text(ByteCountFormatter.string(fromByteCount: app.sizeBytes, countStyle: .file))
                 .font(scale.font(12, weight: .semibold, design: .rounded))
-                .foregroundStyle(app.sizeBytes > 500_000_000 ? AppTheme.review : AppTheme.textPrimary)
+                .foregroundStyle(app.sizeBytes > 500_000_000 ? AppTheme.warmText : AppTheme.textPrimary)
                 .frame(width: scale.colSize, alignment: .trailing)
 
             if scale.sizeClass != .compact {

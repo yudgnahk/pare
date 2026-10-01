@@ -1,259 +1,219 @@
 import AppKit
 import SwiftUI
 
-/// App-B-style calm home: SF Symbol hero + ring Scan CTA + 3-step progress.
+/// Smart Scan home: live disk ring around the scan orb, which becomes an honest progress ring while scanning.
 struct HeroScanView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
+    @ObservedObject var volume: VolumeUsageModel
     var onOpenSettings: (() -> Void)? = nil
 
     @Environment(\.pareDisplayScale) private var scale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
-    @State private var floatOffset: CGFloat = 0
 
-    private let steps: [(icon: String, label: String)] = [
-        ("internaldrive.fill", "System"),
-        ("globe", "Apps & browsers"),
-        ("chevron.left.forwardslash.chevron.right", "Developer")
-    ]
+    private var ringDiameter: CGFloat { scale.space(AppTheme.Control.heroRing) }
+    private var ringLine: CGFloat { scale.space(16) }
+
+    private var progress: Double {
+        guard viewModel.scanRulesTotal > 0 else { return 0 }
+        return Double(viewModel.scanRulesCompleted) / Double(viewModel.scanRulesTotal)
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 16)
-
-            VStack(spacing: scale.space(24)) {
-                heroArt
-                    .offset(y: floatOffset)
-                    .opacity(appeared ? 1 : 0)
-                    .scaleEffect(appeared ? 1 : 0.92)
-                    .animation(AppTheme.Motion.gentle, value: appeared)
-
-                VStack(spacing: 10) {
-                    Text(headline)
-                        .font(scale.heroTitle)
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .multilineTextAlignment(.center)
-
-                    Text(subheadline)
-                        .font(scale.body)
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: 440)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if viewModel.isScanning {
-                        scanStepsBar
-                            .padding(.top, 8)
-                        if !viewModel.scanStepTitle.isEmpty {
-                            Text(viewModel.scanStepTitle)
-                                .font(scale.caption)
-                                .foregroundStyle(AppTheme.textTertiary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                        }
-                        if viewModel.scanRulesTotal > 0 {
-                            ProgressView(
-                                value: Double(viewModel.scanRulesCompleted),
-                                total: Double(max(viewModel.scanRulesTotal, 1))
-                            )
-                            .tint(AppTheme.accent)
-                            .frame(maxWidth: 280)
-                        }
-                    } else if let last = lastScanCaption {
-                        Text(last)
-                            .font(scale.caption)
-                            .foregroundStyle(AppTheme.textTertiary)
-                            .padding(.top, 4)
-                    }
+        GeometryReader { geo in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: scale.space(AppTheme.Spacing.xl)) {
+                    headlineBlock
+                        .modifier(RevealOnAppear(appeared: appeared, index: 0))
+                    ringStack
+                        .modifier(RevealOnAppear(appeared: appeared, index: 1))
+                    footerBlock
+                        .modifier(RevealOnAppear(appeared: appeared, index: 2))
                 }
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 12)
-                .animation(AppTheme.Motion.gentle.delay(0.08), value: appeared)
-
-                VStack(spacing: 14) {
-                    PrimaryRingButton(
-                        title: viewModel.isScanning ? "…" : "Scan",
-                        isLoading: viewModel.isScanning
-                    ) {
-                        viewModel.runScan()
-                    }
-
-                    if viewModel.isScanning {
-                        SecondaryActionButton(title: "Cancel", systemImage: "xmark") {
-                            viewModel.cancelScan()
-                        }
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-
-                    if viewModel.showFullDiskAccessBanner, !viewModel.isScanning {
-                        FullDiskAccessCard(
-                            style: .fullDiskAccess,
-                            onOpenSettings: { viewModel.openFullDiskAccessSettings() },
-                            onDismiss: { viewModel.dismissFullDiskAccessBanner() },
-                            onRescan: { viewModel.runScan(forceRescan: true) }
-                        )
-                        // Wider than the headline (440) so Open Settings + Rescan + Dismiss
-                        // fit on one row and the card uses less empty side margin.
-                        .frame(maxWidth: 560)
-                        .padding(.top, 4)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-                }
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 16)
-                .animation(AppTheme.Motion.gentle.delay(0.14), value: appeared)
-            }
-
-            Spacer(minLength: 16)
-
-            HStack {
-                Spacer()
-                if let onOpenSettings {
-                    Button(action: onOpenSettings) {
-                        Label("Settings", systemImage: "gearshape")
-                            .font(scale.caption)
-                            .foregroundStyle(AppTheme.textTertiary)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.trailing, 28)
-                    .padding(.bottom, 20)
-                }
+                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                .padding(.vertical, scale.space(AppTheme.Spacing.xxl))
+                .frame(maxWidth: .infinity, minHeight: geo.size.height)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) { settingsButton }
         .onAppear {
-            appeared = true
-            // FDA re-probe lives on ScanDashboardView (survives hero → results).
-            withAnimation(AppTheme.Motion.ringPulse) {
-                floatOffset = -6
+            volume.refresh()
+            MotionPolicy.perform(AppTheme.Motion.gentle, reduceMotion: reduceMotion) { appeared = true }
+        }
+    }
+
+    // MARK: Headline
+
+    private var headlineBlock: some View {
+        VStack(spacing: 10) {
+            Text(viewModel.isScanning ? "SMART SCAN IN PROGRESS" : "SMART SCAN")
+                .font(scale.eyebrow)
+                .tracking(1.1)
+                .foregroundStyle(AppTheme.accentText)
+
+            Text(headline)
+                .font(scale.heroTitle)
+                .foregroundStyle(AppTheme.textPrimary)
+                .multilineTextAlignment(.center)
+                .id(headline)
+                .transition(.opacity)
+
+            Text(subheadline)
+                .font(scale.body)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 480)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .motionAwareAnimation(AppTheme.Motion.standard, value: headline)
+    }
+
+    // MARK: Ring
+
+    @ViewBuilder
+    private var ringStack: some View {
+        if viewModel.isScanning {
+            ZStack {
+                ScanProgressRing(fraction: progress, diameter: ringDiameter, lineWidth: ringLine)
+                scanningCenter
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        } else {
+            DiskUsageRing(
+                usedFraction: volume.usage?.usedFraction ?? 0,
+                diameter: ringDiameter,
+                lineWidth: ringLine
+            ) {
+                ScanOrbButton(
+                    title: "Scan",
+                    subtitle: viewModel.lastScanDate == nil ? nil : "Scan again",
+                    diameter: scale.space(AppTheme.Control.heroOrb)
+                ) {
+                    viewModel.runScan()
+                }
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        }
+    }
+
+    private var scanningCenter: some View {
+        VStack(spacing: 4) {
+            CountingPercentText(fraction: progress, font: scale.display)
+            Text("\(viewModel.scanRulesCompleted) of \(max(viewModel.scanRulesTotal, 1)) checks")
+                .font(scale.caption)
+                .monospacedDigit()
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+    }
+
+    // MARK: Footer
+
+    @ViewBuilder
+    private var footerBlock: some View {
+        if viewModel.isScanning {
+            VStack(spacing: 14) {
+                ScanStepChips(activeStep: viewModel.scanStep)
+                if !viewModel.scanStepTitle.isEmpty {
+                    Text(viewModel.scanStepTitle)
+                        .font(scale.caption)
+                        .foregroundStyle(AppTheme.textTertiary)
+                        .lineLimit(1)
+                }
+                SecondaryActionButton(title: "Cancel", systemImage: "xmark") {
+                    viewModel.cancelScan()
+                }
+            }
+        } else {
+            VStack(spacing: 16) {
+                diskLegend
+                trustChips
+                if viewModel.showFullDiskAccessBanner {
+                    FullDiskAccessCard(
+                        style: .fullDiskAccess,
+                        onOpenSettings: { viewModel.openFullDiskAccessSettings() },
+                        onDismiss: { viewModel.dismissFullDiskAccessBanner() },
+                        onRescan: { viewModel.runScan(forceRescan: true) }
+                    )
+                    .frame(maxWidth: 560)
+                }
             }
         }
     }
 
-    private var scanStepsBar: some View {
-        HStack(spacing: 10) {
-            ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                let stepNumber = index + 1
-                let active = viewModel.scanStep == stepNumber
-                let done = viewModel.scanStep > stepNumber
-                VStack(spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .fill(done || active ? AppTheme.accent.opacity(0.2) : AppTheme.Fill.subtle)
-                            .frame(width: 44, height: 44)
-                        Image(systemName: step.icon)
-                            .font(scale.font(16, weight: .semibold))
-                            .foregroundStyle(done || active ? AppTheme.accent : AppTheme.textTertiary)
-                            .scaleEffect(active && viewModel.isScanning ? 1.06 : 1)
-                            .animation(
-                                active && viewModel.isScanning
-                                    ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
-                                    : .default,
-                                value: active
-                            )
-                    }
-                    Text(step.label)
-                        .font(scale.font(11, weight: active ? .semibold : .medium))
-                        .foregroundStyle(active ? AppTheme.textPrimary : AppTheme.textTertiary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                .frame(maxWidth: 100)
-                if index < steps.count - 1 {
-                    Rectangle()
-                        .fill(done ? AppTheme.accent.opacity(0.5) : AppTheme.Fill.hover)
-                        .frame(width: 24, height: 2)
-                        .offset(y: -10)
-                }
+    @ViewBuilder
+    private var diskLegend: some View {
+        if let usage = volume.usage {
+            HStack(spacing: 18) {
+                LegendDot(color: AppTheme.accentBright, label: "used", value: viewModel.formattedBytes(usage.usedBytes))
+                LegendDot(
+                    color: isLowOnSpace(usage) ? AppTheme.warm : AppTheme.Fill.selected,
+                    label: isLowOnSpace(usage) ? "available · running low" : "available",
+                    value: viewModel.formattedBytes(usage.availableBytes)
+                )
+                Text(usage.name)
+                    .font(scale.font(12, weight: .medium))
+                    .foregroundStyle(AppTheme.textTertiary)
             }
         }
     }
+
+    private func isLowOnSpace(_ usage: VolumeUsage) -> Bool {
+        usage.totalBytes > 0 && Double(usage.availableBytes) / Double(usage.totalBytes) < StorageMeter.lowSpaceThreshold
+    }
+
+    private var trustChips: some View {
+        HStack(spacing: 8) {
+            TrustChip(icon: "checkmark.shield.fill", text: "Risk-labelled findings")
+            TrustChip(icon: "trash.fill", text: "Trash first, never erased")
+            TrustChip(icon: "arrow.uturn.backward", text: "Undo last clean")
+        }
+    }
+
+    @ViewBuilder
+    private var settingsButton: some View {
+        if let onOpenSettings, !viewModel.isScanning {
+            IconActionButton(systemImage: "slider.horizontal.3", help: "Manage excluded paths", action: onOpenSettings)
+                .padding(.top, AppTheme.Spacing.pageVertical)
+                .padding(.trailing, AppTheme.Spacing.pageHorizontal)
+        }
+    }
+
+    // MARK: Copy
 
     private var headline: String {
-        if viewModel.isScanning {
-            switch viewModel.scanStep {
-            case 1: return "Scanning system…"
-            case 2: return "Scanning apps & browsers…"
-            default: return "Scanning developer tools…"
-            }
+        guard viewModel.isScanning else {
+            return viewModel.lastScanDate == nil ? "Let's make some room" : "Ready for another look"
         }
-        return "Welcome to Pare"
+        switch viewModel.scanStep {
+        case 1: return "Checking system caches…"
+        case 2: return "Checking apps & browsers…"
+        default: return "Checking developer tools…"
+        }
     }
 
     private var subheadline: String {
         if viewModel.isScanning {
-            return "Real progress by scan rules — not a fake percentage."
+            return "Progress counts real checks, not a guess. Nothing is touched while scanning."
         }
-        return "Find reclaimable space safely — with clear risk levels for every finding."
+        if let date = viewModel.lastScanDate {
+            return "Last scan \(viewModel.formattedDate(date)). Pare labels every finding by risk, and anything you clean goes to the Trash first."
+        }
+        return "Pare finds caches, build leftovers and installers you can safely let go. Every finding is labelled by risk."
     }
+}
 
-    private var lastScanCaption: String? {
-        guard !viewModel.isScanning, let date = viewModel.lastScanDate else { return nil }
-        if let duration = viewModel.lastScanDuration {
-            return "Last scan \(viewModel.formattedDate(date)) · \(String(format: "%.1fs", duration))"
-        }
-        return "Last scan \(viewModel.formattedDate(date))"
-    }
+/// Fade-and-rise entrance, staggered by index; instant under Reduce Motion.
+struct RevealOnAppear: ViewModifier {
+    let appeared: Bool
+    let index: Int
 
-    private var heroArt: some View {
-        ZStack {
-            Circle()
-                .fill(AppTheme.heroGlow)
-                .frame(width: scale.scaled(240), height: scale.scaled(240))
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-            Image(systemName: "sparkle")
-                .font(scale.font(20, weight: .light))
-                .foregroundStyle(AppTheme.accent.opacity(0.45))
-                .offset(x: -90, y: -50)
-
-            Image(systemName: "sparkle")
-                .font(scale.font(14, weight: .light))
-                .foregroundStyle(AppTheme.success.opacity(0.4))
-                .offset(x: 95, y: -30)
-
-            ZStack {
-                RoundedRectangle(cornerRadius: scale.scaled(28), style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                AppTheme.panel.opacity(0.95),
-                                AppTheme.accentDeep.opacity(0.45)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: scale.scaled(130), height: scale.scaled(130))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: scale.scaled(28), style: .continuous)
-                            .strokeBorder(AppTheme.Hairline.strong, lineWidth: 1)
-                    )
-                    .shadow(color: AppTheme.accent.opacity(0.3), radius: 28, y: 12)
-
-                Image(systemName: activeHeroIcon)
-                    .font(scale.font(44, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [AppTheme.accent, AppTheme.success],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .symbolRenderingMode(.hierarchical)
-                    .id(activeHeroIcon)
-                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                    .animation(AppTheme.Motion.standard, value: viewModel.scanStep)
-            }
-        }
-        .frame(height: scale.scaled(200))
-        .accessibilityHidden(true)
-    }
-
-    private var activeHeroIcon: String {
-        guard viewModel.isScanning else { return "internaldrive.fill" }
-        switch viewModel.scanStep {
-        case 1: return "internaldrive.fill"
-        case 2: return "globe"
-        default: return "chevron.left.forwardslash.chevron.right"
-        }
+    func body(content: Content) -> some View {
+        content
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared || reduceMotion ? 0 : 14)
+            .animation(MotionPolicy.animation(AppTheme.Motion.stagger(index), reduceMotion: reduceMotion), value: appeared)
     }
 }

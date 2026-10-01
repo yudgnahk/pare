@@ -58,43 +58,17 @@ struct DiskAnalyzerView: View {
     // MARK: Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Disk Analyzer")
-                    .font(scale.pageTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
-                if let url = viewModel.currentURL {
-                    Text(url.path)
-                        .font(scale.rowMono)
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if let level = viewModel.level {
-                        Text(levelSummary(level))
-                            .font(scale.caption)
-                            .foregroundStyle(AppTheme.textTertiary)
-                    }
-                } else {
-                    Text("Choose a directory to analyze disk usage.")
-                        .font(scale.caption)
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        PageHeader(destination: .disk, subtitle: headerSubtitle) {
+            if viewModel.currentURL != nil {
+                IconActionButton(
+                    systemImage: "arrow.clockwise",
+                    help: "Refresh",
+                    isEnabled: !viewModel.isLoading
+                ) {
+                    viewModel.refresh()
                 }
-            }
-
-            FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
-                if viewModel.currentURL != nil {
-                    IconActionButton(
-                        systemImage: "arrow.clockwise",
-                        help: "Refresh",
-                        isEnabled: !viewModel.isLoading
-                    ) {
-                        viewModel.refresh()
-                    }
-                }
-
                 SecondaryActionButton(
-                    title: "Choose Directory",
+                    title: "Choose Folder…",
                     systemImage: "folder",
                     role: .accent
                 ) {
@@ -102,10 +76,14 @@ struct DiskAnalyzerView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-        .padding(.top, AppTheme.Spacing.pageVertical)
-        .padding(.bottom, AppTheme.Spacing.lg)
+    }
+
+    private var headerSubtitle: String {
+        guard let url = viewModel.currentURL else {
+            return "See what's taking up space, folder by folder."
+        }
+        guard let level = viewModel.level else { return url.path }
+        return "\(url.path) \u{00B7} \(levelSummary(level))"
     }
 
     private func levelSummary(_ level: DiskLevelLoader.Level) -> String {
@@ -206,25 +184,24 @@ struct DiskAnalyzerView: View {
     // MARK: Loading
 
     private var loadingBody: some View {
-        VStack(spacing: 14) {
-            Spacer()
-            ProgressView()
-                .scaleEffect(1.2)
-            Text(viewModel.loadingProgress.map { "Analyzing disk usage… \($0.scanned) of \($0.total)" } ?? "Analyzing disk usage…")
-                .font(scale.font(14, weight: .medium))
-                .foregroundStyle(AppTheme.textSecondary)
-            Spacer()
-        }
+        LoadingStateView(
+            message: "Measuring folders…",
+            detail: viewModel.loadingProgress.map { "\($0.scanned) of \($0.total) items" }
+        )
     }
 
     // MARK: Empty (no directory chosen)
 
     private var emptyBody: some View {
         EmptyStateView(
-            icon: "externaldrive.badge.questionmark",
-            title: "No directory selected",
-            message: "Click \u{201C}Choose Directory\u{201D} to explore disk usage with a sortable, size-aware tree.",
-            maxTextWidth: 380
+            icon: "externaldrive.fill",
+            title: "Pick a folder to explore",
+            message: "Pare measures each folder one level at a time. Anything a Smart Scan found can be added to Review from here.",
+            maxTextWidth: 400,
+            tint: DestinationStyle.tint(for: .disk),
+            actionTitle: "Choose Folder…",
+            actionIcon: "folder",
+            action: { viewModel.chooseDirectory() }
         )
     }
 

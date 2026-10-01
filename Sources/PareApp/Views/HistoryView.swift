@@ -8,58 +8,16 @@ struct HistoryView: View {
     @Environment(\.pareDisplayScale) private var scale
     @State private var expandedIDs: Set<UUID> = []
     @State private var exportError: String?
+    @State private var confirmingClear = false
 
     var body: some View {
         ModuleChrome(
+            destination: .history,
             title: "Cleanup History",
-            subtitle: "Review and restore previously cleaned items.",
-            systemImage: "clock.arrow.circlepath"
+            subtitle: "Every clean is recorded here, and you can restore items from the Trash.",
+            actions: { headerActions }
         ) {
             VStack(spacing: 0) {
-                // Header actions
-                VStack(alignment: .leading, spacing: AppTheme.Spacing.md) {
-
-                    if !viewModel.transactions.isEmpty {
-                        FlowLayout(spacing: 8, lineSpacing: 8, alignment: .leading) {
-                            Menu {
-                                Button("Export as JSON…") { exportJSON() }
-                                Button("Export as CSV…") { exportCSV() }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "square.and.arrow.up")
-                                    Text("Export")
-                                }
-                                .font(scale.font(12, weight: .semibold))
-                                .foregroundStyle(AppTheme.textPrimary)
-                                .padding(.horizontal, 12)
-                                .frame(height: AppTheme.Control.secondaryHeight)
-                                .background(
-                                    Capsule(style: .continuous)
-                                        .fill(AppTheme.Fill.hover)
-                                )
-                                .overlay(
-                                    Capsule(style: .continuous)
-                                        .strokeBorder(AppTheme.Hairline.strong, lineWidth: 1)
-                                )
-                            }
-                            .menuStyle(.borderlessButton)
-                            .help("Export cleanup history")
-
-                            SecondaryActionButton(
-                                title: "Clear History",
-                                systemImage: "trash",
-                                role: .destructive
-                            ) {
-                                viewModel.clearAll()
-                            }
-                            .help("Delete all cleanup history records")
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
-                .padding(.bottom, AppTheme.Spacing.md)
-
                 if let error = viewModel.errorMessage {
                     ErrorBanner(message: error) {
                         viewModel.errorMessage = nil
@@ -71,8 +29,9 @@ struct HistoryView: View {
                 if viewModel.transactions.isEmpty {
                     EmptyStateView(
                         icon: "clock.arrow.circlepath",
-                        title: "No cleanup history",
-                        message: "Run a Quick Clean or Deep Clean to create a history record."
+                        title: "No cleanups yet",
+                        message: "Every clean you run lands here, so you can restore anything still in the Trash.",
+                        tint: DestinationStyle.tint(for: .history)
                     )
                 } else {
                     ScrollView {
@@ -98,6 +57,7 @@ struct HistoryView: View {
                             }
                         }
                         .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                        .padding(.top, AppTheme.Spacing.sm)
                         .padding(.bottom, AppTheme.Spacing.pageVertical)
                     }
                 }
@@ -115,6 +75,40 @@ struct HistoryView: View {
             Button("OK", role: .cancel) { exportError = nil }
         } message: {
             Text(exportError ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var headerActions: some View {
+        if !viewModel.transactions.isEmpty {
+            Menu {
+                Button("Export as JSON…") { exportJSON() }
+                Button("Export as CSV…") { exportCSV() }
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("Export cleanup history")
+
+            SecondaryActionButton(
+                title: "Clear History",
+                systemImage: "trash",
+                role: .destructive
+            ) {
+                confirmingClear = true
+            }
+            .confirmationDialog(
+                "Clear all cleanup history?",
+                isPresented: $confirmingClear,
+                titleVisibility: .visible
+            ) {
+                Button("Clear History", role: .destructive) { viewModel.clearAll() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Restore records will be lost. Items already in the Trash stay there, but Pare can no longer put them back.")
+            }
+            .help("Delete all history records. Items already in the Trash stay there but can no longer be restored from Pare.")
         }
     }
 

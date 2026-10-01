@@ -39,6 +39,32 @@ final class ScanDashboardViewModelTests: XCTestCase {
         XCTAssertEqual(coordinator.state, .confirming)
     }
 
+    /// The floating action bar must not look clickable while a (re)scan makes its requests no-ops.
+    func testCleanupActionsEnabledOnlyAfterSuccessfulScanWhenIdle() {
+        let cases: [(name: String, state: ScanDashboardViewModel.ScanState, cleaning: Bool, undoing: Bool, expected: Bool)] = [
+            ("success", .success, false, false, true),
+            ("scanning", .scanning, false, false, false),
+            ("idle", .idle, false, false, false),
+            ("success while cleaning", .success, true, false, false),
+            ("success while undoing", .success, false, true, false),
+        ]
+        for testCase in cases {
+            let result = ScanDashboardViewModel.cleanupActionsEnabled(
+                state: testCase.state, isCleaning: testCase.cleaning, isUndoing: testCase.undoing
+            )
+            XCTAssertEqual(result, testCase.expected, testCase.name)
+        }
+    }
+
+    func testCanRequestCleanupIsFalseWhileScanning() {
+        let vm = ScanDashboardViewModel()
+        XCTAssertFalse(vm.canRequestCleanup)
+
+        vm.applySnapshotScanning(step: 1, completed: 0, total: 1, title: "Scanning")
+
+        XCTAssertFalse(vm.canRequestCleanup)
+    }
+
     /// Escape nils the sheet binding before `onDismiss` runs; the state must still return to idle.
     func testEscapeDismissResetsSmartScanRequestToIdle() {
         for kind in [PendingCleanup.quick, .deep, .selected] {

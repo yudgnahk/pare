@@ -37,6 +37,7 @@ final class ThemeContrastTests: XCTestCase {
         let success = AppTheme.Swatch.success
         let warning = AppTheme.Swatch.warning
         let review = AppTheme.Swatch.review
+        let warmText = AppTheme.Swatch.warmText
     }
 
     private let table = ThemeSwatchTable()
@@ -52,7 +53,8 @@ final class ThemeContrastTests: XCTestCase {
             ("accentText", \.accentText),
             ("success", \.success),
             ("warning", \.warning),
-            ("review", \.review)
+            ("review", \.review),
+            ("warmText", \.warmText)
         ]
         return texts.flatMap { name, text in
             grounds.map { groundName, ground in Pair(name: name, text: text, groundName: groundName, ground: ground) }
@@ -84,6 +86,23 @@ final class ThemeContrastTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(WCAG.contrastRatio(onAccent.dark, accent.dark), 4.5)
         XCTAssertGreaterThanOrEqual(WCAG.contrastRatio(onAccent.light, accent.light), 4.5)
+    }
+
+    func testOnAccentMeetsLargeTextContrastOnBothCTAStopsInBothModes() {
+        let onAccent = AppTheme.Swatch.onAccent
+        for stop in [AppTheme.Swatch.ctaTop, AppTheme.Swatch.ctaBottom] {
+            XCTAssertGreaterThanOrEqual(WCAG.contrastRatio(onAccent.dark, stop.dark), 3.0)
+            XCTAssertGreaterThanOrEqual(WCAG.contrastRatio(onAccent.light, stop.light), 3.0)
+        }
+    }
+
+    func testReclaimableArcIsDistinguishableFromUsedArcAndTrack() {
+        // Apricot must separate from seafoam and the panel so the reclaimable share reads without a legend.
+        let warm = AppTheme.Swatch.warm
+        let panel = AppTheme.Swatch.panel
+        XCTAssertGreaterThanOrEqual(WCAG.contrastRatio(warm.dark, panel.dark), 3.0)
+        XCTAssertNotEqual(warm.light.hex, AppTheme.Swatch.accentBright.light.hex)
+        XCTAssertNotEqual(warm.dark.hex, AppTheme.Swatch.accentBright.dark.hex)
     }
 
     // MARK: - Dynamic NSColor resolution

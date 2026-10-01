@@ -8,14 +8,31 @@ final class HistoryViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
 
     private let store: CleanupTransactionStore
-    private let engine = CleanupEngine()
+    private let engine: CleanupEngine
 
-    init(store: CleanupTransactionStore = .shared) {
+    init(store: CleanupTransactionStore = .shared, engine: CleanupEngine = CleanupEngine()) {
         self.store = store
+        self.engine = engine
         load()
     }
 
+    #if DEBUG
+    /// Snapshot renderer pins fixture records so `load()` on appear doesn't read real history.
+    private var snapshotTransactions: [CleanupTransaction]?
+
+    func applySnapshotTransactions(_ fixtures: [CleanupTransaction]) {
+        snapshotTransactions = fixtures
+        transactions = fixtures
+    }
+    #endif
+
     func load() {
+        #if DEBUG
+        if let snapshotTransactions {
+            transactions = snapshotTransactions
+            return
+        }
+        #endif
         transactions = (try? store.loadAll()) ?? []
     }
 
@@ -30,9 +47,15 @@ final class HistoryViewModel: ObservableObject {
         restoringItemID = nil
     }
 
+    /// Deletes every record; on failure keeps the list and shows a message without the store path.
     func clearAll() {
-        try? store.deleteAll()
-        transactions = []
+        do {
+            try store.deleteAll()
+            transactions = []
+        } catch {
+            NSLog("Clearing cleanup history failed: \(error.localizedDescription)")
+            errorMessage = "Could not clear cleanup history. Some records may remain; try again."
+        }
     }
 
     func formattedDate(_ date: Date) -> String {

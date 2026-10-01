@@ -13,9 +13,8 @@ struct SettingsView: View {
 
     var body: some View {
         ModuleChrome(
-            title: "Settings",
-            subtitle: "Exclusions, project paths, and display preferences",
-            systemImage: "gearshape"
+            destination: .settings,
+            subtitle: "Exclusions, project paths, and display preferences"
         ) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -92,6 +91,7 @@ struct SettingsView: View {
                     }
                 }
                 .padding(.horizontal, AppTheme.Spacing.pageHorizontal)
+                .padding(.top, AppTheme.Spacing.sm)
                 .padding(.bottom, AppTheme.Spacing.pageVertical)
             }
         }

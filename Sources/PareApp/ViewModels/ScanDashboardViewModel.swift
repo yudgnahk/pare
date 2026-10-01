@@ -104,6 +104,16 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     var cleanupState: CleanupCoordinator.CleanupState { cleanup.state }
+
+    /// Whether clean actions may be requested; the request methods silently ignore clicks otherwise.
+    var canRequestCleanup: Bool {
+        Self.cleanupActionsEnabled(state: state, isCleaning: cleanup.isCleaning, isUndoing: cleanup.isUndoing)
+    }
+
+    /// Mirrors the `state == .success` guard in `requestQuickClean`/`requestDeepClean`/`requestCleanSelected`.
+    static func cleanupActionsEnabled(state: ScanState, isCleaning: Bool, isUndoing: Bool) -> Bool {
+        state == .success && !isCleaning && !isUndoing
+    }
     var isCleaning: Bool { cleanup.isCleaning }
     var isUndoing: Bool { cleanup.isUndoing }
     var canUndo: Bool { cleanup.canUndo }
@@ -684,3 +694,25 @@ final class ScanDashboardViewModel: ObservableObject {
         return Double(bytes) / Double(totalReclaimableBytes)
     }
 }
+
+#if DEBUG
+// MARK: - Snapshot fixtures (DEBUG only)
+
+extension ScanDashboardViewModel {
+    /// Loads a canned report through the real results pipeline so snapshots show production layout.
+    func applySnapshotResults(_ report: ScanReport, duration: TimeInterval = 14.2) {
+        let prepared = Self.prepareScanResults(from: report)
+        let finishedAt = Date()
+        applyPreparedScanResults(prepared, startedAt: finishedAt.addingTimeInterval(-duration), finishedAt: finishedAt)
+    }
+
+    /// Freezes the hero in its scanning state without starting a real scan.
+    func applySnapshotScanning(step: Int, completed: Int, total: Int, title: String) {
+        state = .scanning
+        scanStep = step
+        scanRulesCompleted = completed
+        scanRulesTotal = total
+        scanStepTitle = title
+    }
+}
+#endif
