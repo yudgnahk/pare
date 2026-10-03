@@ -5,7 +5,7 @@ struct SidebarView: View {
     @Binding var selection: AppDestination
     @Environment(\.pareDisplayScale) private var scale
     @Environment(\.isSnapshotRendering) private var isSnapshotRendering
-    @StateObject private var volume = VolumeUsageModel()
+    @ObservedObject var volume: VolumeUsageModel
     @State private var hovered: AppDestination?
 
     var body: some View {

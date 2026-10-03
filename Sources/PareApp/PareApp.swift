@@ -61,7 +61,7 @@ struct MainShellView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SidebarView(selection: $selection)
+            SidebarView(selection: $selection, volume: models.volume)
                 .frame(width: max(200, AppTheme.Spacing.sidebarWidth * scale.spacingFactor))
                 .frame(maxHeight: .infinity)
 
@@ -86,7 +86,7 @@ struct MainShellView: View {
     private var detailContent: some View {
         switch selection {
         case .smartScan:
-            ScanDashboardView(viewModel: models.scan)
+            ScanDashboardView(viewModel: models.scan, volume: models.volume)
         case .apps:
             AppManagerView(viewModel: models.apps)
         case .homebrew:

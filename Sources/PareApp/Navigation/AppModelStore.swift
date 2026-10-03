@@ -18,6 +18,8 @@ final class AppModelStore: ObservableObject {
     let apps = AppManagerViewModel()
     let homebrew = HomebrewManagerViewModel()
     let maintenance = MaintenanceViewModel()
+    /// Shared by the sidebar meter and Smart Scan so every disk readout agrees.
+    let volume = VolumeUsageModel()
     lazy var disk = DiskAnalyzerViewModel(
         findingsProvider: { [scan] in scan.latestFindingsSnapshot },
         smartScanRunning: scan.$state.map { $0 == .scanning }.eraseToAnyPublisher(),
@@ -30,5 +32,6 @@ final class AppModelStore: ObservableObject {
         self.cleanup = cleanup
         self.scan = ScanDashboardViewModel(cleanup: cleanup)
         self.history = history ?? HistoryViewModel()
+        cleanup.addCompletionHandler { [volume] in volume.refresh() }
     }
 }

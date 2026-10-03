@@ -1,3 +1,5 @@
+import AppKit
+import Combine
 import Foundation
 
 /// Startup-volume capacity snapshot for the disk rings (read-only).
@@ -24,10 +26,21 @@ struct VolumeUsage: Equatable, Sendable {
 final class VolumeUsageModel: ObservableObject {
     @Published private(set) var usage: VolumeUsage?
 
+    /// Free space also changes outside Pare (emptying the Trash, purgeable space), so poll cheaply.
+    static let pollInterval: TimeInterval = 30
+
     private let volumeURL: URL
+    private var observers: Set<AnyCancellable> = []
 
     init(volumeURL: URL = URL(fileURLWithPath: "/")) {
         self.volumeURL = volumeURL
+        Timer.publish(every: Self.pollInterval, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &observers)
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &observers)
     }
 
     /// Cheap metadata read; safe to call on appear and after scans/cleanups.
