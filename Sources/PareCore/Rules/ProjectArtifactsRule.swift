@@ -109,6 +109,7 @@ public struct ProjectArtifactsRule: ScanRule {
             }
 
             if ScanPolicy.projectLocalArtifactDirectoryNames.contains(lower) {
+                guard ScanPolicy.hasRequiredSiblingMarker(item) else { continue }
                 // Age gate
                 if let minAge {
                     let effectiveDate = ScanPolicy.effectiveAgeDate(from: values)
