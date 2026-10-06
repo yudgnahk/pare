@@ -37,6 +37,7 @@ public enum RuleCatalog {
             DeletedOpenFilesRule(),
             SwapUsageRule(),
             MemoryPressureRule(),
+            LaunchdRestartLoopRule(),
         ]
     }
 
