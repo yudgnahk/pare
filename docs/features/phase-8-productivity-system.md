@@ -61,12 +61,12 @@ Uses `customScan`.
    - `ProgramArguments` array — first element is the binary path.
 3. Expand `~` and resolve any environment variable references. If the path still contains unexpanded variables (e.g. `$(TMPDIR)`) after expansion, **skip this plist** — can't reliably verify.
 4. Call `FileManager.default.fileExists(atPath: binaryPath)`.
-5. If the binary **does not exist** → emit a `.review` finding for the plist file.
+5. If the binary **does not exist** → emit an `.advanced` (report-only) finding for the plist file. The binary may have moved or live on an unmounted volume, so Pare never trashes the plist; `CleanupEngine` has no allow-marker for `~/Library/LaunchAgents`.
 
 **Finding properties:**
 - Path: the `.plist` file
 - Category: existing `applicationSupport` or a new `launchAgents` sub-category
-- Risk: `.review` (safe for most users to delete, but a power user may have intentionally disabled an agent)
+- Risk: `.advanced` — report-only. The binary may have moved or live on an unmounted volume, and a power user may have disabled the agent on purpose
 - Reason: `"References missing binary: /Applications/SomeApp.app/Contents/MacOS/Helper"`
 - Confidence: 0.85
 - Minimum age gate: 14 days on the plist itself (skip recently-installed agents that may be legitimately absent during first-run setup)
@@ -211,7 +211,7 @@ Resources/
 
 | Test | What it verifies |
 |------|-----------------|
-| `OrphanedLaunchAgentsRuleTests` — missing binary flagged | Plist pointing to absent binary emits `.review` |
+| `OrphanedLaunchAgentsRuleTests` — missing binary flagged | Plist pointing to absent binary emits `.advanced` (report-only) |
 | `OrphanedLaunchAgentsRuleTests` — present binary not flagged | Plist with valid binary emits nothing |
 | `OrphanedLaunchAgentsRuleTests` — variable in path skipped | `$(TMPDIR)/...` path produces no finding |
 | `OrphanedLaunchAgentsRuleTests` — Disabled plist skipped | `Disabled = true` plist produces no finding |
