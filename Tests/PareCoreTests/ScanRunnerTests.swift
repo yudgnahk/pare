@@ -457,6 +457,80 @@ final class ScanRunnerTests: XCTestCase {
         )
     }
 
+    // MARK: - Overlapping findings are deduplicated
+
+    private func makeDedupeRunner(
+        filesByDirectory: [String: [ScannedFile]],
+        exclusionList: ExclusionList = .empty
+    ) -> ScanRunner {
+        ScanRunner(
+            environment: ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test"), tempDirectory: URL(fileURLWithPath: "/tmp")),
+            traversal: MockTraversal(filesByDirectory: filesByDirectory),
+            exclusionList: exclusionList
+        )
+    }
+
+    func testSamePathFromTwoRulesIsCountedOnce() async {
+        let dir = URL(fileURLWithPath: "/tmp/shared")
+        let runner = makeDedupeRunner(filesByDirectory: [
+            dir.path: [ScannedFile(url: dir.appendingPathComponent("a.cache"), sizeBytes: 250, lastModified: nil)]
+        ])
+        let rules: [any ScanRule] = [
+            TestRule(id: "first", title: "First", category: .userCaches, targets: [dir]),
+            TestRule(id: "second", title: "Second", category: .userCaches, targets: [dir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.findings.count, 1)
+        XCTAssertEqual(report.totalReclaimableBytes, 250)
+        let summary = report.summaries.first(where: { $0.category == .userCaches })
+        XCTAssertEqual(summary?.reclaimableBytes, 250)
+        XCTAssertEqual(summary?.fileCount, 1)
+    }
+
+    func testAdvancedDuplicateStaysOutOfTotals() async {
+        let dir = URL(fileURLWithPath: "/tmp/tool-cache")
+        let runner = makeDedupeRunner(filesByDirectory: [
+            dir.path: [ScannedFile(url: dir.appendingPathComponent("blob"), sizeBytes: 500, lastModified: nil)]
+        ])
+        let rules: [any ScanRule] = [
+            TestRule(id: "safe", title: "Safe", category: .userCaches, riskLevel: .safe, targets: [dir]),
+            TestRule(id: "advanced", title: "Advanced", category: .developerPackageCaches, riskLevel: .advanced, targets: [dir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.findings.count, 1)
+        XCTAssertEqual(report.findings.first?.riskLevel, .advanced, "highest risk wins on the same path")
+        XCTAssertEqual(report.totalReclaimableBytes, 0)
+        XCTAssertTrue(report.summaries.isEmpty)
+    }
+
+    func testExclusionListStillAppliesWithDeduplication() async {
+        let dir = URL(fileURLWithPath: "/tmp/shared")
+        let excluded = dir.appendingPathComponent("excluded.cache")
+        let kept = dir.appendingPathComponent("kept.cache")
+        var exclusions = ExclusionList()
+        exclusions.add(ExclusionEntry(path: excluded.path, matchType: .exact))
+        let runner = makeDedupeRunner(
+            filesByDirectory: [dir.path: [
+                ScannedFile(url: excluded, sizeBytes: 100, lastModified: nil),
+                ScannedFile(url: kept, sizeBytes: 40, lastModified: nil)
+            ]],
+            exclusionList: exclusions
+        )
+        let rules: [any ScanRule] = [
+            TestRule(id: "first", title: "First", category: .userCaches, targets: [dir]),
+            TestRule(id: "second", title: "Second", category: .userCaches, targets: [dir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.findings.map(\.path), [kept.path])
+        XCTAssertEqual(report.totalReclaimableBytes, 40)
+    }
+
     // MARK: - R1.2: per-rule error channel
 
     private struct ThrowingRule: ScanRule {

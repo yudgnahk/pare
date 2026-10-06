@@ -23,6 +23,15 @@ public enum RiskLevel: String, Sendable {
     case safe
     case review
     case advanced
+
+    /// Ordering used when overlapping findings must agree on one risk level.
+    var severity: Int {
+        switch self {
+        case .safe: return 0
+        case .review: return 1
+        case .advanced: return 2
+        }
+    }
 }
 
 public struct ScannedFile: Sendable {

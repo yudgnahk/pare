@@ -206,6 +206,33 @@ final class ScanIntegrationTests: XCTestCase {
                       "Non-excluded cache folder should still appear in findings")
     }
 
+    // MARK: - Browser rules overlapping on the same profile folders
+
+    func testBrowserIndexedDBAndDatabasesAreReportedOnce() async throws {
+        let old = Date().addingTimeInterval(-40 * 86400)
+        var folders: [URL] = []
+        for name in ["IndexedDB", "databases"] {
+            let file = try builder.file("Library", "Application Support", "Google", "Chrome", "Default", name, "store.db",
+                                        ageSeconds: 40 * 86400)
+            let folder = file.deletingLastPathComponent()
+            try FileManager.default.setAttributes([.creationDate: old, .modificationDate: old], ofItemAtPath: folder.path)
+            folders.append(folder)
+        }
+
+        let report = await makeRunner().run(rules: [BrowserExtendedArtifactsRule(), BrowserReviewDataRule()])
+
+        for folder in folders {
+            let matches = report.findings.filter { $0.path == folder.path }
+            XCTAssertEqual(matches.count, 1, "\(folder.lastPathComponent) must be reported exactly once")
+            XCTAssertEqual(matches.first?.riskLevel, .review)
+        }
+        let browserFindings = report.findings.filter { $0.category == .browserCaches }
+        let summary = report.summaries.first(where: { $0.category == .browserCaches })
+        XCTAssertEqual(browserFindings.count, 2)
+        XCTAssertEqual(summary?.fileCount, 2)
+        XCTAssertEqual(summary?.reclaimableBytes, browserFindings.reduce(0) { $0 + $1.sizeBytes })
+    }
+
     // MARK: - Risk labels are propagated correctly
 
     func testAllBaselineFindingsAreSafeRisk() async throws {
