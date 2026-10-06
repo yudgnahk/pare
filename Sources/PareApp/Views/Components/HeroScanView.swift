@@ -14,10 +14,7 @@ struct HeroScanView: View {
     private var ringDiameter: CGFloat { scale.space(AppTheme.Control.heroRing) }
     private var ringLine: CGFloat { scale.space(16) }
 
-    private var progress: Double {
-        guard viewModel.scanRulesTotal > 0 else { return 0 }
-        return Double(viewModel.scanRulesCompleted) / Double(viewModel.scanRulesTotal)
-    }
+    private var progress: Double { viewModel.scanProgress }
 
     var body: some View {
         GeometryReader { geo in
@@ -100,7 +97,9 @@ struct HeroScanView: View {
     private var scanningCenter: some View {
         VStack(spacing: 4) {
             CountingPercentText(fraction: progress, font: scale.display)
-            Text("\(viewModel.scanRulesCompleted) of \(max(viewModel.scanRulesTotal, 1)) checks")
+            Text(viewModel.isFinalizingScan
+                 ? "all checks done"
+                 : "\(viewModel.scanRulesCompleted) of \(max(viewModel.scanRulesTotal, 1)) checks")
                 .font(scale.caption)
                 .monospacedDigit()
                 .foregroundStyle(AppTheme.textSecondary)
@@ -114,7 +113,7 @@ struct HeroScanView: View {
         if viewModel.isScanning {
             VStack(spacing: 14) {
                 ScanStepChips(activeStep: viewModel.scanStep)
-                if !viewModel.scanStepTitle.isEmpty {
+                if !viewModel.scanStepTitle.isEmpty, !viewModel.isFinalizingScan {
                     Text(viewModel.scanStepTitle)
                         .font(scale.caption)
                         .foregroundStyle(AppTheme.textTertiary)
@@ -185,6 +184,7 @@ struct HeroScanView: View {
         guard viewModel.isScanning else {
             return viewModel.lastScanDate == nil ? "Let's make some room" : "Ready for another look"
         }
+        if viewModel.isFinalizingScan { return ScanDashboardViewModel.finalizingTitle }
         switch viewModel.scanStep {
         case 1: return "Checking system caches…"
         case 2: return "Checking apps & browsers…"
@@ -193,6 +193,9 @@ struct HeroScanView: View {
     }
 
     private var subheadline: String {
+        if viewModel.isFinalizingScan {
+            return "Every check is done. Grouping findings by folder and app."
+        }
         if viewModel.isScanning {
             return "Progress counts real checks, not a guess. Nothing is touched while scanning."
         }

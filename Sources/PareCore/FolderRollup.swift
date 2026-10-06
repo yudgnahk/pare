@@ -233,40 +233,45 @@ public enum FolderRollup {
         return "/" + parts.joined(separator: "/")
     }
 
+    private struct FolderAccumulator {
+        var bytes: Int64 = 0
+        var reviewCount: Int = 0
+        var paths: [String] = []
+        var worstRisk: RiskLevel = .safe
+
+        mutating func add(_ finding: ScanFinding) {
+            bytes += finding.sizeBytes
+            paths.append(finding.path)
+            if finding.riskLevel == .review {
+                reviewCount += 1
+                worstRisk = .review
+            }
+        }
+    }
+
+    /// Mutates in place; copying the dictionary per finding is O(n²) on huge folders.
+    private static func accumulateByFolder(
+        _ findings: [ScanFinding]
+    ) -> [ScanCategory: [String: FolderAccumulator]] {
+        var byCategory: [ScanCategory: [String: FolderAccumulator]] = [:]
+        for finding in findings where finding.riskLevel != .advanced {
+            let folderPath = rollupFolderPath(for: finding.path)
+            byCategory[finding.category, default: [:]][folderPath, default: FolderAccumulator()]
+                .add(finding)
+        }
+        return byCategory
+    }
+
     public static func buildAggregate(
         from findings: [ScanFinding],
         maxRowsPerCategory: Int = defaultMaxRowsPerCategory
     ) -> FolderAggregate {
-        struct Acc {
-            var bytes: Int64 = 0
-            var count: Int = 0
-            var reviewCount: Int = 0
-            var paths: [String] = []
-            var worstRisk: RiskLevel = .safe
-        }
-
-        var byCategory: [ScanCategory: [String: Acc]] = [:]
-
-        for finding in findings {
-            guard finding.riskLevel != .advanced else { continue }
-            let folderPath = rollupFolderPath(for: finding.path)
-            var catMap = byCategory[finding.category] ?? [:]
-            var acc = catMap[folderPath] ?? Acc()
-            acc.bytes += finding.sizeBytes
-            acc.count += 1
-            acc.paths.append(finding.path)
-            if finding.riskLevel == .review {
-                acc.reviewCount += 1
-                acc.worstRisk = .review
-            }
-            catMap[folderPath] = acc
-            byCategory[finding.category] = catMap
-        }
+        let byCategory = accumulateByFolder(findings)
 
         var aggregate = FolderAggregate()
         for (category, map) in byCategory {
             let sorted = map
-                .map { folderPath, acc -> (String, Acc, String) in
+                .map { folderPath, acc -> (String, FolderAccumulator, String) in
                     let id = "\(category.rawValue)|\(folderPath)"
                     return (folderPath, acc, id)
                 }
@@ -283,7 +288,7 @@ public enum FolderRollup {
                     aggregate.folderIdByPath[p] = id
                 }
                 aggregate.metaByFolderId[id] = FolderMeta(
-                    itemCount: acc.count,
+                    itemCount: acc.paths.count,
                     bytes: acc.bytes,
                     reviewCount: acc.reviewCount,
                     isSafe: acc.worstRisk == .safe
@@ -303,7 +308,7 @@ public enum FolderRollup {
                             folderPath: folderPath,
                             displayPath: abbreviatePath(folderPath),
                             totalBytes: acc.bytes,
-                            itemCount: acc.count,
+                            itemCount: acc.paths.count,
                             riskLevel: acc.worstRisk,
                             isSelectable: !acc.paths.isEmpty,
                             toolName: toolName
