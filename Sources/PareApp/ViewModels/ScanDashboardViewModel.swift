@@ -108,11 +108,10 @@ final class ScanDashboardViewModel: ObservableObject {
     static let finalizingProgressCap = 0.95
     static let finalizingTitle = "Preparing results…"
 
-    /// Rule-count progress, held below 100% once every rule is done so the ring never steps back at finalize.
+    /// Rule-count progress scaled to the finalize cap so the ring never steps back.
     var scanProgress: Double {
         guard scanRulesTotal > 0 else { return 0 }
-        let raw = Double(scanRulesCompleted) / Double(scanRulesTotal)
-        return scanRulesCompleted >= scanRulesTotal ? min(raw, Self.finalizingProgressCap) : raw
+        return Double(scanRulesCompleted) / Double(scanRulesTotal) * Self.finalizingProgressCap
     }
 
     var cleanupState: CleanupCoordinator.CleanupState { cleanup.state }

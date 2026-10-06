@@ -110,16 +110,16 @@ final class ScanReportAnnotatorTests: XCTestCase {
         ]
         let rollups = ScanReportAnnotator.appRollups(from: findings)
 
-        XCTAssertEqual(rollups.map(\.app), ["Chrome", "Xcode", "Other"])
-        XCTAssertEqual(rollups.map(\.fileCount), [40, 2, 3])
+        XCTAssertEqual(rollups.map(\.app), ["Chrome", "Other", "Xcode"])
+        XCTAssertEqual(rollups.map(\.fileCount), [40, 3, 2])
         XCTAssertEqual(rollups[0].totalBytes, (1...40).reduce(Int64(0)) { $0 + Int64($1) * mb / 4 })
-        XCTAssertEqual(rollups[1].totalBytes, 5 * mb + 5)
-        XCTAssertEqual(rollups[2].totalBytes, 5 * mb + 1_700)
+        XCTAssertEqual(rollups[1].totalBytes, 5 * mb + 1_700)
+        XCTAssertEqual(rollups[2].totalBytes, 5 * mb + 5)
         XCTAssertEqual(rollups[0].topFiles.count, 10)
         XCTAssertEqual(rollups[0].topFiles.first?.path, "/Users/u/Library/Caches/Google/Chrome/Default/Cache/f_40")
         XCTAssertEqual(rollups[0].topFiles.last?.path, "/Users/u/Library/Caches/Google/Chrome/Default/Cache/f_31")
-        XCTAssertEqual(rollups[1].topFiles.map(\.sizeBytes), [3 * mb, 2 * mb + 5])
-        XCTAssertEqual(rollups[2].topFiles.map(\.path), ["/Users/u/Library/Caches/com.unknown.app/blob"])
+        XCTAssertEqual(rollups[1].topFiles.map(\.path), ["/Users/u/Library/Caches/com.unknown.app/blob"])
+        XCTAssertEqual(rollups[2].topFiles.map(\.sizeBytes), [3 * mb, 2 * mb + 5])
     }
 
     /// Guards the ASCII fast path: non-ASCII and mixed-case paths attribute like the plain string match.
