@@ -38,8 +38,7 @@ public struct ScanRunner: Sendable {
             effectiveTraversal = traversal
         }
 
-        var findings: [ScanFinding] = []
-        var grouped: [ScanCategory: (Int64, Int)] = [:]
+        var tagged: [(ruleIndex: Int, finding: ScanFinding)] = []
         var ruleFailures: [ScanRuleFailure] = []
         var unreadable: Set<String> = []
         let total = rules.count
@@ -54,11 +53,7 @@ public struct ScanRunner: Sendable {
                 environment: runEnvironment,
                 traversal: effectiveTraversal
             )
-            findings.append(contentsOf: outcome.findings)
-            for (category, value) in outcome.grouped {
-                let current = grouped[category] ?? (0, 0)
-                grouped[category] = (current.0 + value.0, current.1 + value.1)
-            }
+            tagged.append(contentsOf: outcome.findings.map { (ruleIndex: index, finding: $0) })
             if let failure = outcome.failure {
                 ruleFailures.append(failure)
             }
@@ -69,6 +64,12 @@ public struct ScanRunner: Sendable {
         // Persist the mtime index once per scan (stores only mark it dirty).
         await cache?.flush()
 
+        // Rules overlap (same folder, or a folder and files inside it); totals must count each path once.
+        let findings = FindingDeduplicator.deduplicate(tagged)
+        var grouped: [ScanCategory: (Int64, Int)] = [:]
+        for finding in findings {
+            accumulateReclaimable(finding, into: &grouped)
+        }
         let summaries = grouped
             .map { category, value in
                 ScanCategorySummary(
@@ -89,7 +90,6 @@ public struct ScanRunner: Sendable {
 
     private struct RuleOutcome {
         var findings: [ScanFinding] = []
-        var grouped: [ScanCategory: (Int64, Int)] = [:]
         var unreadablePaths: Set<String> = []
         var failure: ScanRuleFailure? = nil
     }
@@ -103,10 +103,7 @@ public struct ScanRunner: Sendable {
 
         do {
             if let customFindings = try await rule.customScanThrowing(environment: environment) {
-                for finding in customFindings where !exclusionList.isExcluded(finding.path) {
-                    outcome.findings.append(finding)
-                    accumulateReclaimable(finding, into: &outcome.grouped)
-                }
+                outcome.findings = customFindings.filter { !exclusionList.isExcluded($0.path) }
                 return outcome
             }
         } catch {
@@ -139,7 +136,6 @@ public struct ScanRunner: Sendable {
                 confidence: rule.confidence
             )
             outcome.findings.append(finding)
-            accumulateReclaimable(finding, into: &outcome.grouped)
         }
 
         return outcome
