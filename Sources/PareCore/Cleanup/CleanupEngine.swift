@@ -129,6 +129,8 @@ public actor CleanupEngine {
     private let now: @Sendable () -> Date
     /// Moves one item to the Trash and returns where it landed; injectable so tests never touch the real Trash.
     private let trashItem: @Sendable (URL) throws -> URL?
+    /// Running executables for the version-sibling gate; taken at most once per run.
+    private let runningExecutables: any RunningExecutablesProviding
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -139,7 +141,8 @@ public actor CleanupEngine {
         projectRootsProvider: (@Sendable () async -> [String])? = nil,
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
-        trashItem: (@Sendable (URL) throws -> URL?)? = nil
+        trashItem: (@Sendable (URL) throws -> URL?)? = nil,
+        runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider()
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -151,6 +154,7 @@ public actor CleanupEngine {
         }
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
+        self.runningExecutables = runningExecutables
     }
 
     private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -219,6 +223,7 @@ public actor CleanupEngine {
         let transactionID = UUID()
         let transactionTimestamp = Date()
         var transactionSaveError: String?
+        var executablesSnapshot: [String]??
 
         func makeTransaction(_ items: [CleanupItem]) -> CleanupTransaction {
             CleanupTransaction(
@@ -278,9 +283,19 @@ public actor CleanupEngine {
             // Re-verify the path is still considered safe by policy. Fail-closed variants:
             // wrong-platform matches only inside the scanned trees; project artifacts only
             // with project-root evidence or under a registered project scan root.
-            guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
+            let allowed: Bool
+            if ScanPolicy.isVersionSiblingMember(url) {
+                // Version siblings pass only their own re-verification, never a broader allow-list.
+                if executablesSnapshot == nil {
+                    executablesSnapshot = .some(await runningExecutables.runningExecutablePaths())
+                }
+                allowed = ScanPolicy.isReclaimableVersionSibling(url, runningExecutables: executablesSnapshot ?? nil)
+            } else {
+                allowed = ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
                     || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
-                    || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
+                    || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths)
+            }
+            guard allowed else {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                 continue
             }
