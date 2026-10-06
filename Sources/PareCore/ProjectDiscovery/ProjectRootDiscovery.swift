@@ -17,8 +17,16 @@ public actor ProjectRootDiscovery {
     private var manualRoots: [String] = []
     private var lastDiscoveredAt: Date?
     private let storeURL: URL
+    private let spotlightSearch: @Sendable () async -> SpotlightSearchResult
+    /// Whether the most recent `discover()` hit the Spotlight timeout, so its root list may be short.
+    private(set) var lastDiscoveryTimedOut = false
 
     public init(storeURL: URL? = nil) {
+        self.init(storeURL: storeURL, spotlightSearch: { await SpotlightQueryRunner.run() })
+    }
+
+    init(storeURL: URL?, spotlightSearch: @escaping @Sendable () async -> SpotlightSearchResult) {
+        self.spotlightSearch = spotlightSearch
         let defaultURL: URL = {
             let appSupport = FileManager.default.urls(
                 for: .applicationSupportDirectory, in: .userDomainMask
@@ -68,18 +76,21 @@ public actor ProjectRootDiscovery {
     /// When the last Spotlight scan completed (nil = never run).
     public var discoveryDate: Date? { lastDiscoveredAt }
 
-    /// Run Spotlight discovery if it has never been run before.
-    public func discoverIfNeeded() async {
-        guard lastDiscoveredAt == nil else { return }
+    /// Run Spotlight discovery if it has never been run before. Returns whether it ran.
+    @discardableResult
+    public func discoverIfNeeded() async -> Bool {
+        guard lastDiscoveredAt == nil else { return false }
         _ = await discover()
+        return true
     }
 
     /// Run Spotlight query, deduplicate results, merge into the known-roots set,
     /// and return the full list of newly-discovered candidate roots.
     @discardableResult
     public func discover() async -> [URL] {
-        let hits = await SpotlightQueryRunner.run()
-        let roots = Self.deduplicate(hits)
+        let search = await spotlightSearch()
+        lastDiscoveryTimedOut = search.timedOut
+        let roots = Self.deduplicate(search.urls)
 
         for root in roots {
             if knownRoots[root.path] == nil {
@@ -178,6 +189,12 @@ public actor ProjectRootDiscovery {
 
 // MARK: - Spotlight Query Runner
 
+struct SpotlightSearchResult: Sendable {
+    let urls: [URL]
+    /// True when the timeout fired before Spotlight finished gathering.
+    let timedOut: Bool
+}
+
 /// Bridges NSMetadataQuery (requires a RunLoop) to async/await.
 /// Always runs on the main queue.
 ///
@@ -192,7 +209,7 @@ public actor ProjectRootDiscovery {
 private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
     private let query = NSMetadataQuery()
     private let lock = NSLock()
-    private var completion: (([URL]) -> Void)?
+    private var completion: ((SpotlightSearchResult) -> Void)?
     private var observer: NSObjectProtocol?
     private var finished = false
     /// Keeps `self` alive from `start` until `finish` even if local refs drop.
@@ -206,18 +223,18 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
     /// Maximum time to wait for Spotlight before completing with whatever results we have.
     private static let timeoutSeconds: TimeInterval = 10
 
-    static func run() async -> [URL] {
+    static func run() async -> SpotlightSearchResult {
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async {
                 let runner = SpotlightQueryRunner()
-                runner.start { urls in
-                    continuation.resume(returning: urls)
+                runner.start { result in
+                    continuation.resume(returning: result)
                 }
             }
         }
     }
 
-    private func start(completion: @escaping ([URL]) -> Void) {
+    private func start(completion: @escaping (SpotlightSearchResult) -> Void) {
         lock.withLock {
             self.completion = completion
             // Self-retain until finish() so strong/weak callback mix cannot drop us early.
@@ -235,18 +252,18 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
             object: query,
             queue: .main
         ) { [self] _ in
-            self.finish()
+            self.finish(timedOut: false)
         }
         lock.withLock { self.observer = observer }
 
         query.start()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.timeoutSeconds) { [self] in
-            self.finish()
+            self.finish(timedOut: true)
         }
     }
 
-    private func finish() {
+    private func finish(timedOut: Bool) {
         // Single-completion guarantee: first caller through the locked flag wins.
         let alreadyFinished: Bool = lock.withLock {
             if finished { return true }
@@ -269,11 +286,11 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
             guard let path = item.value(forAttribute: NSMetadataItemPathKey) as? String else { return nil }
             return URL(fileURLWithPath: path)
         }
-        let completion = lock.withLock { () -> (([URL]) -> Void)? in
+        let completion = lock.withLock { () -> ((SpotlightSearchResult) -> Void)? in
             defer { self.completion = nil }
             return self.completion
         }
-        completion?(urls)
+        completion?(SpotlightSearchResult(urls: urls, timedOut: timedOut))
         lock.withLock { retainUntilFinished = nil }
     }
 }

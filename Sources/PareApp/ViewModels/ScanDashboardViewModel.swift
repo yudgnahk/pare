@@ -472,7 +472,7 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     /// Builds user-facing warnings from the report's error channels (R1.2/R1.3).
-    nonisolated private static func makeScanWarnings(from report: ScanReport) -> [String] {
+    nonisolated static func makeScanWarnings(from report: ScanReport) -> [String] {
         var warnings: [String] = []
         if !report.unreadableLocations.isEmpty {
             let count = report.unreadableLocations.count
@@ -482,6 +482,9 @@ final class ScanDashboardViewModel: ObservableObject {
         }
         for failure in report.ruleFailures {
             warnings.append("\(failure.ruleTitle) failed: \(failure.message)")
+        }
+        for incomplete in report.incompleteRules {
+            warnings.append("\(incomplete.ruleTitle): scan incomplete, results are partial. \(incomplete.message)")
         }
         return warnings
     }
