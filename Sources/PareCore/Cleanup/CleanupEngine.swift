@@ -497,7 +497,7 @@ public actor CleanupEngine {
         + ScanPolicy.mobileSyncBackupPathMarkers
         + ScanPolicy.productivitySafePathMarkers
         + ScanPolicy.productivityReviewPathMarkers
-        + ScanPolicy.launchAgentPathMarkers
+    // `launchAgentPathMarkers` is deliberately absent: LaunchAgent plists are never cleanable.
 
     /// A path passes persona policy if it matches any of the known persona marker sets.
     /// Docker advanced / VM disk markers are intentionally **not** included — those paths

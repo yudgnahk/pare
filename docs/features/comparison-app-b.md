@@ -80,7 +80,7 @@ App B typically groups tools into modules roughly like:
 | Area | App B | Pare | Status |
 |------|-------|------|--------|
 | Login items / background agents | Yes | Orphaned LaunchAgents (missing binary only) | **Behind** |
-| Maintenance scripts / DNS | Yes | Maintenance: DNS, Launch Services, Finder, SQLite | **Partial** |
+| Maintenance scripts / DNS | Yes | Maintenance: DNS, Finder, SQLite | **Partial** |
 | Free RAM (legacy Intel-era) | Sometimes | — | **Out of scope** |
 | Menu bar monitor | Common | — | **Out of scope** (v1) |
 
