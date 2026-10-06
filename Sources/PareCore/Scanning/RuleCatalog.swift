@@ -36,6 +36,7 @@ public enum RuleCatalog {
             OrphanedLaunchAgentsRule(),
             DeletedOpenFilesRule(),
             SwapUsageRule(),
+            TinyFileQueueRule(),
         ]
     }
 
