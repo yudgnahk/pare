@@ -5,17 +5,21 @@ public struct ScanRunner: Sendable {
     private let traversal: any FileTraversing
     private let exclusionList: ExclusionList
     private let cache: ScanMetadataCache?
+    /// Nil by default so tests never read the real cleanup history; the app and CLI pass one in.
+    private let regrowth: RegrowthDetector?
 
     public init(
         environment: ScanEnvironment = .current(),
         traversal: any FileTraversing = FileSystemTraversal(),
         exclusionList: ExclusionList = .empty,
-        cache: ScanMetadataCache? = nil
+        cache: ScanMetadataCache? = nil,
+        regrowth: RegrowthDetector? = nil
     ) {
         self.environment = environment
         self.traversal = traversal
         self.exclusionList = exclusionList
         self.cache = cache
+        self.regrowth = regrowth
     }
 
     /// Progress callback: (completedRules, totalRules, lastRuleTitle).
@@ -84,8 +88,11 @@ public struct ScanRunner: Sendable {
             }
             .sorted { $0.reclaimableBytes > $1.reclaimableBytes }
 
+        // Post-pass on the deduped findings: only risk and reason change, so the summaries above stay valid.
+        let finalFindings = regrowth?.apply(to: findings) ?? findings
+
         return ScanReport(
-            findings: findings,
+            findings: finalFindings,
             summaries: summaries,
             ruleFailures: ruleFailures,
             unreadableLocations: unreadable.sorted(),

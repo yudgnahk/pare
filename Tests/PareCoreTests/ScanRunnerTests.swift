@@ -590,6 +590,32 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(report.incompleteRules.isEmpty)
     }
 
+    // MARK: - Regrowth post-pass
+
+    func testRegrowthDetectorDemotesFindingsWithoutChangingTotals() async {
+        let dir = URL(fileURLWithPath: "/tmp/regrowth")
+        let cache = dir.appendingPathComponent("go-build")
+        let traversal = MockTraversal(filesByDirectory: [
+            dir.path: [ScannedFile(url: cache, sizeBytes: 1_300_000_000, lastModified: nil)]
+        ])
+        let now = Date()
+        let history = [CleanupTransaction(
+            timestamp: now.addingTimeInterval(-3 * 86_400), profileName: "all", isDryRun: false,
+            items: [CleanupItem(originalPath: cache.path, trashedPath: "/Users/test/.Trash/go-build",
+                                sizeBytes: 6_930_000_000, reason: "cache", riskLevel: .safe)]
+        )]
+        let runner = ScanRunner(
+            environment: ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test"), tempDirectory: URL(fileURLWithPath: "/tmp")),
+            traversal: traversal,
+            regrowth: RegrowthDetector(history: { history }, now: { now })
+        )
+
+        let report = await runner.run(rules: [TestRule(id: "cache", title: "Cache", category: .userCaches, targets: [dir])])
+
+        XCTAssertEqual(report.findings.first?.riskLevel, .review)
+        XCTAssertEqual(report.totalReclaimableBytes, 1_300_000_000)
+    }
+
     // MARK: - R1.2: per-rule error channel
 
     private struct ThrowingRule: ScanRule {
