@@ -402,7 +402,7 @@ final class ScanDashboardViewModel: ObservableObject {
         scanTask = Task(priority: .userInitiated) {
             let rules = RuleCatalog.all
             let exclusionList = (try? ExclusionStore.shared.load()) ?? .empty
-            let runner = ScanRunner(exclusionList: exclusionList, cache: cache)
+            let runner = ScanRunner(exclusionList: exclusionList, cache: cache, regrowth: RegrowthDetector())
             let totalRules = rules.count
             await MainActor.run { self.scanRulesTotal = totalRules }
 
