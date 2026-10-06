@@ -6,7 +6,7 @@ Three independent additions that complete Pare's coverage of the everyday-Mac-us
 
 - Clean Slack, Zoom, Google Drive, Office, and similar productivity tool caches
 - Surface launch agent plists that reference deleted binaries (post-uninstall leftovers)
-- Give users a safe, GUI-driven way to run system maintenance tasks (DNS flush, LaunchServices rebuild, etc.) without opening Terminal
+- Give users a safe, GUI-driven way to run system maintenance tasks (DNS flush, Finder restart, etc.) without opening Terminal
 
 ---
 
@@ -122,12 +122,7 @@ All actions run via `Process` (NSTask equivalent in Swift). No privileged helper
 
 ---
 
-**2. Rebuild Launch Services Database**
-- Binary: `/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister`
-- Arguments: `-kill -r -domain local -domain system -domain user`
-- When to use: "Files opening in the wrong app, or 'Open With' shows duplicate entries. Rebuilds the system's app-to-file-type mapping."
-- Estimated time: 15–45 seconds (warn the user)
-- Safe to run any time; Finder may briefly restart
+**Removed: Rebuild Launch Services Database.** `lsregister -kill -r …` drops active VPN tunnels and forces a Spotlight reindex, so Pare does not offer it.
 
 ---
 

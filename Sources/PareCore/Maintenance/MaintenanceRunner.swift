@@ -55,8 +55,6 @@ public struct MaintenanceRunner: Sendable {
         switch action.id {
         case MaintenanceCatalog.flushDNS.id:
             return runFlushDNS()
-        case MaintenanceCatalog.rebuildLaunchServices.id:
-            return runRebuildLaunchServices()
         case MaintenanceCatalog.restartFinder.id:
             return runRestartFinder()
         case MaintenanceCatalog.vacuumDatabases.id:
@@ -81,17 +79,6 @@ public struct MaintenanceRunner: Sendable {
             Step(label: "Restarting mDNSResponder…",
                  executable: "/usr/bin/killall", args: ["-HUP", "mDNSResponder"]),
         ], doneMessage: "DNS cache flushed successfully.")
-    }
-
-    private func runRebuildLaunchServices() -> AsyncThrowingStream<String, Error> {
-        let lsregister = "/System/Library/Frameworks/CoreServices.framework" +
-            "/Versions/A/Frameworks/LaunchServices.framework" +
-            "/Versions/A/Support/lsregister"
-        return sequence([
-            Step(label: "Rebuilding Launch Services database…",
-                 executable: lsregister,
-                 args: ["-kill", "-r", "-domain", "local", "-domain", "system", "-domain", "user"]),
-        ], doneMessage: "Launch Services database rebuilt.")
     }
 
     private func runRestartFinder() -> AsyncThrowingStream<String, Error> {
