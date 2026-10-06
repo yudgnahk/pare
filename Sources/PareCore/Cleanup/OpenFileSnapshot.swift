@@ -34,6 +34,13 @@ public struct OpenFileSnapshot: Sendable {
         self.holders = holders
     }
 
+    /// True when the output has at least one `p<pid>` record; anything else is not a usable listing.
+    static func isRecognizedFieldOutput(_ output: String) -> Bool {
+        output.split(whereSeparator: \.isNewline).contains { line in
+            line.first == "p" && line.count > 1 && line.dropFirst().allSatisfy(\.isNumber)
+        }
+    }
+
     /// The process holding a file at `path` or anywhere beneath it.
     public func holder(atOrUnder path: String) -> String? {
         holders[Self.key(path)]
@@ -68,17 +75,23 @@ public struct LsofOpenFileSnapshotProvider: OpenFileSnapshotProviding {
     public static let defaultTimeoutSeconds: TimeInterval = 10
 
     private let runner: ToolCommandRunner
+    private let executable: URL
 
     public init(timeoutSeconds: TimeInterval = LsofOpenFileSnapshotProvider.defaultTimeoutSeconds) {
+        self.init(executable: URL(fileURLWithPath: Self.lsofPath), timeoutSeconds: timeoutSeconds)
+    }
+
+    /// Tests point `executable` at a script that times out, fails or prints garbage.
+    init(executable: URL, timeoutSeconds: TimeInterval) {
+        self.executable = executable
         runner = ToolCommandRunner(timeoutSeconds: timeoutSeconds)
     }
 
     public func snapshot() async -> OpenFileSnapshot? {
         // -n/-P skip DNS and port lookups, -w drops warnings for processes we cannot inspect.
-        guard let output = await runner.capture(
-            executable: URL(fileURLWithPath: Self.lsofPath),
-            arguments: ["-n", "-P", "-w", "-Fpcn"]
-        ) else { return nil }
+        guard let output = await runner.capture(executable: executable, arguments: ["-n", "-P", "-w", "-Fpcn"]),
+              // Output without a single process record would read as "nothing is open" and fail open everywhere.
+              OpenFileSnapshot.isRecognizedFieldOutput(output) else { return nil }
         return OpenFileSnapshot(lsofFieldOutput: output)
     }
 }

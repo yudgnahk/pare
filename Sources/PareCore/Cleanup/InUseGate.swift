@@ -58,23 +58,29 @@ public enum InUseGate {
 
 /// Per-cleanup-batch state: the snapshot and app list are taken on first use, never per item.
 actor InUseBatchCheck {
-    private static let logger = Logger(subsystem: "Pare", category: "cleanup")
+    static let logger = Logger(subsystem: "Pare", category: "cleanup")
 
     private let openFiles: any OpenFileSnapshotProviding
     private let runningAppsProvider: any RunningAppsProviding
+    private let log: @Sendable (String) -> Void
     private var snapshot: OpenFileSnapshot??
     private var apps: [RunningApp]?
 
-    init(openFiles: any OpenFileSnapshotProviding, runningApps: any RunningAppsProviding) {
+    init(
+        openFiles: any OpenFileSnapshotProviding,
+        runningApps: any RunningAppsProviding,
+        log: @escaping @Sendable (String) -> Void = { InUseBatchCheck.logger.notice("\($0, privacy: .public)") }
+    ) {
         self.openFiles = openFiles
         self.runningAppsProvider = runningApps
+        self.log = log
     }
 
     func holder(forPath path: String) async -> String? {
         if snapshot == nil {
             let taken = await openFiles.snapshot()
             if taken == nil {
-                Self.logger.notice("Open-file snapshot unavailable; only risky cache items are held back")
+                log("Open-file snapshot unavailable; only risky cache items are held back")
             }
             snapshot = .some(taken)
         }
