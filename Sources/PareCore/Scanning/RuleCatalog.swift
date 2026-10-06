@@ -41,6 +41,7 @@ public enum RuleCatalog {
             TinyFileQueueRule(),
             CrashLoopRule(),
             RunawayLogsRule(),
+            StaleUpgradeBackupsRule(),
         ]
     }
 

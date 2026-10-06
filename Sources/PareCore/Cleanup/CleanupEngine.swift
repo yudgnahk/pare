@@ -347,7 +347,13 @@ public actor CleanupEngine {
                 continue
             }
 
-            if let rejection = policyRejection(
+            if ScanPolicy.hasUpgradeBackupSignal(url.lastPathComponent) {
+                // Backup-named paths pass only through the upgrade-backup gate, never the generic allow-lists.
+                if !ScanPolicy.isReclaimableUpgradeBackup(url, now: now()) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                    continue
+                }
+            } else if let rejection = policyRejection(
                 for: finding, url: url, projectRootPaths: projectRootPaths, gitStatuses: gitStatuses
             ) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: rejection))
