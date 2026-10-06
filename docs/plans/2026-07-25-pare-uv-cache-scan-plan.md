@@ -22,7 +22,7 @@ On the investigator’s machine:
 | `~/Library/Caches/uv` | **Missing** |
 | Pare `PythonCachesRule` | Only scans `Library/Caches/{pip,pypoetry,uv}` + `~/.pyenv/cache` |
 
-**Result:** Pare **does not report** the real uv cache. Same class of gap as Mole’s dry-run under-reporting, but for Pare the miss is **wrong path family** (macOS Library vs XDG `~/.cache`).
+**Result:** Pare **does not report** the real uv cache. Same class of gap as the reference CLI cleaner’s dry-run under-reporting, but for Pare the miss is **wrong path family** (macOS Library vs XDG `~/.cache`).
 
 ### Why this matters
 
@@ -429,13 +429,13 @@ isEqualToOrDescendant(candidate, root: discoveredCanonicalUvRoot)
 
 ## 15. References
 
-- `UV_INVESTIGATION.md` — sizes, Mole behavior, `tree-sitter-language-pack` analysis  
+- `UV_INVESTIGATION.md` — sizes, reference-tool behavior, `tree-sitter-language-pack` analysis  
 - `Sources/PareCore/Rules/PythonCachesRule.swift`  
 - `Sources/PareCore/Scanning/ScanPolicy.swift` — `reconstructibleCachePathMarkers`, `developerPackageCacheMarkers`  
 - `Sources/PareCore/Cleanup/CleanupEngine.swift` — `isPersonaPath`  
 - `Tests/PareCoreTests/Phase6RuleTests.swift`  
 - `docs/features/phase-6-developer-breadth.md`  
-- Mole (external): `clean_uv_cache` uses `uv cache dir` + `uv cache prune` — reference only, not copy wholesale
+- Another CLI cleanup tool (external): its uv step uses `uv cache dir` + `uv cache prune` — reference only, not copy wholesale
 - Apple Foundation cache-directory APIs: https://developer.apple.com/documentation/foundation/filemanager/searchpathdirectory/cachesdirectory
 - XDG Base Directory specification: https://specifications.freedesktop.org/basedir/
 - Cache Directory Tagging specification: https://bford.info/cachedir/
