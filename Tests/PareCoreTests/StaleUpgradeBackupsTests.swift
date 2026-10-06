@@ -13,7 +13,8 @@ final class StaleUpgradeBackupsTests: XCTestCase {
         // Canonical `/private/var/…` spelling, as directory listings report it.
         home = ScanPolicy.canonicalPathURL(FileManager.default.temporaryDirectory)
             .appending(path: "pare_backups_\(UUID().uuidString)/home")
-        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        // A real home holds `Library`; dot directories count only directly inside such a folder.
+        try FileManager.default.createDirectory(at: home.appending(path: "Library"), withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
@@ -61,24 +62,30 @@ final class StaleUpgradeBackupsTests: XCTestCase {
         )
     }
 
-    func testLocationTable() {
-        let cases: [(path: String, allowed: Bool)] = [
-            ("/Users/u/.toolx/data.db.backup-2026-01-01", true),
-            ("/Users/u/.config/toolx/state.bak.1.2", true),
-            ("/Users/u/Library/Application Support/Toolx/db.backup-20260101", true),
-            ("/Users/u/Library/Application Support/MobileSync/Backup/x.backup-20260101", false),
-            ("/Users/u/Library/Application Support/AddressBook/ab.backup-20260101", false),
-            ("/Users/u/Library/Application Support/com.apple.foo/x.backup-20260101", false),
-            ("/Users/u/.ssh/known_hosts.bak.20260101", false),
-            ("/Users/u/.aws/credentials.bak.20260101", false),
-            ("/Users/u/Documents/.notes/thesis.backup-2026-01-01", false),
-            ("/Users/u/Documents/thesis.backup-2026-01-01", false),
-            ("/Users/u/Projects/app/.git/x.backup-1.2", false),
-            ("/Users/u/.toolx/history.backup-2026-01-01", false),
+    func testLocationTable() throws {
+        try FileManager.default.createDirectory(at: home.appending(path: "Library"), withIntermediateDirectories: true)
+        let cases: [(relative: String, allowed: Bool)] = [
+            (".toolx/data.db.backup-2026-01-01", true),
+            (".config/toolx/state.bak.1.2", true),
+            ("Library/Application Support/Toolx/db.backup-20260101", true),
+            ("Library/Application Support/MobileSync/Backup/x.backup-20260101", false),
+            ("Library/Application Support/AddressBook/ab.backup-20260101", false),
+            ("Library/Application Support/com.apple.foo/x.backup-20260101", false),
+            (".ssh/known_hosts.bak.20260101", false),
+            (".aws/credentials.bak.20260101", false),
+            ("Documents/.notes/thesis.backup-2026-01-01", false),
+            ("Documents/thesis.backup-2026-01-01", false),
+            ("Projects/app/.git/x.backup-1.2", false),
+            ("Projects/app/.idea/workspace.backup-1.2", false),
+            (".toolx/history.backup-2026-01-01", false),
+            ("Library/Mobile Documents/com~apple~CloudDocs/.obsidian/data.json.bak.1.2", false),
         ]
         for testCase in cases {
-            XCTAssertEqual(ScanPolicy.isUpgradeBackupLocation(URL(fileURLWithPath: testCase.path)), testCase.allowed, testCase.path)
+            let url = home.appending(path: testCase.relative)
+            XCTAssertEqual(ScanPolicy.isUpgradeBackupLocation(url), testCase.allowed, testCase.relative)
         }
+        XCTAssertFalse(ScanPolicy.isUpgradeBackupLocation(URL(fileURLWithPath: "/Volumes/External/.stuff/x.backup-1.2")),
+                       "a dot directory outside any home folder does not count")
     }
 
     // MARK: - Rule

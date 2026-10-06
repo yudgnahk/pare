@@ -43,8 +43,8 @@ extension ScanPolicy {
             .joined(separator: ".")
     }
 
-    /// Inside a dot directory or `Library/Application Support/<app>/`, and clear of every protected,
-    /// credential, user-data and search-index location.
+    /// Inside a dot directory sitting directly in a home folder, or `Library/Application Support/<app>/`,
+    /// and clear of every protected, credential, user-data, iCloud Drive and search-index location.
     public static func isUpgradeBackupLocation(_ url: URL) -> Bool {
         if isSearchIndexSensitivePath(url) || isDockerNeverDeletePath(url) { return false }
         let lower = url.path.lowercased()
@@ -54,14 +54,23 @@ extension ScanPolicy {
             return false
         }
         let parents = Array(url.standardizedFileURL.pathComponents.dropLast())
+        if parents.contains("Mobile Documents") { return false }
         if let index = parents.indices.dropFirst().first(where: { parents[$0] == "Application Support" && parents[$0 - 1] == "Library" }) {
             guard index + 1 < parents.count else { return false }
             let app = parents[index + 1]
             return !app.lowercased().hasPrefix("com.apple.") && !upgradeBackupExcludedApplicationSupportFolders.contains(app)
         }
         let dotDirectories = parents.filter { $0.hasPrefix(".") && $0 != "." && $0 != ".." }
-        return !dotDirectories.isEmpty
-            && !dotDirectories.contains { upgradeBackupExcludedDotDirectories.contains($0.lowercased()) }
+        guard !dotDirectories.contains(where: { upgradeBackupExcludedDotDirectories.contains($0.lowercased()) }) else {
+            return false
+        }
+        // A dot directory counts only directly in a home folder (one holding `Library`), not any `.x` anywhere.
+        return parents.indices.contains { index in
+            let name = parents[index]
+            guard index > 0, name.hasPrefix("."), name != ".", name != ".." else { return false }
+            let home = NSString.path(withComponents: Array(parents[..<index]))
+            return FileManager.default.fileExists(atPath: home + "/Library")
+        }
     }
 
     /// Scan- and cleanup-time gate: backup name, allowed location, older than the age gate, a live
