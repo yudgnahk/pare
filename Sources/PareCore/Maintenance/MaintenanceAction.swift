@@ -51,7 +51,7 @@ public enum MaintenanceCatalog {
     public static let vacuumDatabases = MaintenanceAction(
         id: "vacuum-databases",
         title: "Vacuum SQLite Databases",
-        description: "Reclaims wasted space in Mail, Safari, and Messages databases. Close those apps first.",
+        description: "Reclaims wasted space in the Mail and Safari databases. Quit those apps first; busy or damaged databases are skipped.",
         systemImage: "cylinder.split.1x2",
         estimatedSeconds: 20
     )

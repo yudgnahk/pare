@@ -135,8 +135,8 @@ All actions run via `Process` (NSTask equivalent in Swift). No privileged helper
 ---
 
 **4. Vacuum Mail Index**
-- Path: `~/Library/Mail/V*/MailData/Envelope Index.sqlite`
-- Command: `sqlite3 "<path>" "VACUUM; ANALYZE;"`
+- Path: `~/Library/Mail/V*/MailData/Envelope Index`
+- Command: one `sqlite3 "<path>" "<sql>"` per step — `PRAGMA quick_check;` (must print `ok`), `PRAGMA wal_checkpoint(TRUNCATE);`, `VACUUM;`, `PRAGMA wal_checkpoint(TRUNCATE);` (`SQLiteVacuumPlan`). The checkpoints stop a WAL-mode database from keeping a database-sized `-wal` file.
 - When to use: "Mail is slow to search or load. Compacts the message index database."
 - Estimated time: 5–30 seconds depending on mailbox size
 - Requires Mail to be quit first — check with `NSRunningApplication` and prompt if open
@@ -145,10 +145,12 @@ All actions run via `Process` (NSTask equivalent in Swift). No privileged helper
 
 **5. Vacuum Safari History**
 - Path: `~/Library/Safari/History.db`
-- Command: `sqlite3 "<path>" "VACUUM; ANALYZE;"`
+- Command: one `sqlite3 "<path>" "<sql>"` per step — `PRAGMA quick_check;` (must print `ok`), `PRAGMA wal_checkpoint(TRUNCATE);`, `VACUUM;`, `PRAGMA wal_checkpoint(TRUNCATE);` (`SQLiteVacuumPlan`). The checkpoints stop a WAL-mode database from keeping a database-sized `-wal` file.
 - When to use: "Safari history search is slow. Compacts the history database."
 - Estimated time: 2–10 seconds
 - Requires Safari to be quit first
+
+Both vacuums skip a database when its app is running, when `quick_check` fails or the database is busy, or when free space is below 2 × (database + WAL); one skipped or failing database never stops the other. Free space is logged before and after. Messages' `chat.db` is never vacuumed: a system daemon keeps it open even when Messages is quit.
 
 ---
 
