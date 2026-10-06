@@ -9,7 +9,7 @@ struct PareCLI {
         let top = parseTop(from: args) ?? 10
 
         let rules = RuleCatalog.rules(for: profile)
-        let runner = ScanRunner()
+        let runner = ScanRunner(regrowth: RegrowthDetector())
         let report = await runner.run(rules: rules)
 
         print("Profile: \(profile.rawValue)")
