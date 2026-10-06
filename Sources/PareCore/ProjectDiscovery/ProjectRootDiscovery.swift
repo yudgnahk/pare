@@ -22,13 +22,26 @@ public actor ProjectRootDiscovery {
     private(set) var lastDiscoveryTimedOut = false
     /// Set when init pruned roots that are now excluded from discovery; the next save persists it.
     private var needsSave = false
+    private let now: @Sendable () -> Date
+    /// Forces the next `discoverIfNeeded()` to search regardless of age (user-requested rescan).
+    private var isStale = false
+    /// Shared by overlapping callers so one Spotlight query serves them all.
+    private var inFlight: Task<[URL], Never>?
+
+    /// How long discovered roots are trusted before Spotlight is queried again.
+    public static let refreshInterval: TimeInterval = 24 * 3600
 
     public init(storeURL: URL? = nil) {
         self.init(storeURL: storeURL, spotlightSearch: { await SpotlightQueryRunner.run() })
     }
 
-    init(storeURL: URL?, spotlightSearch: @escaping @Sendable () async -> SpotlightSearchResult) {
+    init(
+        storeURL: URL?,
+        spotlightSearch: @escaping @Sendable () async -> SpotlightSearchResult,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.spotlightSearch = spotlightSearch
+        self.now = now
         let defaultURL: URL = {
             let appSupport = FileManager.default.urls(
                 for: .applicationSupportDirectory, in: .userDomainMask
@@ -83,19 +96,42 @@ public actor ProjectRootDiscovery {
     /// When the last Spotlight scan completed (nil = never run).
     public var discoveryDate: Date? { lastDiscoveredAt }
 
-    /// Run Spotlight discovery if it has never been run before. Returns whether it ran.
+    /// Runs Spotlight discovery when it never ran, is `refreshInterval` old, is dated in the future,
+    /// or was marked stale. Returns whether a discovery ran (or was joined) during this call.
     @discardableResult
     public func discoverIfNeeded() async -> Bool {
         if needsSave { saveToDisk() }
-        guard lastDiscoveredAt == nil else { return false }
+        guard inFlight != nil || isDiscoveryDue else { return false }
         _ = await discover()
         return true
+    }
+
+    /// Makes the next `discoverIfNeeded()` query Spotlight even if the last discovery is recent.
+    public func markStale() {
+        isStale = true
+    }
+
+    private var isDiscoveryDue: Bool {
+        guard let last = lastDiscoveredAt else { return true }
+        let current = now()
+        return isStale || last > current || current.timeIntervalSince(last) >= Self.refreshInterval
     }
 
     /// Run Spotlight query, deduplicate results, merge into the known-roots set,
     /// and return the full list of newly-discovered candidate roots.
     @discardableResult
     public func discover() async -> [URL] {
+        if let inFlight { return await inFlight.value }
+        let task = Task { await self.performDiscovery() }
+        inFlight = task
+        let roots = await task.value
+        inFlight = nil
+        return roots
+    }
+
+    private func performDiscovery() async -> [URL] {
+        // Cleared before the search so a markStale() that lands mid-search still forces the next run.
+        isStale = false
         let search = await spotlightSearch()
         lastDiscoveryTimedOut = search.timedOut
         let roots = Self.deduplicate(search.urls)
@@ -108,7 +144,8 @@ public actor ProjectRootDiscovery {
         // Prune roots that no longer exist on disk.
         knownRoots = knownRoots.filter { FileManager.default.fileExists(atPath: $0.key) }
 
-        lastDiscoveredAt = Date()
+        // Advanced even after a timeout, so a machine without Spotlight is not re-queried every scan.
+        lastDiscoveredAt = now()
         saveToDisk()
         return roots
     }
