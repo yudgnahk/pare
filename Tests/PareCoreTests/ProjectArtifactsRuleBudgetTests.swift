@@ -7,8 +7,8 @@ final class ProjectArtifactsRuleBudgetTests: XCTestCase {
     private var suiteName: String!
 
     override func setUpWithError() throws {
-        // Resolved so expected paths match the `/private/var/…` spelling the walk reports.
-        tmp = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+        // Directory listings report `/private/var/…`; `resolvingSymlinksInPath()` would strip `/private` instead.
+        tmp = ScanPolicy.canonicalPathURL(FileManager.default.temporaryDirectory)
             .appending(path: "pare_test_\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         suiteName = "pare.tests.project-budget.\(UUID().uuidString)"
@@ -68,6 +68,19 @@ final class ProjectArtifactsRuleBudgetTests: XCTestCase {
         let result = try XCTUnwrap(scanned)
 
         XCTAssertEqual(result.findings.filter { $0.path == cache.path }.count, 1)
+    }
+
+    func testNestedRootInAliasSpellingIsWalkedOnce() async throws {
+        let cache = try makeArtifact("outer/inner/.cache")
+        let aliasInner = URL(fileURLWithPath: String(tmp.path.dropFirst("/private".count)) + "/outer/inner")
+        XCTAssertTrue(tmp.path.hasPrefix("/private/"), "precondition: canonical temp spelling")
+        let rule = makeRule(manualRoots: [tmp.appending(path: "outer"), aliasInner])
+
+        let scanned = try await rule.customScanResult(environment: ScanEnvironment.current())
+        let result = try XCTUnwrap(scanned)
+
+        XCTAssertEqual(result.findings.filter { $0.path == cache.path }.count, 1)
+        XCTAssertEqual(result.findings.count, 1)
     }
 
     func testNestedRootUnderHiddenFolderIsStillWalked() async throws {
