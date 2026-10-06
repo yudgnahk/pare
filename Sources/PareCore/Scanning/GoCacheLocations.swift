@@ -1,5 +1,15 @@
 import Foundation
 
+/// Go's cache directories; nil when `go env` did not report a usable absolute path.
+public struct GoCachePaths: Sendable, Equatable {
+    public let build: URL?
+    public let module: URL?
+
+    public static let empty = GoCachePaths(build: nil, module: nil)
+
+    public var all: [URL] { [build, module].compactMap { $0 } }
+}
+
 /// `GOCACHE` and `GOMODCACHE` as reported by `go env`, resolved once per process.
 /// Without `go` (or on any failure) there are no custom roots and the default spellings still apply.
 public final class GoCacheLocations: @unchecked Sendable {
@@ -13,7 +23,7 @@ public final class GoCacheLocations: @unchecked Sendable {
 
     private let query: Query
     private let lock = NSLock()
-    private var roots: [URL] = []
+    private var paths: GoCachePaths = .empty
     private var resolved = false
 
     public init(query: Query? = nil) {
@@ -22,27 +32,30 @@ public final class GoCacheLocations: @unchecked Sendable {
 
     /// Snapshot for synchronous policy checks; empty until `resolveIfNeeded()` has run.
     public var resolvedRoots: [URL] {
-        lock.withLock { roots }
+        lock.withLock { paths.all }
     }
 
     @discardableResult
-    public func resolveIfNeeded() async -> [URL] {
-        if let cached = lock.withLock({ resolved ? roots : nil }) { return cached }
+    public func resolveIfNeeded() async -> GoCachePaths {
+        if let cached = lock.withLock({ resolved ? paths : nil }) { return cached }
         let parsed = Self.parse(await query())
         lock.withLock {
-            roots = parsed
+            paths = parsed
             resolved = true
         }
         return parsed
     }
 
-    /// One path per line; empty, relative (`off`) and root values are dropped.
-    static func parse(_ output: String?) -> [URL] {
-        (output ?? "")
-            .split(whereSeparator: \.isNewline)
+    /// Line 1 is `GOCACHE`, line 2 `GOMODCACHE`; empty, relative (`off`) and root values become nil.
+    static func parse(_ output: String?) -> GoCachePaths {
+        let lines = (output ?? "")
+            .split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { $0.hasPrefix("/") && $0 != "/" }
-            .map { URL(fileURLWithPath: $0).standardizedFileURL }
+        func path(at index: Int) -> URL? {
+            guard index < lines.count, lines[index].hasPrefix("/"), lines[index] != "/" else { return nil }
+            return URL(fileURLWithPath: lines[index]).standardizedFileURL
+        }
+        return GoCachePaths(build: path(at: 0), module: path(at: 1))
     }
 
     private static let defaultQuery: Query = {

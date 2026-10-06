@@ -66,10 +66,16 @@ final class GoWorkingSetTests: XCTestCase {
     // MARK: - go env resolution
 
     func testGoEnvOutputParsing() {
-        let parsed = GoCacheLocations.parse("/Volumes/Fast/gocache\n\n/opt/gomodcache/\noff\nrelative/dir\n/\n")
+        let both = GoCacheLocations.parse("/Volumes/Fast/gocache\n/opt/gomodcache/\n")
+        XCTAssertEqual(both.build?.path, "/Volumes/Fast/gocache")
+        XCTAssertEqual(both.module?.path, "/opt/gomodcache")
 
-        XCTAssertEqual(parsed.map(\.path), ["/Volumes/Fast/gocache", "/opt/gomodcache"])
-        XCTAssertEqual(GoCacheLocations.parse(nil), [])
+        let cacheOff = GoCacheLocations.parse("off\n/opt/gomodcache\n")
+        XCTAssertNil(cacheOff.build)
+        XCTAssertEqual(cacheOff.module?.path, "/opt/gomodcache")
+
+        XCTAssertEqual(GoCacheLocations.parse("/\nrelative/dir\n"), .empty)
+        XCTAssertEqual(GoCacheLocations.parse(nil), .empty)
     }
 
     func testLocationsResolveOnceAndAbsentGoYieldsNoRoots() async {
@@ -82,8 +88,8 @@ final class GoWorkingSetTests: XCTestCase {
         let first = await locations.resolveIfNeeded()
         let second = await locations.resolveIfNeeded()
 
-        XCTAssertEqual(first, [])
-        XCTAssertEqual(second, [])
+        XCTAssertEqual(first, .empty)
+        XCTAssertEqual(second, .empty)
         XCTAssertEqual(queries.value, 1)
         XCTAssertEqual(locations.resolvedRoots, [])
     }
