@@ -131,12 +131,13 @@ extension ScanPolicy {
         (ide: "/datagrip", subtree: "/jdbc-drivers/"),
     ]
 
-    /// Path components that disqualify a Spotlight hit from being a project root
-    /// (system/library trees, dependency dirs, Trash).
+    /// Path-component runs that disqualify a Spotlight hit from being a project root
+    /// (system/library trees, dependency dirs, package-manager and toolchain trees, Trash).
     public static let projectDiscoveryExcludedPathComponents = [
         "/Library/", "/System/", "/node_modules/", "/vendor/",
-        "/venv/", "/.venv/", "/.Trash/", "/site-packages/",
-        "/.Trash", "/Applications/"
+        "/venv/", "/.venv/", "/.Trash/", "/.Trashes/", "/site-packages/",
+        "/Applications/", "/go/pkg/mod/", "/.pub-cache/", "/.cargo/registry/",
+        "/.cargo/git/", "/fvm/versions/", "/_work/_tool/",
     ]
 
     /// App-specific state paths that must never be deleted — removing them would
