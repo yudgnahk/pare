@@ -65,7 +65,7 @@ public struct ProjectArtifactsRule: ScanRule {
         // Fold in manually configured scan paths (Phase 5 store), deduplicated by path.
         var seen = Set<String>()
         let roots = Self.droppingCoveredRoots((discovered + pathStore.paths.map { URL(fileURLWithPath: $0) })
-            .filter { seen.insert($0.standardizedFileURL.path).inserted })
+            .filter { seen.insert(ScanPolicy.canonicalPathURL($0).path).inserted })
 
         let minAge = ScanPolicy.defaultMinimumAgeSeconds(for: category)
         let budget = WalkBudget(deadline: now().addingTimeInterval(timeBudget), now: now)
@@ -105,11 +105,11 @@ public struct ProjectArtifactsRule: ScanRule {
 
     /// Drops roots the walk of another root already reaches, so nested projects are not walked twice.
     static func droppingCoveredRoots(_ roots: [URL]) -> [URL] {
-        roots.filter { candidate in
-            !roots.contains { other in
-                isReachable(candidate, fromRoot: other)
-            }
-        }
+        // Canonical spelling, so a `/var/…` root nested in a `/private/var/…` root is not walked twice.
+        let canonical = roots.map { ScanPolicy.canonicalPathURL($0) }
+        return zip(roots, canonical)
+            .filter { _, candidate in !canonical.contains { isReachable(candidate, fromRoot: $0) } }
+            .map(\.0)
     }
 
     private static func isReachable(_ candidate: URL, fromRoot root: URL) -> Bool {
