@@ -86,7 +86,7 @@ final class ScanPolicySnapshotTests: XCTestCase {
         "userCachesExcludedTopLevelFolderNames": "069a2f01a3418d96:22",
         "vscodeReviewStateMarkers": "482a7e5f4534ce6b:2",
         "jetBrainsReviewRequiredMarkerPairs": "5308136415fc9116:3",
-        "projectDiscoveryExcludedPathComponents": "bf22ca4eb106f8ac:10",
+        "projectDiscoveryExcludedPathComponents": "94b3c897f35a9007:16",
         "designerSafePathMarkers": "bf2ef8148db8d02e:6",
         "designerReviewPathMarkers": "cf0e25253da2a0d9:3",
         "videoBuilderSafePathMarkers": "f1552664f44c2a7d:5",

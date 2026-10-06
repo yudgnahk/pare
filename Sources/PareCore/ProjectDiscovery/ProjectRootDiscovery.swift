@@ -20,6 +20,8 @@ public actor ProjectRootDiscovery {
     private let spotlightSearch: @Sendable () async -> SpotlightSearchResult
     /// Whether the most recent `discover()` hit the Spotlight timeout, so its root list may be short.
     private(set) var lastDiscoveryTimedOut = false
+    /// Set when init pruned roots that are now excluded from discovery; the next save persists it.
+    private var needsSave = false
 
     public init(storeURL: URL? = nil) {
         self.init(storeURL: storeURL, spotlightSearch: { await SpotlightQueryRunner.run() })
@@ -44,6 +46,9 @@ public actor ProjectRootDiscovery {
             knownRoots = [:]
             for path in decoded.confirmed { knownRoots[path] = true }
             for path in decoded.excluded  { knownRoots[path] = false }
+            let kept = knownRoots.filter { !Self.isExcludedRoot($0.key) }
+            needsSave = kept.count != knownRoots.count
+            knownRoots = kept
             manualRoots = decoded.manual
             lastDiscoveredAt = decoded.lastDiscoveredAt
         }
@@ -53,7 +58,9 @@ public actor ProjectRootDiscovery {
 
     /// All roots that are active (auto-discovered + confirmed, plus manual additions).
     public func confirmedRoots() -> [URL] {
-        let auto = knownRoots.filter { $0.value }.map { URL(fileURLWithPath: $0.key) }
+        let auto = knownRoots
+            .filter { $0.value && !Self.isExcludedRoot($0.key) }
+            .map { URL(fileURLWithPath: $0.key) }
         let manual = manualRoots.map { URL(fileURLWithPath: $0) }
         return (auto + manual).filter { FileManager.default.fileExists(atPath: $0.path) }
     }
@@ -61,7 +68,7 @@ public actor ProjectRootDiscovery {
     /// All discovered roots paired with their confirmed state (for UI display).
     public var allDiscoveredRoots: [(url: URL, confirmed: Bool)] {
         knownRoots
-            .filter { FileManager.default.fileExists(atPath: $0.key) }
+            .filter { !Self.isExcludedRoot($0.key) && FileManager.default.fileExists(atPath: $0.key) }
             .map { (URL(fileURLWithPath: $0.key), $0.value) }
             .sorted { $0.url.path < $1.url.path }
     }
@@ -79,6 +86,7 @@ public actor ProjectRootDiscovery {
     /// Run Spotlight discovery if it has never been run before. Returns whether it ran.
     @discardableResult
     public func discoverIfNeeded() async -> Bool {
+        if needsSave { saveToDisk() }
         guard lastDiscoveredAt == nil else { return false }
         _ = await discover()
         return true
@@ -140,9 +148,8 @@ public actor ProjectRootDiscovery {
         }
 
         // 2. Filter paths containing excluded path components (list lives in ScanPolicy — R1.4).
-        let excluded = ScanPolicy.projectDiscoveryExcludedPathComponents
         let filtered = rootPaths.filter { path in
-            !excluded.contains { path.contains($0) }
+            !ScanPolicy.isExcludedFromProjectDiscovery(URL(fileURLWithPath: path))
         }
 
         // 3. Sort by depth ascending (shallowest first).
@@ -172,9 +179,14 @@ public actor ProjectRootDiscovery {
         return result.map { URL(fileURLWithPath: $0) }
     }
 
+    private static func isExcludedRoot(_ path: String) -> Bool {
+        ScanPolicy.isExcludedFromProjectDiscovery(URL(fileURLWithPath: path))
+    }
+
     // MARK: - Persistence
 
     private func saveToDisk() {
+        needsSave = false
         let store = ProjectRootsStore(
             confirmed: knownRoots.filter { $0.value  }.map(\.key).sorted(),
             excluded:  knownRoots.filter { !$0.value }.map(\.key).sorted(),
