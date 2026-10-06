@@ -67,6 +67,16 @@ extension ScanPolicy {
         projectArtifactDirectoryNames.contains(url.lastPathComponent.lowercased())
     }
 
+    public static func requiresGitIgnoreEvidence(_ url: URL) -> Bool {
+        projectArtifactNamesRequiringGitIgnoreEvidence.contains(url.lastPathComponent.lowercased())
+    }
+
+    /// Ungated names always pass; gated names need git to report them ignored and untracked (nil fails closed).
+    public static func gitEvidenceAllows(artifact url: URL, status: GitArtifactStatus?) -> Bool {
+        guard requiresGitIgnoreEvidence(url) else { return true }
+        return status == .ignoredUntracked
+    }
+
     /// Cleanup-time gate for project build artifacts. Fail-closed: a bare directory
     /// named `build`/`dist`/`target` anywhere on disk is NOT enough — the path must be
     /// under a registered project scan root, or an ancestor directory must contain a

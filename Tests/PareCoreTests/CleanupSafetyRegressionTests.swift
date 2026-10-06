@@ -17,10 +17,14 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    private func makeEngine(projectRoots: [String] = []) -> CleanupEngine {
+    private func makeEngine(
+        projectRoots: [String] = [],
+        gitStatus: GitArtifactStatus? = nil
+    ) -> CleanupEngine {
         CleanupEngine(
             store: CleanupTransactionStore(directory: storeDir),
-            projectRootsProvider: { projectRoots }
+            projectRootsProvider: { projectRoots },
+            gitInspector: StubGitInspector(status: gitStatus)
         )
     }
 
@@ -77,7 +81,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
             at: project.appending(path: ".git"), withIntermediateDirectories: true
         )
         let build = try makeDirectory(at: project.appending(path: "build"))
-        let engine = makeEngine(projectRoots: [])
+        let engine = makeEngine(projectRoots: [], gitStatus: .ignoredUntracked)
 
         let result = try await engine.clean(findings: [finding(for: build)], profileName: "test")
 
@@ -90,12 +94,116 @@ final class CleanupSafetyRegressionTests: XCTestCase {
     func testBuildDirectoryUnderRegisteredRootIsCleanable() async throws {
         let projectRoot = root.appending(path: "Documents/registered")
         let build = try makeDirectory(at: projectRoot.appending(path: "build"))
-        let engine = makeEngine(projectRoots: [projectRoot.path])
+        let engine = makeEngine(projectRoots: [projectRoot.path], gitStatus: .ignoredUntracked)
 
         let result = try await engine.clean(findings: [finding(for: build)], profileName: "test")
 
         XCTAssertEqual(result.succeeded.count, 1, "skipped: \(result.skipped)")
         XCTAssertFalse(FileManager.default.fileExists(atPath: build.path))
+    }
+
+    // MARK: - Git-ignore evidence for build/dist/target
+
+    /// Root evidence alone is not enough: the output must be ignored and untracked at cleanup time.
+    func testGatedArtifactWithoutGitIgnoreEvidenceIsSkipped() async throws {
+        for status: GitArtifactStatus? in [.notIgnored, .containsTrackedFiles, .gitUnavailable, nil] {
+            let project = root.appending(path: "Documents/proj-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(
+                at: project.appending(path: ".git"), withIntermediateDirectories: true
+            )
+            let build = try makeDirectory(at: project.appending(path: "build"))
+            let engine = makeEngine(projectRoots: [project.path], gitStatus: status)
+
+            let result = try await engine.clean(findings: [finding(for: build)], profileName: "test")
+
+            XCTAssertEqual(result.succeeded.count, 0, String(describing: status))
+            guard case .some(.notGitIgnored(_)) = result.skipped.first?.error else {
+                XCTFail("expected .notGitIgnored for \(String(describing: status)), got \(result.skipped)")
+                continue
+            }
+            XCTAssertTrue(FileManager.default.fileExists(atPath: build.path))
+        }
+    }
+
+    /// `coverage` is gated like `build`: only an ignored, untracked folder may be trashed.
+    func testCoverageWithoutGitIgnoreEvidenceIsSkipped() async throws {
+        let statuses: [GitArtifactStatus?] = [.notIgnored, .containsTrackedFiles, .notInRepository, .gitUnavailable, .failed, nil]
+        for status in statuses {
+            let project = root.appending(path: "Documents/proj-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: project.appending(path: ".git"), withIntermediateDirectories: true)
+            let coverage = try makeDirectory(at: project.appending(path: "coverage"))
+            let engine = makeEngine(projectRoots: [project.path], gitStatus: status)
+
+            let result = try await engine.clean(findings: [finding(for: coverage)], profileName: "test", dryRun: true)
+
+            XCTAssertEqual(result.succeeded.count, 0, String(describing: status))
+            guard case .some(.notGitIgnored(_)) = result.skipped.first?.error else {
+                XCTFail("expected .notGitIgnored for \(String(describing: status)), got \(result.skipped)")
+                continue
+            }
+        }
+    }
+
+    func testIgnoredUntrackedCoverageIsCleanable() async throws {
+        let project = root.appending(path: "Documents/proj")
+        try FileManager.default.createDirectory(at: project.appending(path: ".git"), withIntermediateDirectories: true)
+        let coverage = try makeDirectory(at: project.appending(path: "coverage"))
+        let engine = makeEngine(projectRoots: [project.path], gitStatus: .ignoredUntracked)
+
+        let result = try await engine.clean(findings: [finding(for: coverage)], profileName: "test", dryRun: true)
+
+        XCTAssertEqual(result.succeeded.count, 1, "skipped: \(result.skipped)")
+    }
+
+    /// A `build` dir mis-tagged as a cache under a protected tree cannot slip past the gate.
+    func testMisTaggedBuildUnderDocumentsIsBlocked() async throws {
+        let project = root.appending(path: "Documents/proj")
+        try FileManager.default.createDirectory(
+            at: project.appending(path: ".git"), withIntermediateDirectories: true
+        )
+        let build = try makeDirectory(at: project.appending(path: "build"))
+        let engine = makeEngine(projectRoots: [project.path], gitStatus: .notIgnored)
+
+        let result = try await engine.clean(
+            findings: [finding(for: build, category: .userCaches)],
+            profileName: "test"
+        )
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        XCTAssertEqual(result.skipped.count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: build.path))
+    }
+
+    /// `/tmp/` is a low-impact marker, so project artifacts must not fall back to that allow-list.
+    func testProjectArtifactUnderPrivateTmpStillNeedsGitEvidence() async throws {
+        let project = root.appending(path: "scratch/proj")
+        try FileManager.default.createDirectory(
+            at: project.appending(path: ".git"), withIntermediateDirectories: true
+        )
+        let build = try makeDirectory(at: project.appending(path: "build"))
+        XCTAssertTrue(ScanPolicy.isLowImpactPath(build), "precondition: /private/tmp is low-impact")
+        let engine = makeEngine(projectRoots: [], gitStatus: .notIgnored)
+
+        let result = try await engine.clean(findings: [finding(for: build)], profileName: "test")
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        guard case .some(.notGitIgnored(_)) = result.skipped.first?.error else {
+            return XCTFail("expected .notGitIgnored, got \(result.skipped)")
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: build.path))
+    }
+
+    /// Without project-root evidence a `.projectArtifacts` finding under `/tmp` is unsafe.
+    func testProjectArtifactUnderPrivateTmpWithoutRootEvidenceIsUnsafe() async throws {
+        let cache = try makeDirectory(at: root.appending(path: "scratch/loose/.cache"))
+        let engine = makeEngine(projectRoots: [], gitStatus: .ignoredUntracked)
+
+        let result = try await engine.clean(findings: [finding(for: cache)], profileName: "test")
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        guard case .some(.unsafePath(_)) = result.skipped.first?.error else {
+            return XCTFail("expected .unsafePath, got \(result.skipped)")
+        }
     }
 
     /// The home directory itself is never accepted as project-root evidence.
