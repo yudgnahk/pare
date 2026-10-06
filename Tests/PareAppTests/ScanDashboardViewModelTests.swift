@@ -1,4 +1,5 @@
 import XCTest
+import PareCore
 @testable import PareApp
 
 @MainActor
@@ -79,5 +80,23 @@ final class ScanDashboardViewModelTests: XCTestCase {
             XCTAssertNil(coordinator.pending, "\(kind)")
             XCTAssertEqual(coordinator.state, .idle, "\(kind)")
         }
+    }
+
+    func testIncompleteRuleProducesPartialResultsWarning() {
+        let report = ScanReport(
+            findings: [],
+            summaries: [],
+            incompleteRules: [ScanIncompleteRule(
+                ruleID: "project-artifacts-v2",
+                ruleTitle: "Project Local Build Caches",
+                message: "Stopped after 60 s, 3 of 9 project folders fully scanned."
+            )]
+        )
+
+        let warnings = ScanDashboardViewModel.makeScanWarnings(from: report)
+
+        XCTAssertEqual(warnings, [
+            "Project Local Build Caches: scan incomplete, results are partial. Stopped after 60 s, 3 of 9 project folders fully scanned."
+        ])
     }
 }
