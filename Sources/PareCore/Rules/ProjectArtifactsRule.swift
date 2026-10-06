@@ -18,6 +18,7 @@ import Foundation
 ///   - Hidden directories that are NOT known artifact names are skipped.
 ///   - Apply a 7-day age gate for all artifact types.
 ///   - `dist/` and `build/` are flagged `.review`; everything else is `.safe`.
+///   - `build`/`dist`/`target` are only reported when git ignores them and tracks nothing inside.
 public struct ProjectArtifactsRule: ScanRule {
     public let id = "project-artifacts-v2"
     public let title = "Project Local Build Caches"
@@ -32,17 +33,28 @@ public struct ProjectArtifactsRule: ScanRule {
 
     private let discovery: ProjectRootDiscovery
     private let pathStore: ProjectScanPathStore
+    private let gitInspector: any GitArtifactInspecting
     private let timeBudget: TimeInterval
     private let now: @Sendable () -> Date
+
+    /// A git-gated artifact (`build`/`dist`/`target`) found during the walk, sized only after git allows it.
+    private struct Candidate {
+        let url: URL
+        let lowercasedName: String
+        let lastUsed: Date?
+        let rootIndex: Int
+    }
 
     public init(
         discovery: ProjectRootDiscovery = .shared,
         pathStore: ProjectScanPathStore = .shared,
+        gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector(),
         timeBudget: TimeInterval = ProjectArtifactsRule.defaultTimeBudget,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.discovery = discovery
         self.pathStore = pathStore
+        self.gitInspector = gitInspector
         self.timeBudget = timeBudget
         self.now = now
     }
@@ -70,9 +82,10 @@ public struct ProjectArtifactsRule: ScanRule {
         let minAge = ScanPolicy.defaultMinimumAgeSeconds(for: category)
         let budget = WalkBudget(deadline: now().addingTimeInterval(timeBudget), now: now)
         var findings: [ScanFinding] = []
-        var completedRoots = 0
+        var gated: [Candidate] = []
+        var completedRoots = Set<Int>()
 
-        for root in roots {
+        for (index, root) in roots.enumerated() {
             if Task.isCancelled { break }
             let completed = await walk(
                 directory: root,
@@ -81,10 +94,26 @@ public struct ProjectArtifactsRule: ScanRule {
                 minAge: minAge,
                 sizeIndex: environment.sizeIndex,
                 budget: budget,
-                findings: &findings
+                rootIndex: index,
+                findings: &findings,
+                gated: &gated
             )
             guard completed else { break }
-            completedRoots += 1
+            completedRoots.insert(index)
+        }
+
+        // One git query per scan for every gated candidate; sized afterwards under the same budget.
+        let statuses = await gitInspector.statuses(for: gated.map(\.url))
+        let allowed = gated.filter { ScanPolicy.gitEvidenceAllows(artifact: $0.url, status: statuses[$0.url.path]) }
+        for (offset, candidate) in allowed.enumerated() {
+            guard !Task.isCancelled, !budget.isExhausted else {
+                completedRoots.subtract(allowed[offset...].map(\.rootIndex))
+                break
+            }
+            if let finding = makeFinding(url: candidate.url, lowercasedName: candidate.lowercasedName,
+                                         lastUsed: candidate.lastUsed, sizeIndex: environment.sizeIndex) {
+                findings.append(finding)
+            }
         }
 
         var notices: [String] = []
@@ -92,9 +121,9 @@ public struct ProjectArtifactsRule: ScanRule {
             notices.append("Project discovery timed out; some projects may be missing.")
         }
         // A walk only stops early on cancellation or the budget; cancelled scans are discarded anyway.
-        if completedRoots < roots.count, !Task.isCancelled {
+        if completedRoots.count < roots.count, !Task.isCancelled {
             notices.append(
-                "Stopped after \(Int(timeBudget)) s, \(completedRoots) of \(roots.count) project folders fully scanned."
+                "Stopped after \(Int(timeBudget)) s, \(completedRoots.count) of \(roots.count) project folders fully scanned."
             )
         }
         return ScanRuleResult(
@@ -146,7 +175,9 @@ public struct ProjectArtifactsRule: ScanRule {
         minAge: TimeInterval?,
         sizeIndex: DirectorySizeIndex,
         budget: WalkBudget,
-        findings: inout [ScanFinding]
+        rootIndex: Int,
+        findings: inout [ScanFinding],
+        gated: inout [Candidate]
     ) async -> Bool {
         guard depth < maxDepth else { return true }
         guard !Task.isCancelled, !budget.isExhausted else { return false }
@@ -180,25 +211,17 @@ public struct ProjectArtifactsRule: ScanRule {
                     if let date = effectiveDate, Date().timeIntervalSince(date) < minAge { continue }
                 }
 
+                if ScanPolicy.requiresGitIgnoreEvidence(item) {
+                    gated.append(Candidate(
+                        url: item, lowercasedName: lower, lastUsed: values.contentModificationDate, rootIndex: rootIndex
+                    ))
+                    continue
+                }
                 guard !budget.isExhausted else { return false }
-                let size = sizeIndex.directorySize(url: item)
-                guard size > 0 else { continue }
-
-                let reviewNames: Set<String> = ["dist", "build"]
-                let risk: RiskLevel = reviewNames.contains(lower) ? .review : .safe
-                let reason = risk == .review
-                    ? "Build output directory — may contain committed release artifacts"
-                    : reason
-
-                findings.append(ScanFinding(
-                    category: category,
-                    riskLevel: risk,
-                    reason: reason,
-                    path: item.path,
-                    sizeBytes: size,
-                    lastUsed: values.contentModificationDate,
-                    confidence: confidence
-                ))
+                if let finding = makeFinding(url: item, lowercasedName: lower,
+                                             lastUsed: values.contentModificationDate, sizeIndex: sizeIndex) {
+                    findings.append(finding)
+                }
                 // Do not recurse into matched artifact directories.
             } else if !name.hasPrefix(".") {
                 // Recurse into visible directories; skip hidden dirs that aren't artifacts.
@@ -209,11 +232,35 @@ public struct ProjectArtifactsRule: ScanRule {
                     minAge: minAge,
                     sizeIndex: sizeIndex,
                     budget: budget,
-                    findings: &findings
+                    rootIndex: rootIndex,
+                    findings: &findings,
+                    gated: &gated
                 )
                 guard completed else { return false }
             }
         }
         return true
+    }
+
+    private func makeFinding(url: URL, lowercasedName: String, lastUsed: Date?, sizeIndex: DirectorySizeIndex) -> ScanFinding? {
+        guard !Task.isCancelled else { return nil }
+        let size = sizeIndex.directorySize(url: url)
+        guard size > 0 else { return nil }
+
+        let reviewNames: Set<String> = ["dist", "build"]
+        let risk: RiskLevel = reviewNames.contains(lowercasedName) ? .review : .safe
+        let reason = risk == .review
+            ? "Build output directory — may contain committed release artifacts"
+            : reason
+
+        return ScanFinding(
+            category: category,
+            riskLevel: risk,
+            reason: reason,
+            path: url.path,
+            sizeBytes: size,
+            lastUsed: lastUsed,
+            confidence: confidence
+        )
     }
 }

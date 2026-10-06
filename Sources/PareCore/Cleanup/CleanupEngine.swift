@@ -23,6 +23,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case fileNotFound(String)
     /// The path goes through a symbolic link, which could redirect the Trash move to another item.
     case symbolicLinkBlocked(String)
+    /// A `build`/`dist`/`target` folder git does not report as ignored and untracked.
+    case notGitIgnored(String)
     /// The Trash move failed with an underlying system error.
     case trashFailed(String, Error)
     /// Undo failed — the associated value describes what went wrong.
@@ -50,6 +52,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "File not found: \(path)"
         case .symbolicLinkBlocked(let path):
             return "Skipped: path goes through a symbolic link: \(path)"
+        case .notGitIgnored(let path):
+            return "Skipped: git does not ignore this folder, or tracks files inside it: \(path)"
         case .trashFailed(let path, let error):
             return "Failed to move to Trash: \(path) — \(error.localizedDescription)"
         case .restoreFailed(let reason):
@@ -129,6 +133,8 @@ public actor CleanupEngine {
     private let now: @Sendable () -> Date
     /// Moves one item to the Trash and returns where it landed; injectable so tests never touch the real Trash.
     private let trashItem: @Sendable (URL) throws -> URL?
+    /// Re-checks git ignore evidence for `build`/`dist`/`target` at cleanup time.
+    private let gitInspector: any GitArtifactInspecting
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -139,7 +145,8 @@ public actor CleanupEngine {
         projectRootsProvider: (@Sendable () async -> [String])? = nil,
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
-        trashItem: (@Sendable (URL) throws -> URL?)? = nil
+        trashItem: (@Sendable (URL) throws -> URL?)? = nil,
+        gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector()
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -151,6 +158,7 @@ public actor CleanupEngine {
         }
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
+        self.gitInspector = gitInspector
     }
 
     private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -211,6 +219,10 @@ public actor CleanupEngine {
         // and exclusions must be honored at cleanup time (not only at scan time).
         let projectRootPaths = await projectRootsProvider()
         let exclusions = exclusionsProvider()
+        // The .gitignore can change, or files be force-added, between scan and clean.
+        let gitStatuses = await gitInspector.statuses(
+            for: findings.map { URL(fileURLWithPath: $0.path) }.filter(ScanPolicy.requiresGitIgnoreEvidence)
+        )
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -275,13 +287,10 @@ public actor CleanupEngine {
                 continue
             }
 
-            // Re-verify the path is still considered safe by policy. Fail-closed variants:
-            // wrong-platform matches only inside the scanned trees; project artifacts only
-            // with project-root evidence or under a registered project scan root.
-            guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
-                    || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
-                    || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
-                skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+            if let rejection = policyRejection(
+                for: finding, url: url, projectRootPaths: projectRootPaths, gitStatuses: gitStatuses
+            ) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: rejection))
                 continue
             }
 
@@ -475,6 +484,30 @@ public actor CleanupEngine {
     /// A path passes persona policy if it matches any of the known persona marker sets.
     /// Docker advanced / VM disk markers are intentionally **not** included — those paths
     /// are hard-blocked via `isDockerNeverDeletePath` and must never become cleanable.
+    /// Re-verifies the path is still safe by policy. Fail-closed variants: wrong-platform matches only
+    /// inside the scanned trees; project artifacts need project-root evidence plus, for gated names, git evidence.
+    private func policyRejection(
+        for finding: ScanFinding,
+        url: URL,
+        projectRootPaths: [String],
+        gitStatuses: [String: GitArtifactStatus]
+    ) -> CleanupError? {
+        let projectArtifactRejection: CleanupError? = {
+            guard ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
+                return .unsafePath(finding.path)
+            }
+            return ScanPolicy.gitEvidenceAllows(artifact: url, status: gitStatuses[url.path])
+                ? nil : .notGitIgnored(finding.path)
+        }()
+        // Mandatory for project artifacts: `/tmp/` is low-impact and would otherwise bypass git evidence.
+        if finding.category == .projectArtifacts { return projectArtifactRejection }
+        if ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
+            || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url) {
+            return nil
+        }
+        return projectArtifactRejection
+    }
+
     private func isPersonaPath(_ url: URL) -> Bool {
         if ScanPolicy.isDockerNeverDeletePath(url) { return false }
         return ScanPolicy.matchesPersonaPath(url, allowedMarkers: Self.allPersonaMarkers)
