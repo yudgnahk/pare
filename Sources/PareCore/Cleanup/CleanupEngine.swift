@@ -153,6 +153,8 @@ public actor CleanupEngine {
     private let runningApps: any RunningAppsProviding
     /// Measures volume free space around real runs so the UI can show what the disk actually gained.
     private let freeSpace: any VolumeFreeSpaceProviding
+    /// Running executables for the version-sibling gate; taken at most once per run.
+    private let runningExecutables: any RunningExecutablesProviding
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -168,7 +170,8 @@ public actor CleanupEngine {
         goCacheLocations: GoCacheLocations = .shared,
         openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
         runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider(),
-        freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace()
+        freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace(),
+        runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider()
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -180,6 +183,7 @@ public actor CleanupEngine {
         }
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
+        self.runningExecutables = runningExecutables
         self.gitInspector = gitInspector
         self.goCacheLocations = goCacheLocations
         self.openFiles = openFiles
@@ -282,6 +286,7 @@ public actor CleanupEngine {
         let volumeURL = dryRun ? nil : findings.first.map { Self.nearestExistingDirectory(of: $0.path) }
         let readingBefore = volumeURL.flatMap { freeSpace.freeSpace(forVolumeContaining: $0) }
         var readingAfter: VolumeFreeSpace?
+        var executablesSnapshot: [String]??
 
         func makeTransaction(_ items: [CleanupItem]) -> CleanupTransaction {
             let bytes = Self.comparableFreeBytes(before: readingBefore, after: readingAfter)
@@ -350,6 +355,15 @@ public actor CleanupEngine {
             if ScanPolicy.hasUpgradeBackupSignal(url.lastPathComponent) {
                 // Backup-named paths pass only through the upgrade-backup gate, never the generic allow-lists.
                 if !ScanPolicy.isReclaimableUpgradeBackup(url, now: now()) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                    continue
+                }
+            } else if ScanPolicy.isVersionSiblingMember(url) {
+                // Version siblings pass only their own re-verification, never a broader allow-list.
+                if executablesSnapshot == nil {
+                    executablesSnapshot = .some(await runningExecutables.runningExecutablePaths())
+                }
+                if !ScanPolicy.isReclaimableVersionSibling(url, runningExecutables: executablesSnapshot ?? nil) {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                     continue
                 }

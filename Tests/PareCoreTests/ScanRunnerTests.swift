@@ -55,6 +55,7 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "orphaned-launch-agents" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "crash-loops" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "runaway-logs" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "version-siblings" }))
     }
 
     func testUnifiedCatalogRuleCount() {

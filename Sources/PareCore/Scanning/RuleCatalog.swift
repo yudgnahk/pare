@@ -42,6 +42,7 @@ public enum RuleCatalog {
             CrashLoopRule(),
             RunawayLogsRule(),
             StaleUpgradeBackupsRule(),
+            VersionSiblingsRule(),
         ]
     }
 
