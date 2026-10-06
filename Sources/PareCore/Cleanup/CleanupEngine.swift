@@ -275,10 +275,17 @@ public actor CleanupEngine {
                 continue
             }
 
+            // Backup-named paths pass only through the upgrade-backup gate, never the generic allow-lists.
+            let isUpgradeBackupName = ScanPolicy.hasUpgradeBackupSignal(url.lastPathComponent)
+            if isUpgradeBackupName, !ScanPolicy.isReclaimableUpgradeBackup(url, now: now()) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                continue
+            }
+
             // Re-verify the path is still considered safe by policy. Fail-closed variants:
             // wrong-platform matches only inside the scanned trees; project artifacts only
             // with project-root evidence or under a registered project scan root.
-            guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
+            guard isUpgradeBackupName || ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
                     || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
                     || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
