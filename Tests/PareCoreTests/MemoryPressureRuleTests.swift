@@ -36,7 +36,8 @@ final class MemoryPressureRuleTests: XCTestCase {
         XCTAssertEqual(event.topProcesses.first?.residentBytes, 131_072 * 16_384)
         XCTAssertEqual(event.killReasons, ["vm-pageshortage"])
         XCTAssertTrue(event.isSystemMemoryShortage)
-        XCTAssertEqual(event.date, ISO8601DateFormatter().date(from: "2026-10-06T14:01:25Z")?.addingTimeInterval(0.66))
+        let expected = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-06T14:01:25Z")).addingTimeInterval(0.66)
+        XCTAssertEqual(try XCTUnwrap(event.date).timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.01)
     }
 
     func testOnlySystemWideKillReasonsCountAsRunningOutOfMemory() throws {
