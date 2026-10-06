@@ -69,6 +69,8 @@ extension ScanPolicy {
             return defaultCacheMinAgeSeconds  // 3 days
         case .launchAgents:
             return launchAgentOrphanMinAgeSeconds
+        case .diagnostics:
+            return nil
         }
     }
 

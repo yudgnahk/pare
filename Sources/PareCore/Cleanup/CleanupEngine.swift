@@ -311,8 +311,8 @@ public actor CleanupEngine {
                 continue
             }
 
-            // ADVANCED findings must never be deleted directly.
-            if finding.riskLevel == .advanced {
+            // ADVANCED findings must never be deleted directly; diagnostics never, whatever their label.
+            if finding.riskLevel == .advanced || finding.category == .diagnostics {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .advancedRiskBlocked(finding.path)))
                 continue
             }

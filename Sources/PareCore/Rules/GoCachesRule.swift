@@ -60,6 +60,8 @@ public struct GoCachesRule: ScanRule {
             return "Go build cache in active use — Go evicts entries unused for \(days) days itself (report-only)"
         case .workingSet(nil):
             return "Go module cache shared by every Go project — clear with `go clean -modcache` if needed (report-only)"
+        case .explainOnly(let action):
+            return action
         }
     }
 }

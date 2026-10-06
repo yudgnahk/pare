@@ -17,6 +17,8 @@ public enum ScanCategory: String, CaseIterable, Sendable {
     case deviceBackups = "Device Backups"
     case productivityCaches = "Productivity Caches"
     case launchAgents = "Launch Agents"
+    /// Explain-only findings (swap, deleted-but-open files): reported, never reclaimable or cleanable.
+    case diagnostics = "Diagnostics"
 }
 
 public enum RiskLevel: String, Sendable {

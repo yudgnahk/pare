@@ -34,6 +34,8 @@ public enum RuleCatalog {
             MobileSyncBackupsRule(),
             ProductivityCachesRule(),
             OrphanedLaunchAgentsRule(),
+            DeletedOpenFilesRule(),
+            SwapUsageRule(),
         ]
     }
 
