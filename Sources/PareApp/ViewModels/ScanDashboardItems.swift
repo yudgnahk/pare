@@ -30,6 +30,7 @@ struct FindingItem: Identifiable, Sendable {
     let reason: String
     let confidence: Double
     let lastUsed: Date?
+    let isSizeComplete: Bool
 
     init(finding: ScanFinding) {
         self.id = "\(finding.path)-\(finding.sizeBytes)"
@@ -40,6 +41,7 @@ struct FindingItem: Identifiable, Sendable {
         self.reason = finding.reason
         self.confidence = finding.confidence
         self.lastUsed = finding.lastUsed
+        self.isSizeComplete = finding.isSizeComplete
     }
 }
 

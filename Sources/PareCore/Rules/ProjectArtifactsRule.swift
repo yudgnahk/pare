@@ -244,8 +244,9 @@ public struct ProjectArtifactsRule: ScanRule {
 
     private func makeFinding(url: URL, lowercasedName: String, lastUsed: Date?, sizeIndex: DirectorySizeIndex) -> ScanFinding? {
         guard !Task.isCancelled else { return nil }
-        let size = sizeIndex.directorySize(url: url)
-        guard size > 0 else { return nil }
+        // A deadline-cut size is still reported, flagged as a lower bound.
+        let sized = sizeIndex.directorySizeResult(url: url)
+        guard sized.bytes > 0 || !sized.isComplete else { return nil }
 
         let reviewNames: Set<String> = ["dist", "build"]
         let risk: RiskLevel = reviewNames.contains(lowercasedName) ? .review : .safe
@@ -258,9 +259,10 @@ public struct ProjectArtifactsRule: ScanRule {
             riskLevel: risk,
             reason: reason,
             path: url.path,
-            sizeBytes: size,
+            sizeBytes: sized.bytes,
             lastUsed: lastUsed,
-            confidence: confidence
+            confidence: confidence,
+            isSizeComplete: sized.isComplete
         )
     }
 }

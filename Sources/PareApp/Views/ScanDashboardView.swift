@@ -351,7 +351,7 @@ struct ScanDashboardView: View {
                         CategoryFolderRowView(
                             row: row,
                             category: summary.category,
-                            sizeText: viewModel.formattedBytes(row.totalBytes),
+                            sizeText: viewModel.formattedFolderSize(row),
                             selectionState: viewModel.folderSelectionState(row),
                             canReveal: viewModel.canReveal(path: row.folderPath),
                             onToggle: { viewModel.toggleFolder(row) },
@@ -403,7 +403,7 @@ struct ScanDashboardView: View {
                         CategoryFolderRowView(
                             row: row,
                             category: group.category,
-                            sizeText: viewModel.formattedBytes(row.totalBytes),
+                            sizeText: viewModel.formattedFolderSize(row),
                             selectionState: viewModel.folderSelectionState(row),
                             canReveal: viewModel.canReveal(path: row.folderPath),
                             onToggle: { viewModel.toggleFolder(row) },
@@ -546,7 +546,7 @@ struct ScanDashboardView: View {
             path: finding.path,
             displayName: largestItemDisplayName(finding),
             subtitle: largestItemSubtitle(finding),
-            sizeText: viewModel.formattedBytes(finding.sizeBytes),
+            sizeText: viewModel.formattedFindingSize(finding),
             riskLevel: finding.riskLevel,
             isSelected: viewModel.isSelected(path: finding.path),
             isSelectable: finding.riskLevel != .advanced,

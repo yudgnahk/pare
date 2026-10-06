@@ -23,6 +23,8 @@ final class ScanDashboardViewModel: ObservableObject {
         let toolRollups: [ToolRollup]
         let candidateStats: CandidateStats
         let totalReclaimableBytes: Int64
+        /// True when some reclaimable finding's size is a lower bound (sizing hit its deadline).
+        let isTotalSizePartial: Bool
         /// Human-readable scan warnings (rule failures, unreadable locations — R1.2/R1.3).
         let scanWarnings: [String]
         /// Rendered paths that existed on disk at scan finish (reveal button state).
@@ -36,6 +38,8 @@ final class ScanDashboardViewModel: ObservableObject {
 
     @Published private(set) var state: ScanState = .idle
     @Published private(set) var totalReclaimableBytes: Int64 = 0
+    /// The total is "at least" this much: some folder sizes stopped at their deadline.
+    @Published private(set) var isTotalSizePartial = false
     /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
     @Published private(set) var scanWarnings: [String] = []
     @Published private(set) var summaries: [SummaryItem] = []
@@ -468,6 +472,7 @@ final class ScanDashboardViewModel: ObservableObject {
             toolRollups: FolderRollup.makeToolRollups(from: findings),
             candidateStats: CandidateStats.compute(from: findings),
             totalReclaimableBytes: report.totalReclaimableBytes,
+            isTotalSizePartial: report.hasPartialSizes,
             scanWarnings: makeScanWarnings(from: report),
             revealablePaths: revealablePaths,
             folderFindingPaths: folderFindingPaths
@@ -533,6 +538,7 @@ final class ScanDashboardViewModel: ObservableObject {
         categoryFolderRows = prepared.aggregate.rowsByCategory
         categoryToolGroups = prepared.aggregate.toolGroupsByCategory
         totalReclaimableBytes = prepared.totalReclaimableBytes
+        isTotalSizePartial = prepared.isTotalSizePartial
         scanWarnings = prepared.scanWarnings
         summaries = prepared.summaries
         topFindings = prepared.sortedTopFindings
@@ -638,6 +644,7 @@ final class ScanDashboardViewModel: ObservableObject {
         // Capture the finding before removal so totals can be adjusted (R0.6).
         let excluded = findingsByPath[path] ?? latestFindings.first { $0.path == path }
         latestFindings.removeAll { $0.path == path }
+        isTotalSizePartial = ScanReport.hasPartialSizes(in: latestFindings)
         findingsByPath.removeValue(forKey: path)
         topFindings.removeAll { $0.path == path }
         // Rebuild private maps + lightweight rows (not on scroll hot path).
@@ -685,6 +692,16 @@ final class ScanDashboardViewModel: ObservableObject {
 
     func formattedBytes(_ bytes: Int64) -> String {
         ScanReportPresenter.formatBytes(bytes)
+    }
+
+    /// "≥ X" or "size unknown" when a member finding's sizing stopped at its deadline.
+    func formattedFolderSize(_ row: CategoryFolderRow) -> String {
+        ScanReportPresenter.formatFindingSize(bytes: row.totalBytes, isComplete: !row.hasPartialSize)
+    }
+
+    /// "≥ X" or "size unknown" when the finding's sizing stopped at its deadline.
+    func formattedFindingSize(_ finding: FindingItem) -> String {
+        ScanReportPresenter.formatFindingSize(bytes: finding.sizeBytes, isComplete: finding.isSizeComplete)
     }
 
     func formattedDate(_ date: Date?) -> String {
