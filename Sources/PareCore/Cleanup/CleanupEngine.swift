@@ -31,6 +31,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case trashFailed(String, Error)
     /// Undo failed — the associated value describes what went wrong.
     case restoreFailed(String)
+    /// Another process has a file open at or under the path.
+    case inUse(String, holder: String)
 
     public var errorDescription: String? {
         switch self {
@@ -65,6 +67,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "Failed to move to Trash: \(path) — \(error.localizedDescription)"
         case .restoreFailed(let reason):
             return "Cannot restore — \(reason)"
+        case .inUse(let path, let holder):
+            return "Skipped: in use by \(holder): \(path)"
         }
     }
 }
@@ -144,6 +148,9 @@ public actor CleanupEngine {
     private let gitInspector: any GitArtifactInspecting
     /// Custom Go cache locations (`go env`) that are never cleaned, alongside the default spellings.
     private let goCacheLocations: GoCacheLocations
+    /// Open-file snapshot and running apps for the in-use gate; injectable so tests never run lsof.
+    private let openFiles: any OpenFileSnapshotProviding
+    private let runningApps: any RunningAppsProviding
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -156,7 +163,9 @@ public actor CleanupEngine {
         now: @escaping @Sendable () -> Date = { Date() },
         trashItem: (@Sendable (URL) throws -> URL?)? = nil,
         gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector(),
-        goCacheLocations: GoCacheLocations = .shared
+        goCacheLocations: GoCacheLocations = .shared,
+        openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
+        runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider()
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -170,6 +179,8 @@ public actor CleanupEngine {
         self.trashItem = trashItem ?? Self.moveToSystemTrash
         self.gitInspector = gitInspector
         self.goCacheLocations = goCacheLocations
+        self.openFiles = openFiles
+        self.runningApps = runningApps
     }
 
     private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -235,6 +246,7 @@ public actor CleanupEngine {
             for: findings.map { URL(fileURLWithPath: $0.path) }.filter(ScanPolicy.requiresGitIgnoreEvidence)
         )
         let goCacheRoots = await goCacheLocations.resolveIfNeeded().all
+        let inUse = InUseBatchCheck(openFiles: openFiles, runningApps: runningApps)
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -347,6 +359,12 @@ public actor CleanupEngine {
                         continue
                     }
                 }
+            }
+
+            // Last gate before trashing, so the batch's single snapshot is only taken when needed.
+            if let holder = await inUse.holder(forPath: finding.path) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .inUse(finding.path, holder: holder)))
+                continue
             }
 
             if dryRun {
