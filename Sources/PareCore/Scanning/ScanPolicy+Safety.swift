@@ -104,6 +104,20 @@ extension ScanPolicy {
         return false
     }
 
+    /// True when the path contains any `projectDiscoveryExcludedPathComponents` run as whole, case-sensitive components.
+    public static func isExcludedFromProjectDiscovery(_ url: URL) -> Bool {
+        let components = url.standardizedFileURL.pathComponents
+        return projectDiscoveryExcludedComponentRuns.contains { run in
+            guard components.count >= run.count else { return false }
+            return (0...(components.count - run.count)).contains { start in
+                components[start..<(start + run.count)].elementsEqual(run)
+            }
+        }
+    }
+
+    private static let projectDiscoveryExcludedComponentRuns: [[String]] =
+        projectDiscoveryExcludedPathComponents.map { $0.split(separator: "/").map(String.init) }
+
     public static func matchesPersonaPath(_ url: URL, allowedMarkers: [String]) -> Bool {
         // Parity with isLowImpactPath (R1.6): search-index stores must never pass
         // the persona gate either — deleting them forces a costly reindex.
