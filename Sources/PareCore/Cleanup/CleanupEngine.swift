@@ -155,6 +155,8 @@ public actor CleanupEngine {
     private let freeSpace: any VolumeFreeSpaceProviding
     /// Running executables for the version-sibling gate; taken at most once per run.
     private let runningExecutables: any RunningExecutablesProviding
+    /// Codex staging folders are only cleanable while Codex and ChatGPT are not running. Injectable.
+    private let isCodexRunning: @Sendable () async -> Bool
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -171,7 +173,8 @@ public actor CleanupEngine {
         openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
         runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider(),
         freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace(),
-        runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider()
+        runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider(),
+        isCodexRunning: (@Sendable () async -> Bool)? = nil
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -183,6 +186,7 @@ public actor CleanupEngine {
         }
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
+        self.isCodexRunning = isCodexRunning ?? CodexActivity.system
         self.runningExecutables = runningExecutables
         self.gitInspector = gitInspector
         self.goCacheLocations = goCacheLocations
@@ -275,6 +279,10 @@ public actor CleanupEngine {
         )
         let goCacheRoots = await goCacheLocations.resolveIfNeeded().all
         let inUse = InUseBatchCheck(openFiles: openFiles, runningApps: runningApps)
+        // Checked once per batch, and only when it contains Codex staging paths.
+        let codexIdle = findings.contains { ScanPolicy.codexStagingRoot(containing: $0.path) != nil }
+            ? !(await isCodexRunning())
+            : false
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -367,6 +375,8 @@ public actor CleanupEngine {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                     continue
                 }
+            } else if codexIdle, ScanPolicy.isReclaimableCodexStagingEntry(url, now: now()) {
+                // Extra allow route: Codex staging leftovers, only while Codex and ChatGPT are not running.
             } else if let rejection = policyRejection(
                 for: finding, url: url, projectRootPaths: projectRootPaths, gitStatuses: gitStatuses
             ) {

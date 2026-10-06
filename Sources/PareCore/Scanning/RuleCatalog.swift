@@ -43,6 +43,7 @@ public enum RuleCatalog {
             RunawayLogsRule(),
             StaleUpgradeBackupsRule(),
             VersionSiblingsRule(),
+            CodexStagingRule(),
         ]
     }
 

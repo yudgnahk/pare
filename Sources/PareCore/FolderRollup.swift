@@ -157,6 +157,9 @@ public enum FolderRollup {
         let parts = URL(fileURLWithPath: path).pathComponents.filter { $0 != "/" }
         guard !parts.isEmpty else { return path }
 
+        // Codex staging roots: one row per root, however many abandoned folders it holds.
+        if let root = ScanPolicy.codexStagingRoot(containing: path) { return root }
+
         // Package manager / tool cache roots — one row per root, not per blob.
         let singleSegmentRoots = [
             "_cacache", "_npx", "Yarn", "pnpm", "CocoaPods", "org.swift.swiftpm",
