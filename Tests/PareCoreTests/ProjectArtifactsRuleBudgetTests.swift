@@ -7,7 +7,9 @@ final class ProjectArtifactsRuleBudgetTests: XCTestCase {
     private var suiteName: String!
 
     override func setUpWithError() throws {
-        tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
+        // Resolved so expected paths match the `/private/var/…` spelling the walk reports.
+        tmp = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+            .appending(path: "pare_test_\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         suiteName = "pare.tests.project-budget.\(UUID().uuidString)"
     }
