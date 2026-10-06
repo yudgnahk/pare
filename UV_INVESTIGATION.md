@@ -3,7 +3,7 @@
 **Date:** 2026-07-25  
 **Machine:** Kelvin’s macOS (arm64)  
 **uv version:** 0.11.32 (Homebrew)  
-**Context:** Comparing how Mole and Pare treat `~/.cache/uv` (~20 GB), and what actually fills that space.
+**Context:** Comparing how another CLI cleanup tool and Pare treat `~/.cache/uv` (~20 GB), and what actually fills that space.
 
 > **Correction (2026-09-11):** the ~20 GB figure below is `du` apparent size, not allocated
 > disk. uv installs tool envs via APFS clonefile (copy-on-write), so the 43 `archive-v0`
@@ -22,7 +22,7 @@
 | Does `~/Library/Caches/uv` exist? | **No** (Pare’s current target only) |
 | What dominates size? | **`archive-v0` (~19 GB)** — mostly full tool environments |
 | Root package driver | **`tree-sitter-language-pack`** via **`code-review-graph`** |
-| How Mole treats it | Finds path via CLI; cleans with `uv cache prune` only; dry-run shows no size |
+| How a reference CLI cleaner treats it | Finds path via CLI; cleans with `uv cache prune` only; dry-run shows no size |
 | How Pare treats it today | **Misses it** — only scans `~/Library/Caches/uv` |
 
 ---
@@ -140,19 +140,18 @@ Heavy use + many tool env versions → **43 copies × ~350 MB** → ~15 GB from 
 
 ---
 
-## 3. How Mole treats uv cache
+## 3. How a reference CLI cleaner treats uv cache
 
-**Source (Mole 1.47.1 Homebrew):** `lib/clean/dev.sh` → `clean_uv_cache`  
-**Call chain:** `mo clean` → Developer tools → `clean_developer_tools` → `clean_dev_python` → `clean_uv_cache`
+**Where it runs:** its `clean` command → developer tools step → Python tools step → uv cache step.
 
 ```bash
 # Conceptual flow
 uv_cache_path="$HOME/.cache/uv"
 if uv is available:
   uv_cache_path=$(uv cache dir)   # dynamic discovery
-  clean_tool_cache "uv cache" "$uv_cache_path" -- uv cache prune
+  run `uv cache prune` for "$uv_cache_path"
 else:
-  safe_clean "$HOME/.cache/uv"/*
+  delete "$HOME/.cache/uv"/*
 ```
 
 | Behavior | Detail |
@@ -161,11 +160,11 @@ else:
 | Real clean command | **`uv cache prune`** (dangling / unused only) |
 | Not used | **`uv cache clean`** (full wipe) |
 | Dry-run UI | `uv cache · would clean` — **no byte size** |
-| `clean-list.txt` | Tool-cache path **not exported** with size |
+| Exported clean list | Tool-cache path **not exported** with size |
 | Dry-run total | User run: **8.91 GB** — **did not include** the ~20 GB uv cache |
 | Default whitelist | uv is **listed** as optional protectable (`$HOME/.cache/uv/*`) but **not** in default protected set |
 
-**Implication:** Mole *can* target the right directory, but:
+**Implication:** the reference tool *can* target the right directory, but:
 
 1. Dry-run **hides impact** (no size / not in preview list).  
 2. Actual clean is **conservative** (`prune`), so most of the 20 GB may remain.
@@ -220,7 +219,7 @@ Tools often store caches in **either** macOS `~/Library/Caches/<tool>` **or** XD
 
 ```bash
 uv cache dir              # confirm path
-uv cache prune            # what Mole runs — may free little
+uv cache prune            # what the reference tool runs — may free little
 uv cache clean            # full wipe of the cache (~20 GB)
 # or remove the directory after closing tools that use it
 ```
@@ -243,7 +242,7 @@ To reduce **future** growth:
 1. **~20 GB is correct** and is uv’s real cache at `~/.cache/uv`.  
 2. **~18 GB** is **43 relocatable tool envs** in `archive-v0`, not one corrupt blob.  
 3. **~15 GB** is **`tree-sitter-language-pack` × 43**, pulled in by **`code-review-graph`** for multi-language Tree-sitter parsing.  
-4. **Mole** finds the path but dry-run under-reports; clean only **prunes**.  
+4. **The reference CLI cleaner** finds the path but dry-run under-reports; clean only **prunes**.  
 5. **Pare** currently only looks under **`~/Library/Caches/uv`** and **misses** XDG-style caches — fix with multi-root + policy markers (± CLI discovery).
 
 ---
@@ -259,10 +258,6 @@ du -sh ~/.cache/uv/*
 # Aggregate site-packages sizes across envs ≥ 200 MB
 # Read METADATA from tree_sitter_language_pack and code_review_graph dist-info
 ```
-
-**Mole references:**  
-`/opt/homebrew/opt/mole/libexec/lib/clean/dev.sh` (`clean_uv_cache`, `clean_tool_cache`)  
-`lib/manage/whitelist.sh` (uv protectable pattern)
 
 **Pare references:**  
 `Sources/PareCore/Rules/PythonCachesRule.swift`  
