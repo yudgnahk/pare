@@ -375,6 +375,9 @@ extension ScanPolicy {
         ".eggs",
     ]
 
+    /// Generic output names people also commit; reclaimable only when git ignores them and tracks nothing inside.
+    public static let projectArtifactNamesRequiringGitIgnoreEvidence: Set<String> = ["build", "dist", "target"]
+
     /// Union used by walkers and cleanup path allow-lists for *local* artifacts only.
     /// Does **not** include dependency trees (`node_modules`, `.venv`, …).
     public static let projectArtifactDirectoryNames: Set<String> = projectLocalArtifactDirectoryNames
