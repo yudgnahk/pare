@@ -407,12 +407,19 @@ extension ScanPolicy {
         "/library/caches/homebrew",
     ]
 
+    /// File names `ProjectRootDiscovery` asks Spotlight for. `.git` is absent: Spotlight never indexes it.
+    public static let projectDiscoverySignalNames: [String] = [
+        "Package.swift", "Cargo.toml", "go.mod", "pyproject.toml", "setup.py",
+        "Gemfile", "pom.xml", "build.gradle", "build.gradle.kts", "package.json",
+        "pubspec.yaml", "composer.json", "Package.resolved",
+    ]
+
     /// Marker files/directories whose presence identifies a directory as a project root.
-    /// Mirrors the Spotlight signal names used by `ProjectRootDiscovery`.
+    /// Mirrors `projectDiscoverySignalNames` plus `.git`, minus the `Package.resolved` lockfile.
     public static let projectRootMarkerFileNames: [String] = [
         ".git", "package.json", "Package.swift", "Cargo.toml", "go.mod",
         "pyproject.toml", "setup.py", "Gemfile", "pom.xml", "build.gradle",
-        "build.gradle.kts",
+        "build.gradle.kts", "pubspec.yaml", "composer.json",
     ]
 
     /// How many ancestor directories to inspect for project-root evidence.

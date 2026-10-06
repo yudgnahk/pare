@@ -1,7 +1,7 @@
 import Foundation
 
 /// Discovers project root directories by running an NSMetadataQuery Spotlight search
-/// for well-known signal files (.git, Package.swift, Cargo.toml, etc.) under the user's
+/// for well-known signal files (`ScanPolicy.projectDiscoverySignalNames`) under the user's
 /// home directory.
 ///
 /// Discovered roots are persisted to ~/Library/Application Support/Pare/project-roots.json.
@@ -178,11 +178,7 @@ public actor ProjectRootDiscovery {
     /// and collapses submodule / monorepo nesting.
     static func deduplicate(_ hits: [URL]) -> [URL] {
         // 1. Resolve each hit to its project root.
-        var rootPaths = Set<String>()
-        for hit in hits {
-            let parent = hit.deletingLastPathComponent()
-            rootPaths.insert(parent.path)
-        }
+        let rootPaths = Set(hits.map { projectRoot(forSignalHit: $0).path })
 
         // 2. Filter paths containing excluded path components (list lives in ScanPolicy — R1.4).
         let filtered = rootPaths.filter { path in
@@ -214,6 +210,18 @@ public actor ProjectRootDiscovery {
         }
 
         return result.map { URL(fileURLWithPath: $0) }
+    }
+
+    /// The hit's folder, or the folder holding an enclosing `.xcodeproj`/`.xcworkspace`
+    /// (Xcode keeps `Package.resolved` several levels inside the bundle).
+    static func projectRoot(forSignalHit hit: URL) -> URL {
+        let components = hit.pathComponents
+        let bundleIndex = components.dropLast().firstIndex { component in
+            let lower = component.lowercased()
+            return lower.hasSuffix(".xcodeproj") || lower.hasSuffix(".xcworkspace")
+        }
+        guard let bundleIndex else { return hit.deletingLastPathComponent() }
+        return URL(fileURLWithPath: NSString.path(withComponents: Array(components[..<bundleIndex])))
     }
 
     private static func isExcludedRoot(_ path: String) -> Bool {
@@ -264,11 +272,6 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
     /// Keeps `self` alive from `start` until `finish` even if local refs drop.
     private var retainUntilFinished: SpotlightQueryRunner?
 
-    private static let signalNames = [
-        ".git", "Package.swift", "Cargo.toml", "go.mod",
-        "pyproject.toml", "setup.py", "Gemfile", "pom.xml", "build.gradle",
-    ]
-
     /// Maximum time to wait for Spotlight before completing with whatever results we have.
     private static let timeoutSeconds: TimeInterval = 10
 
@@ -290,7 +293,7 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
             self.retainUntilFinished = self
         }
 
-        let predicates = Self.signalNames.map { name in
+        let predicates = ScanPolicy.projectDiscoverySignalNames.map { name in
             NSPredicate(format: "%K == %@", NSMetadataItemFSNameKey, name)
         }
         query.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: predicates)
