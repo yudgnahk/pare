@@ -245,8 +245,10 @@ final class SQLiteVacuumTests: XCTestCase {
         XCTAssertEqual(process.terminationStatus, 0)
     }
 
+    /// Reads attributes fresh: `URL.resourceValues` caches per instance and would return the pre-VACUUM size.
     private func fileSize(_ url: URL) throws -> Int64 {
-        Int64(try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+        let size = try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber
+        return size?.int64Value ?? 0
     }
 }
 
