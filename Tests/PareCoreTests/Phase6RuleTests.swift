@@ -431,7 +431,7 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         backdateItem(at: dist, days: 10)
 
         let discovery = await makeDiscovery(root: tmp)
-        let rule = ProjectArtifactsRule(discovery: discovery)
+        let rule = ProjectArtifactsRule(discovery: discovery, gitInspector: StubGitInspector(status: .ignoredUntracked))
         let findings = await rule.customScan(environment: ScanEnvironment.current())!
 
         let distFinding = findings.first { $0.path.hasSuffix("/dist") }
