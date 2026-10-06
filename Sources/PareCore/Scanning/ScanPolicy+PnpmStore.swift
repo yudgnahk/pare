@@ -17,7 +17,20 @@ extension ScanPolicy {
     public static func isPnpmStoreVersionPath(_ url: URL) -> Bool {
         let components = url.standardizedFileURL.pathComponents
         guard components.count >= 3, pnpmStoreVersion(components[components.count - 1]) != nil else { return false }
-        return components[components.count - 2] == "store" && components[components.count - 3] == "pnpm"
+        // Case-insensitive like the volume and the persona marker, so a re-cased path cannot skip this gate.
+        return components[components.count - 2].lowercased() == "store" && components[components.count - 3].lowercased() == "pnpm"
+    }
+
+    /// Anything at or under a `…/pnpm/store`, or a pnpm home folder itself (`Library/pnpm`, `.local/share/pnpm`).
+    /// The broad pnpm persona markers would admit all of these; cleanup must not.
+    public static func isPnpmGuardedPath(_ url: URL) -> Bool {
+        let components = url.standardizedFileURL.pathComponents.map { $0.lowercased() }
+        if components.indices.dropFirst().contains(where: { components[$0 - 1] == "pnpm" && components[$0] == "store" }) {
+            return true
+        }
+        guard components.last == "pnpm", components.count >= 2 else { return false }
+        let parent = components[components.count - 2]
+        return parent == "library" || (parent == "share" && components.count >= 3 && components[components.count - 3] == ".local")
     }
 
     /// A store version strictly older than the active one, in the same store root, as a real folder.

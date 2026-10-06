@@ -112,6 +112,22 @@ final class PnpmOldStoreRuleTests: XCTestCase {
         XCTAssertTrue(unknown.succeeded.isEmpty, "store versions pass only when the active version is known")
     }
 
+    func testCleanupRefusesTheActiveStoreTreeStoreRootAndPnpmHome() async throws {
+        let active = store.appending(path: "v11")
+        let insideActive = active.appending(path: "index.json")
+        let pnpmHome = home.appending(path: "Library/pnpm")
+        let recased = URL(fileURLWithPath: home.path + "/Library/PNPM/Store/v11")
+        for url in [active, insideActive, store, pnpmHome, recased] {
+            XCTAssertTrue(ScanPolicy.isPnpmGuardedPath(url), url.path)
+        }
+
+        let result = try await cleanDryRun([active, insideActive, store, pnpmHome, recased], activeStore: active)
+
+        XCTAssertTrue(result.succeeded.isEmpty, "\(result.succeeded.map(\.originalPath))")
+        XCTAssertEqual(result.skipped.count, 5)
+        XCTAssertFalse(ScanPolicy.isPnpmGuardedPath(home.appending(path: "Library/Caches/pnpm")), "the download cache is not a store")
+    }
+
     // MARK: - Helpers
 
     private func rule(active: URL?) -> PnpmOldStoreRule {

@@ -218,7 +218,7 @@ public actor CleanupEngine {
         let projectRootPaths = await projectRootsProvider()
         let exclusions = exclusionsProvider()
         // Resolved once per batch, and only when it contains pnpm store version folders.
-        let activePnpmStore = findings.contains { ScanPolicy.isPnpmStoreVersionPath(URL(fileURLWithPath: $0.path)) }
+        let activePnpmStore = findings.contains { ScanPolicy.isPnpmGuardedPath(URL(fileURLWithPath: $0.path)) }
             ? await pnpmActiveStore()
             : nil
 
@@ -285,9 +285,11 @@ public actor CleanupEngine {
                 continue
             }
 
-            // pnpm store versions pass only through the old-store check, never the broad pnpm marker.
-            let isPnpmStoreVersion = ScanPolicy.isPnpmStoreVersionPath(url)
-            if isPnpmStoreVersion, !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore) {
+            // Anything in a pnpm store or pnpm home passes only the old-store or wrong-platform check,
+            // never the broad pnpm persona marker.
+            let isPnpmStoreVersion = ScanPolicy.isPnpmGuardedPath(url)
+            if isPnpmStoreVersion, !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore),
+               !ScanPolicy.isCleanableWrongPlatformPath(url) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                 continue
             }
