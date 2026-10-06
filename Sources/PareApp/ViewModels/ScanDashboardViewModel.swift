@@ -55,6 +55,8 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var scanStepTitle: String = ""
     @Published private(set) var scanRulesCompleted: Int = 0
     @Published private(set) var scanRulesTotal: Int = 0
+    /// True between the last rule finishing and results being applied.
+    @Published private(set) var isFinalizingScan = false
     /// After a successful scan with ~0 reclaimable bytes, coach the user on next steps.
     @Published private(set) var showEmptyScanCoaching: Bool = false
     /// Empty-scan card presentation when `showEmptyScanCoaching` is true.
@@ -101,6 +103,15 @@ final class ScanDashboardViewModel: ObservableObject {
 
     var isScanning: Bool {
         state == .scanning
+    }
+
+    static let finalizingProgressCap = 0.95
+    static let finalizingTitle = "Preparing results…"
+
+    /// Rule-count progress scaled to the finalize cap so the ring never steps back.
+    var scanProgress: Double {
+        guard scanRulesTotal > 0 else { return 0 }
+        return Double(scanRulesCompleted) / Double(scanRulesTotal) * Self.finalizingProgressCap
     }
 
     var cleanupState: CleanupCoordinator.CleanupState { cleanup.state }
@@ -337,6 +348,7 @@ final class ScanDashboardViewModel: ObservableObject {
         scanRulesTotal = 0
         scanStepTitle = ""
         scanStep = 1
+        isFinalizingScan = false
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
         refreshPermissionCoaching()
@@ -396,6 +408,7 @@ final class ScanDashboardViewModel: ObservableObject {
         scanStepTitle = "Scanning system & app caches…"
         scanRulesCompleted = 0
         scanRulesTotal = 0
+        isFinalizingScan = false
         let startedAt = Date()
         let cache = scanCache
 
@@ -408,17 +421,7 @@ final class ScanDashboardViewModel: ObservableObject {
 
             let report = await runner.run(rules: rules, forceRescan: forceRescan) { completed, total, title in
                 Task { @MainActor in
-                    self.scanRulesCompleted = completed
-                    self.scanRulesTotal = total
-                    self.scanStepTitle = title
-                    let fraction = Double(completed) / Double(max(total, 1))
-                    if fraction < 0.34 {
-                        self.scanStep = 1
-                    } else if fraction < 0.67 {
-                        self.scanStep = 2
-                    } else {
-                        self.scanStep = 3
-                    }
+                    self.applyRuleProgress(completed: completed, total: total, title: title)
                 }
             }
 
@@ -430,6 +433,7 @@ final class ScanDashboardViewModel: ObservableObject {
             // attribution) must run in a detached task or the app beachballs with
             // “Not Responding” while still completing correctly afterward.
             let finishedAt = Date()
+            beginFinalizingScan()
             let prepared = await Task.detached(priority: .userInitiated) {
                 Self.prepareScanResults(from: report)
             }.value
@@ -438,6 +442,28 @@ final class ScanDashboardViewModel: ObservableObject {
 
             applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
         }
+    }
+
+    /// Rule callbacks hop to the main actor unstructured, so one can land after finalize began; drop it.
+    func applyRuleProgress(completed: Int, total: Int, title: String) {
+        guard isScanning, !isFinalizingScan else { return }
+        scanRulesCompleted = completed
+        scanRulesTotal = total
+        scanStepTitle = title
+        let fraction = Double(completed) / Double(max(total, 1))
+        if fraction < 0.34 {
+            scanStep = 1
+        } else if fraction < 0.67 {
+            scanStep = 2
+        } else {
+            scanStep = 3
+        }
+    }
+
+    func beginFinalizingScan() {
+        guard isScanning else { return }
+        isFinalizingScan = true
+        scanStepTitle = Self.finalizingTitle
     }
 
     /// Pure post-scan aggregation — safe to call from a background task.
@@ -543,6 +569,7 @@ final class ScanDashboardViewModel: ObservableObject {
         revealFeedback = nil
         scanStep = 3
         scanStepTitle = "Scan complete"
+        isFinalizingScan = false
         state = .success
         // Snapshot FDA at scan finish so later grants can show "rescan needed"
         // instead of a misleading clean-disk empty state.
@@ -704,6 +731,12 @@ extension ScanDashboardViewModel {
         let prepared = Self.prepareScanResults(from: report)
         let finishedAt = Date()
         applyPreparedScanResults(prepared, startedAt: finishedAt.addingTimeInterval(-duration), finishedAt: finishedAt)
+    }
+
+    /// Freezes the hero in its finalize state (all rules done, results being prepared).
+    func applySnapshotFinalizing(total: Int) {
+        applySnapshotScanning(step: 3, completed: total, total: total, title: "")
+        beginFinalizingScan()
     }
 
     /// Freezes the hero in its scanning state without starting a real scan.
