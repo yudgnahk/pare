@@ -46,6 +46,8 @@ public struct ScanFinding: Sendable {
     public let sizeBytes: Int64
     public let lastUsed: Date?
     public let confidence: Double
+    /// False when sizing stopped at its deadline: `sizeBytes` is then a lower bound, never a guess.
+    public let isSizeComplete: Bool
 
     public init(
         category: ScanCategory,
@@ -54,7 +56,8 @@ public struct ScanFinding: Sendable {
         path: String,
         sizeBytes: Int64,
         lastUsed: Date?,
-        confidence: Double
+        confidence: Double,
+        isSizeComplete: Bool = true
     ) {
         self.category = category
         self.riskLevel = riskLevel
@@ -63,6 +66,7 @@ public struct ScanFinding: Sendable {
         self.sizeBytes = sizeBytes
         self.lastUsed = lastUsed
         self.confidence = confidence
+        self.isSizeComplete = isSizeComplete
     }
 }
 
@@ -114,6 +118,15 @@ public struct ScanReport: Sendable {
 
     /// Sum of category reclaimable totals. Excludes `.advanced` findings (detect-only);
     /// those remain in `findings` but are not counted as reclaimable by `ScanRunner`.
+    /// True when a reclaimable finding's size is a lower bound, so the total is "at least".
+    public var hasPartialSizes: Bool {
+        Self.hasPartialSizes(in: findings)
+    }
+
+    public static func hasPartialSizes(in findings: [ScanFinding]) -> Bool {
+        findings.contains { !$0.isSizeComplete && $0.riskLevel != .advanced }
+    }
+
     public var totalReclaimableBytes: Int64 {
         summaries.reduce(0) { $0 + $1.reclaimableBytes }
     }

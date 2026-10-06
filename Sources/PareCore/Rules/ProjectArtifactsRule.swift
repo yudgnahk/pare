@@ -105,8 +105,8 @@ public struct ProjectArtifactsRule: ScanRule {
                     if let date = effectiveDate, Date().timeIntervalSince(date) < minAge { continue }
                 }
 
-                let size = sizeIndex.directorySize(url: item)
-                guard size > 0 else { continue }
+                let sized = sizeIndex.directorySizeResult(url: item)
+                guard sized.bytes > 0 || !sized.isComplete else { continue }
 
                 let reviewNames: Set<String> = ["dist", "build"]
                 let risk: RiskLevel = reviewNames.contains(lower) ? .review : .safe
@@ -119,9 +119,10 @@ public struct ProjectArtifactsRule: ScanRule {
                     riskLevel: risk,
                     reason: reason,
                     path: item.path,
-                    sizeBytes: size,
+                    sizeBytes: sized.bytes,
                     lastUsed: values.contentModificationDate,
-                    confidence: confidence
+                    confidence: confidence,
+                    isSizeComplete: sized.isComplete
                 ))
                 // Do not recurse into matched artifact directories.
             } else if !name.hasPrefix(".") {
