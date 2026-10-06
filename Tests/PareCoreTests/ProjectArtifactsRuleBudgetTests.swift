@@ -147,7 +147,7 @@ final class ProjectArtifactsRuleBudgetTests: XCTestCase {
         try? FileManager.default.createDirectory(at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let store = ProjectRootsStore(confirmed: [], excluded: [], manual: manualRoots.map(\.path), lastDiscoveredAt: Date())
         try? JSONEncoder().encode(store).write(to: storeURL)
-        let discovery = ProjectRootDiscovery(storeURL: storeURL)
+        let discovery = ProjectRootDiscovery(storeURL: storeURL, spotlightSearch: { await SearchStub().run() })
         guard let clock else {
             return ProjectArtifactsRule(discovery: discovery, pathStore: emptyPathStore(), timeBudget: timeBudget)
         }
