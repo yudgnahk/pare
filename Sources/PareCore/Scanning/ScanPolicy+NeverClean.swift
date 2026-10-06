@@ -11,11 +11,14 @@ extension ScanPolicy {
         ["go", "pkg", "mod"],
     ]
 
-    /// Lowercased component runs of app user data (sessions, credentials, databases) next to reclaimable caches.
+    /// `Library/Caches` folders holding Google identity state; deleting them makes Google apps rewrite it at ~50 MB/s.
+    public static let neverCleanUserCacheFolderNames: Set<String> = ["gippseudonymousid", "cctclearcutlogger"]
+
+    /// Lowercased component runs of app user data (sessions, credentials, identity) next to reclaimable caches.
     public static let neverCleanUserDataComponentSequences: [[String]] = [
         [".local", "share", "opencode", "storage"],
         [".local", "share", "opencode", "auth.json"],
-    ]
+    ] + neverCleanUserCacheFolderNames.sorted().map { ["library", "caches", $0] }
 
     /// File-name prefixes protected directly inside a parent run, so SQLite `-wal`/`-shm` side files match too.
     public static let neverCleanUserDataFilePrefixes: [(parent: [String], prefix: String)] = [

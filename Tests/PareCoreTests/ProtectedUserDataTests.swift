@@ -65,6 +65,56 @@ final class ProtectedUserDataTests: XCTestCase {
         assertAllProtectedAsUserData(result, expected: paths)
     }
 
+    // MARK: - Google identity caches
+
+    func testUserCacheFolderProtectedNames() {
+        let cases: [(name: String, protected: Bool)] = [
+            ("GIPPseudonymousID", true),
+            ("gippseudonymousid", true),
+            ("CCTClearcutLogger", true),
+            ("com.google.Keystone", true),
+            ("org.mozilla.firefox", true),
+            ("com.example.app", false),
+            ("GIPPseudonymousID-old", false),
+            ("google-drive-cache", false),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(ScanPolicy.isUserCacheFolderProtected(name: testCase.name), testCase.protected, testCase.name)
+        }
+    }
+
+    func testUserCachesSkipsProtectedNames() async throws {
+        let caches = tmp.appending(path: "Library/Caches")
+        try makeDirectory(caches.appending(path: "GIPPseudonymousID"))
+        try makeDirectory(caches.appending(path: "CCTClearcutLogger"))
+        try makeDirectory(caches.appending(path: "com.google.Keystone"))
+        let app = try makeDirectory(caches.appending(path: "com.example.app"))
+        // Top-level files used to skip the name check entirely.
+        try makeFile(caches.appending(path: "com.google.SoftwareUpdate.plist"), size: 300 * 1024)
+        let file = try makeFile(caches.appending(path: "catalog.json"), size: 300 * 1024)
+        let environment = ScanEnvironment(homeDirectory: tmp, systemApplicationDirectories: [])
+
+        let findings = await UserCachesRule().customScan(environment: environment) ?? []
+
+        XCTAssertEqual(Set(findings.map(\.path)), [app.path, file.path])
+    }
+
+    func testCleanupBlocksGoogleIdentityCaches() async throws {
+        let caches = tmp.appending(path: "Library/Caches")
+        let paths = [
+            try makeDirectory(caches.appending(path: "GIPPseudonymousID")),
+            try makeDirectory(caches.appending(path: "CCTClearcutLogger")),
+            try makeFile(caches.appending(path: "CCTClearcutLogger/log.bin")),
+        ]
+        for url in paths {
+            XCTAssertFalse(ScanPolicy.isLowImpactPath(url), url.path)
+        }
+
+        let result = try await dryRunClean(paths, category: .userCaches)
+
+        assertAllProtectedAsUserData(result, expected: paths)
+    }
+
     // MARK: - Helpers
 
     private func dryRunClean(_ urls: [URL], category: ScanCategory) async throws -> CleanupResult {
