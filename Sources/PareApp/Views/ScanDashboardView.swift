@@ -226,6 +226,7 @@ struct ScanDashboardView: View {
                 canUndo: viewModel.canUndo,
                 onUndo: { viewModel.undoLastCleanup() },
                 skipExplanation: viewModel.cleanup.symlinkSkipExplanation,
+                reclaim: viewModel.cleanup.lastReclaim,
                 onDismiss: { viewModel.dismissCleanupResult() }
             )
             .transition(.scale(scale: 0.96).combined(with: .opacity))
