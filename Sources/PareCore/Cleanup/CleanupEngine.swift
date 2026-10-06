@@ -129,6 +129,8 @@ public actor CleanupEngine {
     private let now: @Sendable () -> Date
     /// Moves one item to the Trash and returns where it landed; injectable so tests never touch the real Trash.
     private let trashItem: @Sendable (URL) throws -> URL?
+    /// The active pnpm store (`…/store/v<N>`), re-resolved at cleanup; nil fails closed. Injectable.
+    private let pnpmActiveStore: @Sendable () async -> URL?
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -139,7 +141,8 @@ public actor CleanupEngine {
         projectRootsProvider: (@Sendable () async -> [String])? = nil,
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
-        trashItem: (@Sendable (URL) throws -> URL?)? = nil
+        trashItem: (@Sendable (URL) throws -> URL?)? = nil,
+        pnpmActiveStore: (@Sendable () async -> URL?)? = nil
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -151,6 +154,9 @@ public actor CleanupEngine {
         }
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
+        self.pnpmActiveStore = pnpmActiveStore ?? {
+            await PnpmStoreLocator.activeStore(home: FileManager.default.homeDirectoryForCurrentUser)
+        }
     }
 
     private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -211,6 +217,10 @@ public actor CleanupEngine {
         // and exclusions must be honored at cleanup time (not only at scan time).
         let projectRootPaths = await projectRootsProvider()
         let exclusions = exclusionsProvider()
+        // Resolved once per batch, and only when it contains pnpm store version folders.
+        let activePnpmStore = findings.contains { ScanPolicy.isPnpmGuardedPath(URL(fileURLWithPath: $0.path)) }
+            ? await pnpmActiveStore()
+            : nil
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -275,10 +285,19 @@ public actor CleanupEngine {
                 continue
             }
 
+            // Anything in a pnpm store or pnpm home passes only the old-store or wrong-platform check,
+            // never the broad pnpm persona marker.
+            let isPnpmStoreVersion = ScanPolicy.isPnpmGuardedPath(url)
+            if isPnpmStoreVersion, !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore),
+               !ScanPolicy.isCleanableWrongPlatformPath(url) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                continue
+            }
+
             // Re-verify the path is still considered safe by policy. Fail-closed variants:
             // wrong-platform matches only inside the scanned trees; project artifacts only
             // with project-root evidence or under a registered project scan root.
-            guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
+            guard isPnpmStoreVersion || ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
                     || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
                     || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))

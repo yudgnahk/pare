@@ -59,6 +59,7 @@ public enum RuleCatalog {
             JavaBuildCachesRule(),
             RustCachesRule(),
             GoCachesRule(),
+            PnpmOldStoreRule(),
             ProjectArtifactsRule(),
         ] + baseline
     }
