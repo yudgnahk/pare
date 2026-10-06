@@ -228,7 +228,7 @@ final class RustCachesRuleTests: XCTestCase {
 final class GoCachesRuleTests: XCTestCase {
 
     func testReturnsEmptyWhenNoGoPathsExist() async {
-        let rule = GoCachesRule()
+        let rule = GoCachesRule(locations: GoCacheLocations(query: { nil }))
         let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/tmp/nonexistent_\(UUID().uuidString)"))
         let findings = await rule.customScan(environment: env)
         XCTAssertNotNil(findings)
@@ -244,11 +244,11 @@ final class GoCachesRuleTests: XCTestCase {
         backdateItem(at: goBuild, days: 1)
         backdateItem(at: goBuild.appending(path: "content.bin"), days: 1)
 
-        let rule = GoCachesRule()
+        let rule = GoCachesRule(locations: GoCacheLocations(query: { nil }))
         let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
 
         XCTAssertTrue(findings.contains { $0.path.hasSuffix("/go-build") })
-        XCTAssertEqual(findings.first?.riskLevel, .safe)
+        XCTAssertEqual(findings.first?.riskLevel, .advanced, "report-only working set")
         XCTAssertEqual(findings.first?.category, .developerPackageCaches)
     }
 
@@ -261,9 +261,9 @@ final class GoCachesRuleTests: XCTestCase {
         backdateItem(at: goModCache, days: 1)
         backdateItem(at: goModCache.appending(path: "content.bin"), days: 1)
 
-        let rule = GoCachesRule()
+        let rule = GoCachesRule(locations: GoCacheLocations(query: { nil }))
         let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
-        XCTAssertTrue(findings.contains { $0.path.hasSuffix("/mod/cache") })
+        XCTAssertTrue(findings.contains { $0.path.hasSuffix("/go/pkg/mod") }, "whole module cache, report-only")
     }
 }
 
@@ -587,7 +587,7 @@ final class Phase6ScanPolicyTests: XCTestCase {
         XCTAssertTrue(markers.contains { $0.contains(".pyenv") }, "pyenv marker missing")
         XCTAssertTrue(markers.contains { $0.contains(".cargo") }, "cargo marker missing")
         XCTAssertTrue(markers.contains { $0.contains(".rustup") }, "rustup marker missing")
-        XCTAssertTrue(markers.contains { $0.contains("go/pkg/mod/cache") }, "go mod cache marker missing")
+        XCTAssertFalse(markers.contains { $0.contains("go/pkg/mod") }, "Go module cache is never-clean")
         XCTAssertTrue(markers.contains { $0.contains(".gradle") }, "gradle marker missing")
         XCTAssertTrue(markers.contains { $0.contains(".m2") }, "maven marker missing")
         XCTAssertTrue(markers.contains { $0.contains(".ivy2") }, "ivy2 marker missing")

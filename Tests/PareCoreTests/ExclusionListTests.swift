@@ -596,11 +596,12 @@ final class PathSafetyTests: XCTestCase {
     func testReconstructibleCachePathMarkers() {
         XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/.npm/_npx/abc")))
-        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+        // Go caches are a never-clean working set, not reconstructible caches.
+        XCTAssertFalse(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/Library/Caches/go-build")))
         XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/.cargo/registry/cache")))
-        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+        XCTAssertFalse(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/go/pkg/mod/cache")))
         XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/Library/Caches/Yarn")))
