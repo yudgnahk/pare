@@ -1,7 +1,7 @@
 import XCTest
 @testable import PareCore
 
-/// `build`, `dist` and `target` are only reclaimable with git-ignore evidence; other artifact names are not gated.
+/// `build`, `dist`, `target` and `coverage` are only reclaimable with git-ignore evidence; other names are not gated.
 final class ProjectArtifactsGitGateTests: XCTestCase {
 
     private static let allStatuses: [GitArtifactStatus?] = [
@@ -24,7 +24,7 @@ final class ProjectArtifactsGitGateTests: XCTestCase {
 
     func testGitEvidenceTruthTable() {
         for status in Self.allStatuses {
-            for name in ["build", "dist", "target", "Build"] {
+            for name in ["build", "dist", "target", "coverage", "Build", "Coverage"] {
                 let url = URL(fileURLWithPath: "/Users/u/Projects/app/\(name)")
                 XCTAssertEqual(
                     ScanPolicy.gitEvidenceAllows(artifact: url, status: status),
@@ -32,7 +32,7 @@ final class ProjectArtifactsGitGateTests: XCTestCase {
                     "\(name) with \(String(describing: status))"
                 )
             }
-            for name in [".cache", ".next", "__pycache__", "coverage"] {
+            for name in [".cache", ".next", "__pycache__"] {
                 let url = URL(fileURLWithPath: "/Users/u/Projects/app/\(name)")
                 XCTAssertTrue(
                     ScanPolicy.gitEvidenceAllows(artifact: url, status: status),
@@ -45,14 +45,14 @@ final class ProjectArtifactsGitGateTests: XCTestCase {
     // MARK: - ProjectArtifactsRule
 
     func testGatedNamesReportedOnlyWhenIgnoredUntracked() async throws {
-        try makeArtifacts(["build", "dist", "target", ".cache"])
+        try makeArtifacts(["build", "dist", "target", "coverage", ".cache"])
 
         for status in Self.allStatuses {
             let findings = await scan(with: StubGitInspector(status: status))
             let names = Set(findings.map { URL(fileURLWithPath: $0.path).lastPathComponent })
 
             let expected: Set<String> = status == .ignoredUntracked
-                ? ["build", "dist", "target", ".cache"]
+                ? ["build", "dist", "target", "coverage", ".cache"]
                 : [".cache"]
             XCTAssertEqual(names, expected, String(describing: status))
         }

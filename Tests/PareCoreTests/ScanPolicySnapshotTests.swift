@@ -108,7 +108,7 @@ final class ScanPolicySnapshotTests: XCTestCase {
         "browserExtendedReviewPathMarkers": "51b1ec4db03e22e3:20",
         "projectDependencyDirectoryNames": "3571220bfbcb3fc7:4",
         "projectLocalArtifactDirectoryNames": "292d813868da67ad:17",
-        "projectArtifactNamesRequiringGitIgnoreEvidence": "718f7e4d8b6eebf6:3",
+        "projectArtifactNamesRequiringGitIgnoreEvidence": "e248168fd9663d3c:4",
         "developerPackageCacheMarkers": "1bc7bd2abe3d3197:21",
         "projectRootMarkerFileNames": "1a8503ec31fdcde0:11",
         "developerReviewExclusionMarkers": "3a6c7b4459b1d383:6",

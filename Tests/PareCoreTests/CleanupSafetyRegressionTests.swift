@@ -125,6 +125,36 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         }
     }
 
+    /// `coverage` is gated like `build`: only an ignored, untracked folder may be trashed.
+    func testCoverageWithoutGitIgnoreEvidenceIsSkipped() async throws {
+        let statuses: [GitArtifactStatus?] = [.notIgnored, .containsTrackedFiles, .notInRepository, .gitUnavailable, .failed, nil]
+        for status in statuses {
+            let project = root.appending(path: "Documents/proj-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: project.appending(path: ".git"), withIntermediateDirectories: true)
+            let coverage = try makeDirectory(at: project.appending(path: "coverage"))
+            let engine = makeEngine(projectRoots: [project.path], gitStatus: status)
+
+            let result = try await engine.clean(findings: [finding(for: coverage)], profileName: "test", dryRun: true)
+
+            XCTAssertEqual(result.succeeded.count, 0, String(describing: status))
+            guard case .some(.notGitIgnored(_)) = result.skipped.first?.error else {
+                XCTFail("expected .notGitIgnored for \(String(describing: status)), got \(result.skipped)")
+                continue
+            }
+        }
+    }
+
+    func testIgnoredUntrackedCoverageIsCleanable() async throws {
+        let project = root.appending(path: "Documents/proj")
+        try FileManager.default.createDirectory(at: project.appending(path: ".git"), withIntermediateDirectories: true)
+        let coverage = try makeDirectory(at: project.appending(path: "coverage"))
+        let engine = makeEngine(projectRoots: [project.path], gitStatus: .ignoredUntracked)
+
+        let result = try await engine.clean(findings: [finding(for: coverage)], profileName: "test", dryRun: true)
+
+        XCTAssertEqual(result.succeeded.count, 1, "skipped: \(result.skipped)")
+    }
+
     /// A `build` dir mis-tagged as a cache under a protected tree cannot slip past the gate.
     func testMisTaggedBuildUnderDocumentsIsBlocked() async throws {
         let project = root.appending(path: "Documents/proj")
