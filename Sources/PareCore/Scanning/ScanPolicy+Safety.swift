@@ -20,7 +20,7 @@ extension ScanPolicy {
     }
 
     public static func isReconstructibleCachePath(_ url: URL) -> Bool {
-        if isSearchIndexSensitivePath(url) { return false }
+        if isNeverCleanPath(url) || isSearchIndexSensitivePath(url) { return false }
         let path = url.path.lowercased()
         return reconstructibleCachePathMarkers.contains { path.contains($0) }
     }
@@ -105,6 +105,8 @@ extension ScanPolicy {
     }
 
     public static func matchesPersonaPath(_ url: URL, allowedMarkers: [String]) -> Bool {
+        // Tool-managed working sets beat every allow-marker below.
+        if isNeverCleanPath(url) { return false }
         // Parity with isLowImpactPath (R1.6): search-index stores must never pass
         // the persona gate either — deleting them forces a costly reindex.
         if isSearchIndexSensitivePath(url) { return false }
@@ -133,6 +135,8 @@ extension ScanPolicy {
     }
 
     public static func isLowImpactPath(_ url: URL) -> Bool {
+        // Tool-managed working sets beat every allow-marker below (`/library/caches/` included).
+        if isNeverCleanPath(url) { return false }
         // Spotlight / Help / media-analysis indexes are never "low impact" to delete.
         if isSearchIndexSensitivePath(url) { return false }
 
