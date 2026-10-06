@@ -66,7 +66,9 @@ make test         # must pass
 make run-app      # launch the SwiftUI app and exercise the changed feature manually
 ```
 
-**Command Line Tools-only machines (no Xcode.app):** `make build` and `make run-app` work, but `make test` fails with `no such module 'XCTest'` because Apple's Command Line Tools do not ship XCTest. This is an environment limitation, not a regression. On CLT-only machines the Makefile also pins `SDKROOT` to `MacOSX26.sdk` when present, because the macOS 27 SDK turns `@State` into a macro whose plugin ships only with Xcode. Plain `swift build` needs `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk`. To run tests locally, install Xcode or a swift.org toolchain (e.g. via `swiftly`), which bundles XCTest; otherwise rely on CI (`macos-26` runner with Xcode).
+**Command Line Tools-only machines (no Xcode.app):** `make build` and `make run-app` work, but `make test` fails with `no such module 'XCTest'` because Apple's Command Line Tools ship neither XCTest nor swift-testing's `Testing` module. This is an environment limitation, not a regression. On CLT-only machines the Makefile also pins `SDKROOT` to `MacOSX26.sdk` when present, because the macOS 27 SDK turns `@State` into a macro whose plugin ships only with Xcode. Plain `swift build` needs `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk`. To run tests locally, install Xcode or a swift.org toolchain (e.g. via `swiftly`), which bundles XCTest; otherwise rely on CI (`macos-26` runner with Xcode).
+
+**Dev signing (`scripts/sign-app.sh`):** `make run-app` signs the bundle after assembling it. An ad-hoc signature's designated requirement is just the cdhash, so it changes on every rebuild and macOS drops the app's Full Disk Access grant with it. Signing with a real certificate (Developer ID first, else Apple Development; override with `SIGN_IDENTITY`) plus `--identifier com.yudgnahk.pare` yields an identifier + anchor requirement that is stable across rebuilds, so FDA only needs granting once. With no identity available the ad-hoc signature is kept and the script says so; if signing fails it re-applies ad-hoc so the bundle still launches.
 
 ## Priorities
 
@@ -80,8 +82,10 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 - Shared filesystem utilities (e.g. `directorySize`) live in `FileSystemUtils` — don't duplicate them in individual rules.
 - `CleanupEngine` is an `actor`; `ScanDashboardViewModel` is `@MainActor`. All core types are `Sendable`.
 - Tests use `MockTraversal: FileTraversing` and `TestRule: ScanRule` to inject deterministic file lists without hitting the filesystem.
-- SwiftUI previews use `struct <Name>_Previews: PreviewProvider`, never the `#Preview` macro. The macro needs the `PreviewsMacros` compiler plugin that only ships inside Xcode.app, so `swift build` breaks on Command Line Tools-only machines.
+- SwiftUI previews use `struct <Name>_Previews: PreviewProvider`, never the `#Preview` macro. The macro needs the `PreviewsMacros` compiler plugin that only ships inside Xcode.app, so `swift build` breaks on Command Line Tools-only machines. The same applies to any other SwiftUI macro (`@Entry`, `@Animatable`) — avoid them.
 - Wrap preview structs — and any helper type that exists only to back a preview — in `#if DEBUG` / `#endif` so they stay out of release builds.
+- SPM resource bundles go in `Contents/Resources/` when assembling the `.app` (both `make run-app` and `scripts/release.sh`). `Contents/MacOS/` is **not** a path `ResourceBundle` searches.
+- Read PareCore resources through `ResourceBundle.pareCore`, never `Bundle.module` — the generated accessor calls `fatalError` when the bundle is missing, which crashes a scan instead of degrading.
 
 ## Known State
 
