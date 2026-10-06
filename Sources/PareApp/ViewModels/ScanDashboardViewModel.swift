@@ -400,6 +400,9 @@ final class ScanDashboardViewModel: ObservableObject {
         let cache = scanCache
 
         scanTask = Task(priority: .userInitiated) {
+            if forceRescan {
+                await ProjectRootDiscovery.shared.markStale()
+            }
             let rules = RuleCatalog.all
             let exclusionList = (try? ExclusionStore.shared.load()) ?? .empty
             let runner = ScanRunner(exclusionList: exclusionList, cache: cache)

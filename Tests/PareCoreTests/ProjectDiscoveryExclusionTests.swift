@@ -97,7 +97,7 @@ final class ProjectDiscoveryExclusionTests: XCTestCase {
             to: storeURL
         )
 
-        let discovery = ProjectRootDiscovery(storeURL: storeURL)
+        let discovery = ProjectRootDiscovery(storeURL: storeURL, spotlightSearch: { await SearchStub().run() })
 
         let confirmed = Set(await discovery.confirmedRoots().map(\.path))
         XCTAssertEqual(confirmed, [project.path, manualGoModule.path])
@@ -123,7 +123,12 @@ final class ProjectDiscoveryExclusionTests: XCTestCase {
         )
         try original.write(to: storeURL)
 
-        let discovery = ProjectRootDiscovery(storeURL: storeURL)
+        // The stored timestamp (0) is a minute before `now`, so no refresh is due.
+        let discovery = ProjectRootDiscovery(
+            storeURL: storeURL,
+            spotlightSearch: { await SearchStub().run() },
+            now: { Date(timeIntervalSinceReferenceDate: 60) }
+        )
         await discovery.discoverIfNeeded()
 
         XCTAssertEqual(try Data(contentsOf: storeURL), original)
