@@ -17,6 +17,8 @@ public enum ScanCategory: String, CaseIterable, Sendable {
     case deviceBackups = "Device Backups"
     case productivityCaches = "Productivity Caches"
     case launchAgents = "Launch Agents"
+    /// Explain-only findings (swap, deleted-but-open files): reported, never reclaimable or cleanable.
+    case diagnostics = "Diagnostics"
 }
 
 public enum RiskLevel: String, Sendable {
@@ -46,6 +48,7 @@ public struct ScanFinding: Sendable {
     public let sizeBytes: Int64
     public let lastUsed: Date?
     public let confidence: Double
+    public let annotations: [FindingAnnotation]
 
     public init(
         category: ScanCategory,
@@ -54,7 +57,8 @@ public struct ScanFinding: Sendable {
         path: String,
         sizeBytes: Int64,
         lastUsed: Date?,
-        confidence: Double
+        confidence: Double,
+        annotations: [FindingAnnotation] = []
     ) {
         self.category = category
         self.riskLevel = riskLevel
@@ -63,6 +67,7 @@ public struct ScanFinding: Sendable {
         self.sizeBytes = sizeBytes
         self.lastUsed = lastUsed
         self.confidence = confidence
+        self.annotations = annotations
     }
 }
 
