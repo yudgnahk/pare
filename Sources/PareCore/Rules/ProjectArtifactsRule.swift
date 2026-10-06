@@ -205,10 +205,10 @@ public struct ProjectArtifactsRule: ScanRule {
             }
 
             if ScanPolicy.projectLocalArtifactDirectoryNames.contains(lower) {
-                // Age gate
+                guard ScanPolicy.hasRequiredSiblingMarker(item) else { continue }
                 if let minAge {
-                    let effectiveDate = ScanPolicy.effectiveAgeDate(from: values)
-                    if let date = effectiveDate, Date().timeIntervalSince(date) < minAge { continue }
+                    guard let date = ScanPolicy.projectArtifactAgeDate(for: item, values: values),
+                          Date().timeIntervalSince(date) >= minAge else { continue }
                 }
 
                 if ScanPolicy.requiresGitIgnoreEvidence(item) {

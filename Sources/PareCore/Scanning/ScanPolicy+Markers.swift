@@ -374,6 +374,25 @@ extension ScanPolicy {
         "coverage",
         ".tox",
         ".eggs",
+        ".build",           // SwiftPM
+        ".dart_tool",
+        ".angular",
+        ".svelte-kit",
+        ".vite",
+        ".expo",
+        ".serverless",
+    ]
+
+    /// Hidden caches reclaimable only beside the manifest that regenerates them (keys lowercased).
+    /// `.swiftpm` (committed schemes) and `.terraform` (backend state) are deliberately absent.
+    public static let projectArtifactRequiredSiblingMarkers: [String: [String]] = [
+        ".build": ["Package.swift"],
+        ".dart_tool": ["pubspec.yaml"],
+        ".angular": ["angular.json"],
+        ".svelte-kit": ["package.json"],
+        ".vite": ["package.json"],
+        ".expo": ["package.json"],
+        ".serverless": ["serverless.yml", "serverless.yaml", "serverless.ts", "serverless.js", "serverless.json"],
     ]
 
     /// Generic output names people also commit; reclaimable only when git ignores them and tracks nothing inside.

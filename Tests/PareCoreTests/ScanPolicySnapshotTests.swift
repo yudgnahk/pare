@@ -47,6 +47,9 @@ final class ScanPolicySnapshotTests: XCTestCase {
             ("projectDependencyDirectoryNames", Array(ScanPolicy.projectDependencyDirectoryNames)),
             ("projectLocalArtifactDirectoryNames", Array(ScanPolicy.projectLocalArtifactDirectoryNames)),
             ("projectArtifactNamesRequiringGitIgnoreEvidence", Array(ScanPolicy.projectArtifactNamesRequiringGitIgnoreEvidence)),
+            ("projectArtifactRequiredSiblingMarkers", ScanPolicy.projectArtifactRequiredSiblingMarkers.flatMap { name, markers in
+                markers.map { name + "|" + $0 }
+            }),
             ("developerPackageCacheMarkers", ScanPolicy.developerPackageCacheMarkers),
             ("projectRootMarkerFileNames", ScanPolicy.projectRootMarkerFileNames),
             ("projectDiscoverySignalNames", ScanPolicy.projectDiscoverySignalNames),
@@ -108,8 +111,9 @@ final class ScanPolicySnapshotTests: XCTestCase {
         "launchAgentPathMarkers": "9a83f54eeb03d9e8:1",
         "browserExtendedReviewPathMarkers": "51b1ec4db03e22e3:20",
         "projectDependencyDirectoryNames": "3571220bfbcb3fc7:4",
-        "projectLocalArtifactDirectoryNames": "292d813868da67ad:17",
+        "projectLocalArtifactDirectoryNames": "22c7cc588d03e967:24",
         "projectArtifactNamesRequiringGitIgnoreEvidence": "e248168fd9663d3c:4",
+        "projectArtifactRequiredSiblingMarkers": "1148dc4920103d3e:11",
         "developerPackageCacheMarkers": "1bc7bd2abe3d3197:21",
         "projectRootMarkerFileNames": "1f1d73052a061d5b:13",
         "projectDiscoverySignalNames": "5efb8386f4c6c5e9:13",

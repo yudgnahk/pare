@@ -109,7 +109,10 @@ final class Phase5RuleTests: XCTestCase {
     // MARK: - ScanPolicy additions
 
     func testIsProjectArtifactMatchesLocalNamesOnly() {
-        let reclaimable = ["dist", "__pycache__", "build", ".gradle", ".next", ".nuxt", ".cache", "target"]
+        let reclaimable = [
+            "dist", "__pycache__", "build", ".gradle", ".next", ".nuxt", ".cache", "target",
+            ".build", ".dart_tool", ".angular", ".svelte-kit", ".vite", ".expo", ".serverless",
+        ]
         for name in reclaimable {
             let url = URL(fileURLWithPath: "/Users/kelvin/Projects/myapp/\(name)")
             XCTAssertTrue(ScanPolicy.isProjectArtifact(url), "\(name) should be recognised as a local project artifact")
