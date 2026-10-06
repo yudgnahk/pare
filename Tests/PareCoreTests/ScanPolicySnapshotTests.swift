@@ -52,6 +52,10 @@ final class ScanPolicySnapshotTests: XCTestCase {
             }),
             ("developerPackageCacheMarkers", ScanPolicy.developerPackageCacheMarkers),
             ("neverCleanComponentSequences", ScanPolicy.neverCleanComponentSequences.map { $0.joined(separator: "/") }),
+            ("neverCleanUserDataComponentSequences", ScanPolicy.neverCleanUserDataComponentSequences.map { $0.joined(separator: "/") }),
+            ("neverCleanUserCacheFolderNames", Array(ScanPolicy.neverCleanUserCacheFolderNames)),
+            ("userCacheProtectedFolderPrefixes", ScanPolicy.userCacheProtectedFolderPrefixes),
+            ("neverCleanUserDataFilePrefixes", ScanPolicy.neverCleanUserDataFilePrefixes.map { $0.parent.joined(separator: "/") + "|" + $0.prefix }),
             ("projectRootMarkerFileNames", ScanPolicy.projectRootMarkerFileNames),
             ("projectDiscoverySignalNames", ScanPolicy.projectDiscoverySignalNames),
             ("developerReviewExclusionMarkers", ScanPolicy.developerReviewExclusionMarkers),
@@ -86,7 +90,7 @@ final class ScanPolicySnapshotTests: XCTestCase {
     }
 
     private static let expected: [String: String] = [
-        "reconstructibleCachePathMarkers": "6cc405c8d3faa408:15",
+        "reconstructibleCachePathMarkers": "75a6f80e10997f85:16",
         "searchIndexSensitivePathMarkers": "ac84191a36afc32d:9",
         "searchIndexSensitiveCacheFolderNames": "1737a9b796cd51c1:4",
         "userCachesExcludedTopLevelFolderNames": "069a2f01a3418d96:22",
@@ -115,8 +119,12 @@ final class ScanPolicySnapshotTests: XCTestCase {
         "projectLocalArtifactDirectoryNames": "22c7cc588d03e967:24",
         "projectArtifactNamesRequiringGitIgnoreEvidence": "e248168fd9663d3c:4",
         "projectArtifactRequiredSiblingMarkers": "1148dc4920103d3e:11",
-        "developerPackageCacheMarkers": "613683649b3a72b1:20",
+        "developerPackageCacheMarkers": "0a9650438f6953f4:21",
         "neverCleanComponentSequences": "5b8498f0d86a979c:2",
+        "neverCleanUserDataComponentSequences": "a6fb32cdbc69797b:4",
+        "neverCleanUserCacheFolderNames": "7399441f93c823aa:2",
+        "userCacheProtectedFolderPrefixes": "34190fa0dfa8102d:2",
+        "neverCleanUserDataFilePrefixes": "f4a58138e80adc0f:1",
         "projectRootMarkerFileNames": "1f1d73052a061d5b:13",
         "projectDiscoverySignalNames": "5efb8386f4c6c5e9:13",
         "developerReviewExclusionMarkers": "3a6c7b4459b1d383:6",

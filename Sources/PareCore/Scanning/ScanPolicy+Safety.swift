@@ -56,6 +56,13 @@ extension ScanPolicy {
     }
 
     /// `true` when the directory name is a dependency tree that must never be reclaimable.
+    /// True for a top-level `Library/Caches` entry `UserCachesRule` must skip, folder or file.
+    public static func isUserCacheFolderProtected(name: String) -> Bool {
+        let lower = name.lowercased()
+        return neverCleanUserCacheFolderNames.contains(lower)
+            || userCacheProtectedFolderPrefixes.contains { lower.hasPrefix($0) }
+    }
+
     public static func isProjectDependencyDirectory(_ name: String) -> Bool {
         projectDependencyDirectoryNames.contains(name.lowercased())
     }

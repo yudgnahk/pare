@@ -12,7 +12,9 @@ extension ScanPolicy {
         "/.cargo/git/",
         "/.rustup/downloads",
         "/.cache/opencode",
-        "/.local/share/opencode/",
+        // Only OpenCode's logs and snapshots; its storage, database and auth.json are user data.
+        "/.local/share/opencode/log",
+        "/.local/share/opencode/snapshot",
         "/library/caches/homebrew",
         "/library/caches/yarn",
         "/library/caches/pnpm",
@@ -52,6 +54,9 @@ extension ScanPolicy {
     /// Rule-ownership policy: top-level `~/Library/Caches` folder names (lowercased)
     /// that are owned by other scan rules and must not be double-reported by
     /// `UserCachesRule`. Includes never-clean search-index stores.
+    /// Top-level `Library/Caches` name prefixes `UserCachesRule` never reports (browser and Google app state).
+    public static let userCacheProtectedFolderPrefixes: [String] = ["com.google.", "org.mozilla."]
+
     public static let userCachesExcludedTopLevelFolderNames: Set<String> = Set([
         "google",                       // Chrome — BrowserCachesRule
         "com.apple.safari",             // BrowserCachesRule
@@ -422,7 +427,8 @@ extension ScanPolicy {
         "/.bun/install/cache",
         "/.local/share/pnpm",
         "/library/pnpm",
-        "/.local/share/opencode/",
+        "/.local/share/opencode/log",
+        "/.local/share/opencode/snapshot",
         "/library/caches/homebrew",
     ]
 

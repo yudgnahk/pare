@@ -61,6 +61,9 @@ public struct UserCachesRule: ScanRule {
 
         var findings: [ScanFinding] = []
         for child in children {
+            // Name checks run before the file branch so protected top-level files are skipped too.
+            let name = child.lastPathComponent.lowercased()
+            if Self.excludedTopLevelNames.contains(name) || ScanPolicy.isUserCacheFolderProtected(name: name) { continue }
             let res = try? child.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
             if res?.isSymbolicLink == true { continue }
             guard res?.isDirectory == true else {
@@ -78,10 +81,6 @@ public struct UserCachesRule: ScanRule {
                 ))
                 continue
             }
-
-            let name = child.lastPathComponent.lowercased()
-            if Self.excludedTopLevelNames.contains(name) { continue }
-            if name.hasPrefix("com.google.") || name.hasPrefix("org.mozilla.") { continue }
 
             findings += ScanFindingBuilder.directoryFindings(
                 at: child,

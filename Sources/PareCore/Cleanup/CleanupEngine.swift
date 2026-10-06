@@ -11,7 +11,7 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case advancedRiskBlocked(String)
     /// Docker VM disk / volume data — never delete as a filesystem path.
     case dockerNeverDelete(String)
-    /// A tool-managed working set (Go build/module cache) — the tool trims it; never trash it.
+    /// A tool-managed working set (Go build/module cache) or protected app user data — never trash it.
     case workingSetProtected(String)
     /// The path is excluded by the user's exclusion list.
     case excludedByUser(String)
@@ -43,6 +43,9 @@ public enum CleanupError: Error, LocalizedError, Sendable {
         case .dockerNeverDelete(let path):
             return "Docker VM disk/volume data blocked: \(path). Use docker system prune (never --volumes)."
         case .workingSetProtected(let path):
+            if ScanPolicy.isProtectedUserDataPath(URL(fileURLWithPath: path)) {
+                return "App data (sessions, sign-in or identity state) — Pare never deletes it: \(path)"
+            }
             return "Go cache in active use — Go trims it itself and Pare never deletes it: \(path)"
         case .excludedByUser(let path):
             return "Excluded by user: \(path)"
