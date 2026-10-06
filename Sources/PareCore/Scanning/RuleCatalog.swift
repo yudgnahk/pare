@@ -39,6 +39,8 @@ public enum RuleCatalog {
             MemoryPressureRule(),
             LaunchdRestartLoopRule(),
             TinyFileQueueRule(),
+            CrashLoopRule(),
+            RunawayLogsRule(),
         ]
     }
 

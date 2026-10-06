@@ -53,6 +53,8 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "mobile-sync-backups" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "productivity-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "orphaned-launch-agents" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "crash-loops" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "runaway-logs" }))
     }
 
     func testUnifiedCatalogRuleCount() {
