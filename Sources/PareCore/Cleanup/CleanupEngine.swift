@@ -157,6 +157,8 @@ public actor CleanupEngine {
     private let runningExecutables: any RunningExecutablesProviding
     /// Codex staging folders are only cleanable while Codex and ChatGPT are not running. Injectable.
     private let isCodexRunning: @Sendable () async -> Bool
+    /// The active pnpm store (`…/store/v<N>`), re-resolved at cleanup; nil fails closed. Injectable.
+    private let pnpmActiveStore: @Sendable () async -> URL?
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -174,7 +176,8 @@ public actor CleanupEngine {
         runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider(),
         freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace(),
         runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider(),
-        isCodexRunning: (@Sendable () async -> Bool)? = nil
+        isCodexRunning: (@Sendable () async -> Bool)? = nil,
+        pnpmActiveStore: (@Sendable () async -> URL?)? = nil
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -186,6 +189,9 @@ public actor CleanupEngine {
         }
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
+        self.pnpmActiveStore = pnpmActiveStore ?? {
+            await PnpmStoreLocator.activeStore(home: FileManager.default.homeDirectoryForCurrentUser)
+        }
         self.isCodexRunning = isCodexRunning ?? CodexActivity.system
         self.runningExecutables = runningExecutables
         self.gitInspector = gitInspector
@@ -283,6 +289,10 @@ public actor CleanupEngine {
         let codexIdle = findings.contains { ScanPolicy.codexStagingRoot(containing: $0.path) != nil }
             ? !(await isCodexRunning())
             : false
+        // Resolved once per batch, and only when it contains pnpm store version folders.
+        let activePnpmStore = findings.contains { ScanPolicy.isPnpmGuardedPath(URL(fileURLWithPath: $0.path)) }
+            ? await pnpmActiveStore()
+            : nil
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -372,6 +382,14 @@ public actor CleanupEngine {
                     executablesSnapshot = .some(await runningExecutables.runningExecutablePaths())
                 }
                 if !ScanPolicy.isReclaimableVersionSibling(url, runningExecutables: executablesSnapshot ?? nil) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                    continue
+                }
+            } else if ScanPolicy.isPnpmGuardedPath(url) {
+                // Anything in a pnpm store or pnpm home passes only the old-store or wrong-platform check,
+                // never the broad pnpm persona marker.
+                if !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore),
+                   !ScanPolicy.isCleanableWrongPlatformPath(url) {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                     continue
                 }
