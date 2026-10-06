@@ -406,6 +406,16 @@ extension ScanPolicy {
         "/library/caches/homebrew",
     ]
 
+    /// Directory names (lowercased) whose trees keep side-by-side versions on purpose (version managers,
+    /// package caches, extension stores owned by other rules); version siblings are never offered inside them.
+    public static let versionSiblingExcludedDirectoryNames: Set<String> = [
+        ".nvm", ".pyenv", ".rbenv", ".rustup", ".cargo", ".npm", ".gem", ".m2", ".gradle", ".ivy2",
+        ".sdkman", ".asdf", ".volta", ".fnm", ".nodenv", ".goenv", ".jenv", ".bun", ".deno", ".pub-cache",
+        ".conda", ".nuget", ".dotnet", ".julia", ".ghcup", ".stack", ".opam", ".swiftpm", ".git", ".trash",
+        ".vscode", ".vscode-insiders", ".vscode-server", ".cursor", ".windsurf",
+        "mise", "pipx", "uv", "node_modules", "site-packages", "jetbrains", "code", "cursor", "windsurf", "google",
+    ]
+
     /// Marker files/directories whose presence identifies a directory as a project root.
     /// Mirrors the Spotlight signal names used by `ProjectRootDiscovery`.
     public static let projectRootMarkerFileNames: [String] = [
