@@ -1,7 +1,7 @@
 import Foundation
 
 /// Discovers project root directories by running an NSMetadataQuery Spotlight search
-/// for well-known signal files (.git, Package.swift, Cargo.toml, etc.) under the user's
+/// for well-known signal files (`ScanPolicy.projectDiscoverySignalNames`) under the user's
 /// home directory.
 ///
 /// Discovered roots are persisted to ~/Library/Application Support/Pare/project-roots.json.
@@ -20,13 +20,28 @@ public actor ProjectRootDiscovery {
     private let spotlightSearch: @Sendable () async -> SpotlightSearchResult
     /// Whether the most recent `discover()` hit the Spotlight timeout, so its root list may be short.
     private(set) var lastDiscoveryTimedOut = false
+    /// Set when init pruned roots that are now excluded from discovery; the next save persists it.
+    private var needsSave = false
+    private let now: @Sendable () -> Date
+    /// Forces the next `discoverIfNeeded()` to search regardless of age (user-requested rescan).
+    private var isStale = false
+    /// Shared by overlapping callers so one Spotlight query serves them all.
+    private var inFlight: Task<[URL], Never>?
+
+    /// How long discovered roots are trusted before Spotlight is queried again.
+    public static let refreshInterval: TimeInterval = 24 * 3600
 
     public init(storeURL: URL? = nil) {
         self.init(storeURL: storeURL, spotlightSearch: { await SpotlightQueryRunner.run() })
     }
 
-    init(storeURL: URL?, spotlightSearch: @escaping @Sendable () async -> SpotlightSearchResult) {
+    init(
+        storeURL: URL?,
+        spotlightSearch: @escaping @Sendable () async -> SpotlightSearchResult,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.spotlightSearch = spotlightSearch
+        self.now = now
         let defaultURL: URL = {
             let appSupport = FileManager.default.urls(
                 for: .applicationSupportDirectory, in: .userDomainMask
@@ -44,6 +59,9 @@ public actor ProjectRootDiscovery {
             knownRoots = [:]
             for path in decoded.confirmed { knownRoots[path] = true }
             for path in decoded.excluded  { knownRoots[path] = false }
+            let kept = knownRoots.filter { !Self.isExcludedRoot($0.key) }
+            needsSave = kept.count != knownRoots.count
+            knownRoots = kept
             manualRoots = decoded.manual
             lastDiscoveredAt = decoded.lastDiscoveredAt
         }
@@ -53,7 +71,9 @@ public actor ProjectRootDiscovery {
 
     /// All roots that are active (auto-discovered + confirmed, plus manual additions).
     public func confirmedRoots() -> [URL] {
-        let auto = knownRoots.filter { $0.value }.map { URL(fileURLWithPath: $0.key) }
+        let auto = knownRoots
+            .filter { $0.value && !Self.isExcludedRoot($0.key) }
+            .map { URL(fileURLWithPath: $0.key) }
         let manual = manualRoots.map { URL(fileURLWithPath: $0) }
         return (auto + manual).filter { FileManager.default.fileExists(atPath: $0.path) }
     }
@@ -61,7 +81,7 @@ public actor ProjectRootDiscovery {
     /// All discovered roots paired with their confirmed state (for UI display).
     public var allDiscoveredRoots: [(url: URL, confirmed: Bool)] {
         knownRoots
-            .filter { FileManager.default.fileExists(atPath: $0.key) }
+            .filter { !Self.isExcludedRoot($0.key) && FileManager.default.fileExists(atPath: $0.key) }
             .map { (URL(fileURLWithPath: $0.key), $0.value) }
             .sorted { $0.url.path < $1.url.path }
     }
@@ -76,18 +96,42 @@ public actor ProjectRootDiscovery {
     /// When the last Spotlight scan completed (nil = never run).
     public var discoveryDate: Date? { lastDiscoveredAt }
 
-    /// Run Spotlight discovery if it has never been run before. Returns whether it ran.
+    /// Runs Spotlight discovery when it never ran, is `refreshInterval` old, is dated in the future,
+    /// or was marked stale. Returns whether a discovery ran (or was joined) during this call.
     @discardableResult
     public func discoverIfNeeded() async -> Bool {
-        guard lastDiscoveredAt == nil else { return false }
+        if needsSave { saveToDisk() }
+        guard inFlight != nil || isDiscoveryDue else { return false }
         _ = await discover()
         return true
+    }
+
+    /// Makes the next `discoverIfNeeded()` query Spotlight even if the last discovery is recent.
+    public func markStale() {
+        isStale = true
+    }
+
+    private var isDiscoveryDue: Bool {
+        guard let last = lastDiscoveredAt else { return true }
+        let current = now()
+        return isStale || last > current || current.timeIntervalSince(last) >= Self.refreshInterval
     }
 
     /// Run Spotlight query, deduplicate results, merge into the known-roots set,
     /// and return the full list of newly-discovered candidate roots.
     @discardableResult
     public func discover() async -> [URL] {
+        if let inFlight { return await inFlight.value }
+        let task = Task { await self.performDiscovery() }
+        inFlight = task
+        let roots = await task.value
+        inFlight = nil
+        return roots
+    }
+
+    private func performDiscovery() async -> [URL] {
+        // Cleared before the search so a markStale() that lands mid-search still forces the next run.
+        isStale = false
         let search = await spotlightSearch()
         lastDiscoveryTimedOut = search.timedOut
         let roots = Self.deduplicate(search.urls)
@@ -100,7 +144,8 @@ public actor ProjectRootDiscovery {
         // Prune roots that no longer exist on disk.
         knownRoots = knownRoots.filter { FileManager.default.fileExists(atPath: $0.key) }
 
-        lastDiscoveredAt = Date()
+        // Advanced even after a timeout, so a machine without Spotlight is not re-queried every scan.
+        lastDiscoveredAt = now()
         saveToDisk()
         return roots
     }
@@ -133,16 +178,11 @@ public actor ProjectRootDiscovery {
     /// and collapses submodule / monorepo nesting.
     static func deduplicate(_ hits: [URL]) -> [URL] {
         // 1. Resolve each hit to its project root.
-        var rootPaths = Set<String>()
-        for hit in hits {
-            let parent = hit.deletingLastPathComponent()
-            rootPaths.insert(parent.path)
-        }
+        let rootPaths = Set(hits.map { projectRoot(forSignalHit: $0).path })
 
         // 2. Filter paths containing excluded path components (list lives in ScanPolicy — R1.4).
-        let excluded = ScanPolicy.projectDiscoveryExcludedPathComponents
         let filtered = rootPaths.filter { path in
-            !excluded.contains { path.contains($0) }
+            !ScanPolicy.isExcludedFromProjectDiscovery(URL(fileURLWithPath: path))
         }
 
         // 3. Sort by depth ascending (shallowest first).
@@ -172,9 +212,26 @@ public actor ProjectRootDiscovery {
         return result.map { URL(fileURLWithPath: $0) }
     }
 
+    /// The hit's folder, or the folder holding an enclosing `.xcodeproj`/`.xcworkspace`
+    /// (Xcode keeps `Package.resolved` several levels inside the bundle).
+    static func projectRoot(forSignalHit hit: URL) -> URL {
+        let components = hit.pathComponents
+        let bundleIndex = components.dropLast().firstIndex { component in
+            let lower = component.lowercased()
+            return lower.hasSuffix(".xcodeproj") || lower.hasSuffix(".xcworkspace")
+        }
+        guard let bundleIndex else { return hit.deletingLastPathComponent() }
+        return URL(fileURLWithPath: NSString.path(withComponents: Array(components[..<bundleIndex])))
+    }
+
+    private static func isExcludedRoot(_ path: String) -> Bool {
+        ScanPolicy.isExcludedFromProjectDiscovery(URL(fileURLWithPath: path))
+    }
+
     // MARK: - Persistence
 
     private func saveToDisk() {
+        needsSave = false
         let store = ProjectRootsStore(
             confirmed: knownRoots.filter { $0.value  }.map(\.key).sorted(),
             excluded:  knownRoots.filter { !$0.value }.map(\.key).sorted(),
@@ -215,11 +272,6 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
     /// Keeps `self` alive from `start` until `finish` even if local refs drop.
     private var retainUntilFinished: SpotlightQueryRunner?
 
-    private static let signalNames = [
-        ".git", "Package.swift", "Cargo.toml", "go.mod",
-        "pyproject.toml", "setup.py", "Gemfile", "pom.xml", "build.gradle",
-    ]
-
     /// Maximum time to wait for Spotlight before completing with whatever results we have.
     private static let timeoutSeconds: TimeInterval = 10
 
@@ -241,7 +293,7 @@ private final class SpotlightQueryRunner: NSObject, @unchecked Sendable {
             self.retainUntilFinished = self
         }
 
-        let predicates = Self.signalNames.map { name in
+        let predicates = ScanPolicy.projectDiscoverySignalNames.map { name in
             NSPredicate(format: "%K == %@", NSMetadataItemFSNameKey, name)
         }
         query.predicate = NSCompoundPredicate(orPredicateWithSubpredicates: predicates)

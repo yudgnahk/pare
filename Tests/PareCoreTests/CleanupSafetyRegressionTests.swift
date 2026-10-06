@@ -98,6 +98,31 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: build.path))
     }
 
+    /// A Go module persisted as a discovered root before it was excluded must not unlock
+    /// its `build` dir through the registered-root shortcut.
+    func testBuildDirectoryUnderPrunedGoModuleRootIsBlocked() async throws {
+        let moduleRoot = root.appending(path: "Documents/go/pkg/mod/github.com/acme/lib@v1.2.3")
+        let build = try makeDirectory(at: moduleRoot.appending(path: "build"))
+        let storeURL = root.appending(path: "roots/project-roots.json")
+        try FileManager.default.createDirectory(
+            at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        let seeded = ProjectRootsStore(confirmed: [moduleRoot.path], excluded: [], manual: [], lastDiscoveredAt: Date())
+        try JSONEncoder().encode(seeded).write(to: storeURL)
+        let discovery = ProjectRootDiscovery(storeURL: storeURL)
+        let engine = CleanupEngine(
+            store: CleanupTransactionStore(directory: storeDir),
+            projectRootsProvider: { await discovery.confirmedRoots().map(\.path) }
+        )
+
+        let result = try await engine.clean(findings: [finding(for: build)], profileName: "test")
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        XCTAssertEqual(result.skipped.count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: build.path),
+                      "build dir inside a Go module must remain on disk")
+    }
+
     /// The home directory itself is never accepted as project-root evidence.
     func testHomeDirectoryDotGitIsNotProjectEvidence() {
         let home = root.appending(path: "home")

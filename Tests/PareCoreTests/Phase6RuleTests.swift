@@ -527,7 +527,7 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         makeIsolatedDiscovery(manual: [root.path], confirmed: [])
     }
 
-    /// Builds a discovery instance that will not invoke Spotlight in `discoverIfNeeded()`.
+    /// Builds a discovery instance whose search is a stub, so no test reaches real Spotlight.
     private func makeIsolatedDiscovery(manual: [String], confirmed: [String]) -> ProjectRootDiscovery {
         let storeURL = FileManager.default.temporaryDirectory
             .appending(path: "pare_test_\(UUID().uuidString)/project-roots.json")
@@ -540,7 +540,7 @@ final class ProjectArtifactsRuleTests: XCTestCase {
             lastDiscoveredAt: Date()
         )
         try? JSONEncoder().encode(store).write(to: storeURL)
-        return ProjectRootDiscovery(storeURL: storeURL)
+        return ProjectRootDiscovery(storeURL: storeURL, spotlightSearch: { await SearchStub().run() })
     }
 }
 
