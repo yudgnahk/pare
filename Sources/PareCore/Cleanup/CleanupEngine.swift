@@ -151,6 +151,8 @@ public actor CleanupEngine {
     /// Open-file snapshot and running apps for the in-use gate; injectable so tests never run lsof.
     private let openFiles: any OpenFileSnapshotProviding
     private let runningApps: any RunningAppsProviding
+    /// Measures volume free space around real runs so the UI can show what the disk actually gained.
+    private let freeSpace: any VolumeFreeSpaceProviding
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -165,7 +167,8 @@ public actor CleanupEngine {
         gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector(),
         goCacheLocations: GoCacheLocations = .shared,
         openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
-        runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider()
+        runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider(),
+        freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace()
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -181,6 +184,27 @@ public actor CleanupEngine {
         self.goCacheLocations = goCacheLocations
         self.openFiles = openFiles
         self.runningApps = runningApps
+        self.freeSpace = freeSpace
+    }
+
+    /// Both readings in one metric (Finder's "important usage" when both have it), so the delta is meaningful.
+    static func comparableFreeBytes(
+        before: VolumeFreeSpace?,
+        after: VolumeFreeSpace?
+    ) -> (before: Int64?, after: Int64?) {
+        if let first = before?.importantUsageBytes {
+            return (first, after?.importantUsageBytes)
+        }
+        return (before?.availableBytes, after?.availableBytes)
+    }
+
+    /// The finding's parent (or nearest existing ancestor), which still exists after the item is trashed.
+    private static func nearestExistingDirectory(of path: String) -> URL {
+        var url = URL(fileURLWithPath: path).deletingLastPathComponent()
+        while !FileManager.default.fileExists(atPath: url.path), url.path != "/" {
+            url = url.deletingLastPathComponent()
+        }
+        return url
     }
 
     private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -255,14 +279,20 @@ public actor CleanupEngine {
         let transactionID = UUID()
         let transactionTimestamp = Date()
         var transactionSaveError: String?
+        let volumeURL = dryRun ? nil : findings.first.map { Self.nearestExistingDirectory(of: $0.path) }
+        let readingBefore = volumeURL.flatMap { freeSpace.freeSpace(forVolumeContaining: $0) }
+        var readingAfter: VolumeFreeSpace?
 
         func makeTransaction(_ items: [CleanupItem]) -> CleanupTransaction {
-            CleanupTransaction(
+            let bytes = Self.comparableFreeBytes(before: readingBefore, after: readingAfter)
+            return CleanupTransaction(
                 id: transactionID,
                 timestamp: transactionTimestamp,
                 profileName: profileName,
                 isDryRun: dryRun,
-                items: items
+                items: items,
+                freeBytesBefore: bytes.before,
+                freeBytesAfter: bytes.after
             )
         }
 
@@ -404,6 +434,7 @@ public actor CleanupEngine {
             }
         }
 
+        readingAfter = volumeURL.flatMap { freeSpace.freeSpace(forVolumeContaining: $0) }
         let transaction = makeTransaction(succeeded)
 
         var resultTransaction: CleanupTransaction? = transaction

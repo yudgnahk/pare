@@ -27,6 +27,17 @@ final class CleanupCoordinatorTests: XCTestCase {
         )
     }
 
+    /// The result card's reclaim line compares the engine's estimate with the measured free-space delta.
+    func testLastReclaimCarriesTheEstimate() async throws {
+        let file = try fixture.makeFile(named: "reclaim.bin")
+        let coordinator = CleanupCoordinator(engine: fixture.makeEngine())
+
+        coordinator.confirm(.quick, findings: [makeFinding(path: file.path)])
+        await waitForCleanupToFinish(coordinator)
+
+        XCTAssertEqual(coordinator.lastReclaim?.estimatedBytes, 4)
+    }
+
     /// The injected engine (backed by a temp store) must be the one actually used,
     /// not the default `CleanupEngine()` writing to the shared app-support store.
     func testConfirmUsesInjectedEngine() async throws {
