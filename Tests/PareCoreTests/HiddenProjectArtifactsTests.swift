@@ -21,7 +21,9 @@ final class HiddenProjectArtifactsTests: XCTestCase {
     private var tmp: URL!
 
     override func setUpWithError() throws {
-        tmp = FileManager.default.temporaryDirectory.appending(path: "pare_test_\(UUID().uuidString)")
+        // Resolved because directory listings report `/private/var/…`, not the `/var/…` symlink spelling.
+        tmp = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+            .appending(path: "pare_test_\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
     }
 
