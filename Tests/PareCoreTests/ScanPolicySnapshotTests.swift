@@ -51,6 +51,7 @@ final class ScanPolicySnapshotTests: XCTestCase {
                 markers.map { name + "|" + $0 }
             }),
             ("developerPackageCacheMarkers", ScanPolicy.developerPackageCacheMarkers),
+            ("neverCleanComponentSequences", ScanPolicy.neverCleanComponentSequences.map { $0.joined(separator: "/") }),
             ("projectRootMarkerFileNames", ScanPolicy.projectRootMarkerFileNames),
             ("projectDiscoverySignalNames", ScanPolicy.projectDiscoverySignalNames),
             ("developerReviewExclusionMarkers", ScanPolicy.developerReviewExclusionMarkers),
@@ -85,7 +86,7 @@ final class ScanPolicySnapshotTests: XCTestCase {
     }
 
     private static let expected: [String: String] = [
-        "reconstructibleCachePathMarkers": "3910e7fdc10ae240:17",
+        "reconstructibleCachePathMarkers": "6cc405c8d3faa408:15",
         "searchIndexSensitivePathMarkers": "ac84191a36afc32d:9",
         "searchIndexSensitiveCacheFolderNames": "1737a9b796cd51c1:4",
         "userCachesExcludedTopLevelFolderNames": "069a2f01a3418d96:22",
@@ -114,7 +115,8 @@ final class ScanPolicySnapshotTests: XCTestCase {
         "projectLocalArtifactDirectoryNames": "22c7cc588d03e967:24",
         "projectArtifactNamesRequiringGitIgnoreEvidence": "e248168fd9663d3c:4",
         "projectArtifactRequiredSiblingMarkers": "1148dc4920103d3e:11",
-        "developerPackageCacheMarkers": "1bc7bd2abe3d3197:21",
+        "developerPackageCacheMarkers": "613683649b3a72b1:20",
+        "neverCleanComponentSequences": "5b8498f0d86a979c:2",
         "projectRootMarkerFileNames": "1f1d73052a061d5b:13",
         "projectDiscoverySignalNames": "5efb8386f4c6c5e9:13",
         "developerReviewExclusionMarkers": "3a6c7b4459b1d383:6",

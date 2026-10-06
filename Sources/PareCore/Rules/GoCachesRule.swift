@@ -1,41 +1,80 @@
 import Foundation
 
-/// Reconstructible Go toolchain caches as whole folders.
-/// Targets ~/Library/Caches/go-build/ and ~/go/pkg/mod/cache/ only.
-/// Does NOT touch ~/go/pkg/mod/ beyond cache/ (extracted module source).
+/// Go's build cache (`GOCACHE`) and module cache (`GOMODCACHE`) as whole folders, report-only.
+/// Both are a working set Go manages itself, so findings are `.advanced`: shown with their size,
+/// excluded from reclaimable totals, and hard-blocked by `CleanupEngine`.
 public struct GoCachesRule: ScanRule {
     public let id = "go-caches"
-    public let title = "Go Toolchain Caches"
-    public let reason = "Go build/module download cache (reconstructible on demand)"
+    public let title = "Go Build & Module Caches"
+    public let reason = "Go cache in active use — Go manages it itself (report-only)"
     public let category: ScanCategory = .developerPackageCaches
-    public let riskLevel: RiskLevel = .safe
+    public let riskLevel: RiskLevel = .advanced
     public let confidence: Double = 0.95
 
-    public init() {}
+    /// Go deletes build-cache entries unused for this many days on its own.
+    public static let buildCacheSelfTrimDays = 5
+
+    private let locations: GoCacheLocations
+
+    public init(locations: GoCacheLocations = .shared) {
+        self.locations = locations
+    }
 
     public func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool { false }
 
     public func customScan(environment: ScanEnvironment) async -> [ScanFinding]? {
         let home = environment.homeDirectory
-        let targets: [(URL, String)] = [
-            (home.appending(path: "Library/Caches/go-build"),
-             "Go build cache — reconstructible on next go build"),
-            (home.appending(path: "go/pkg/mod/cache"),
-             "Go module download cache — reconstructible on next go build"),
+        let reported = await locations.resolveIfNeeded()
+        let targets: [(url: URL?, isModuleCache: Bool)] = [
+            (reported.build, false),
+            (reported.module, true),
+            (home.appending(path: "Library/Caches/go-build"), false),
+            (home.appending(path: "go/pkg/mod"), true),
         ]
 
+        var seen = Set<String>()
         var findings: [ScanFinding] = []
-        for (target, reason) in targets {
+        for target in targets {
+            guard let root = target.url,
+                  seen.insert(ScanPolicy.canonicalPathURL(root).path.lowercased()).inserted else { continue }
+            // Go never trims the module cache on its own.
+            let annotation = FindingAnnotation.workingSet(
+                selfTrimDays: target.isModuleCache ? nil : Self.buildCacheSelfTrimDays
+            )
             findings += ScanFindingBuilder.directoryFindings(
-                at: target,
+                at: root,
                 category: category,
                 riskLevel: riskLevel,
-                reason: reason,
+                reason: Self.reason(for: annotation),
                 confidence: confidence,
                 sizeIndex: environment.sizeIndex
-            )
+            ).map { $0.annotated(with: annotation) }
         }
         return findings
+    }
+
+    private static func reason(for annotation: FindingAnnotation) -> String {
+        switch annotation {
+        case .workingSet(let days?):
+            return "Go build cache in active use — Go evicts entries unused for \(days) days itself (report-only)"
+        case .workingSet(nil):
+            return "Go module cache shared by every Go project — clear with `go clean -modcache` if needed (report-only)"
+        }
+    }
+}
+
+private extension ScanFinding {
+    func annotated(with annotation: FindingAnnotation) -> ScanFinding {
+        ScanFinding(
+            category: category,
+            riskLevel: riskLevel,
+            reason: reason,
+            path: path,
+            sizeBytes: sizeBytes,
+            lastUsed: lastUsed,
+            confidence: confidence,
+            annotations: annotations + [annotation]
+        )
     }
 }

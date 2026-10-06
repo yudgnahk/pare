@@ -11,6 +11,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case advancedRiskBlocked(String)
     /// Docker VM disk / volume data — never delete as a filesystem path.
     case dockerNeverDelete(String)
+    /// A tool-managed working set (Go build/module cache) — the tool trims it; never trash it.
+    case workingSetProtected(String)
     /// The path is excluded by the user's exclusion list.
     case excludedByUser(String)
     /// Search-index-sensitive path — cleaning would force Spotlight/media reindexing.
@@ -40,6 +42,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "ADVANCED-risk file blocked from direct deletion: \(path). Use the app's native cleanup flow instead."
         case .dockerNeverDelete(let path):
             return "Docker VM disk/volume data blocked: \(path). Use docker system prune (never --volumes)."
+        case .workingSetProtected(let path):
+            return "Go cache in active use — Go trims it itself and Pare never deletes it: \(path)"
         case .excludedByUser(let path):
             return "Excluded by user: \(path)"
         case .searchIndexProtected(let path):
@@ -135,6 +139,8 @@ public actor CleanupEngine {
     private let trashItem: @Sendable (URL) throws -> URL?
     /// Re-checks git ignore evidence for `build`/`dist`/`target` at cleanup time.
     private let gitInspector: any GitArtifactInspecting
+    /// Custom Go cache locations (`go env`) that are never cleaned, alongside the default spellings.
+    private let goCacheLocations: GoCacheLocations
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -146,7 +152,8 @@ public actor CleanupEngine {
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
         trashItem: (@Sendable (URL) throws -> URL?)? = nil,
-        gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector()
+        gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector(),
+        goCacheLocations: GoCacheLocations = .shared
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -159,6 +166,7 @@ public actor CleanupEngine {
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
         self.gitInspector = gitInspector
+        self.goCacheLocations = goCacheLocations
     }
 
     private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -223,6 +231,7 @@ public actor CleanupEngine {
         let gitStatuses = await gitInspector.statuses(
             for: findings.map { URL(fileURLWithPath: $0.path) }.filter(ScanPolicy.requiresGitIgnoreEvidence)
         )
+        let goCacheRoots = await goCacheLocations.resolveIfNeeded().all
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -271,6 +280,12 @@ public actor CleanupEngine {
             // Mis-tagged findings must still never trash Docker.raw or the vms tree.
             if ScanPolicy.isDockerNeverDeletePath(url) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .dockerNeverDelete(finding.path)))
+                continue
+            }
+
+            // Before every allow-list: project-artifact evidence would otherwise admit `go/pkg/mod/…/build`.
+            if ScanPolicy.isNeverCleanPath(url, customRoots: goCacheRoots) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .workingSetProtected(finding.path)))
                 continue
             }
 
