@@ -99,6 +99,16 @@ final class DirectorySizeDeadlineTests: XCTestCase {
         XCTAssertEqual(ScanReportPresenter.formatTotal(bytes: 5_000_000, isPartial: true), "at least " + ScanReportPresenter.formatBytes(5_000_000))
     }
 
+    func testFolderRowsCarryThePartialFlag() {
+        let complete = finding(path: "/Users/u/Library/Caches/com.example.a/blob", complete: true, risk: .safe)
+        let partial = finding(path: "/Users/u/Library/Caches/com.example.b/blob", complete: false, risk: .safe)
+
+        let rows = FolderRollup.buildAggregate(from: [complete, partial]).rowsByCategory[.userCaches] ?? []
+
+        XCTAssertEqual(rows.first { $0.folderPath.hasSuffix("com.example.a") }?.hasPartialSize, false)
+        XCTAssertEqual(rows.first { $0.folderPath.hasSuffix("com.example.b") }?.hasPartialSize, true)
+    }
+
     // MARK: - Helpers
 
     private func finding(path: String, complete: Bool, risk: RiskLevel) -> ScanFinding {

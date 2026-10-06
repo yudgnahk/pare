@@ -25,8 +25,11 @@ public enum ScanFindingBuilder {
             return []
         }
 
-        let size = sizeIndex?.directorySize(url: url) ?? FileSystemUtils.directorySize(url: url)
-        guard size > 0 else { return [] }
+        let sized = sizeIndex?.directorySizeResult(url: url) ?? FileSystemUtils.directorySize(
+            at: url, deadline: Date().addingTimeInterval(DirectorySizeIndex.defaultPerDirectoryBudgetSeconds)
+        )
+        // An unfinished walk is still reported ("size unknown"), never dropped as empty.
+        guard sized.bytes > 0 || !sized.isComplete else { return [] }
 
         let lastUsed = try? url
             .resourceValues(forKeys: [.contentModificationDateKey])
@@ -37,9 +40,10 @@ public enum ScanFindingBuilder {
             riskLevel: riskLevel,
             reason: reason,
             path: url.path,
-            sizeBytes: size,
+            sizeBytes: sized.bytes,
             lastUsed: lastUsed,
-            confidence: confidence
+            confidence: confidence,
+            isSizeComplete: sized.isComplete
         )]
     }
 }
