@@ -148,6 +148,8 @@ final class HomebrewManagerViewModel: ObservableObject {
     @Published var operationSummary: String?
     /// Non-nil when a background formulae refresh failed (R0.9 — no silent failures).
     @Published var reloadError: String?
+    /// Shows the `brew cleanup` preview sheet (old versions and downloads).
+    @Published var showCleanupSheet = false
 
     // MARK: - Computed
 
