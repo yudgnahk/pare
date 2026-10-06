@@ -40,6 +40,7 @@ public struct ScanRunner: Sendable {
 
         var tagged: [(ruleIndex: Int, finding: ScanFinding)] = []
         var ruleFailures: [ScanRuleFailure] = []
+        var incompleteRules: [ScanIncompleteRule] = []
         var unreadable: Set<String> = []
         let total = rules.count
         // Fresh per-scan size index: rules sizing overlapping trees share one
@@ -56,6 +57,9 @@ public struct ScanRunner: Sendable {
             tagged.append(contentsOf: outcome.findings.map { (ruleIndex: index, finding: $0) })
             if let failure = outcome.failure {
                 ruleFailures.append(failure)
+            }
+            if let incomplete = outcome.incomplete {
+                incompleteRules.append(incomplete)
             }
             unreadable.formUnion(outcome.unreadablePaths)
             onProgress?(index + 1, total, rule.title)
@@ -84,7 +88,8 @@ public struct ScanRunner: Sendable {
             findings: findings,
             summaries: summaries,
             ruleFailures: ruleFailures,
-            unreadableLocations: unreadable.sorted()
+            unreadableLocations: unreadable.sorted(),
+            incompleteRules: incompleteRules
         )
     }
 
@@ -92,6 +97,7 @@ public struct ScanRunner: Sendable {
         var findings: [ScanFinding] = []
         var unreadablePaths: Set<String> = []
         var failure: ScanRuleFailure? = nil
+        var incomplete: ScanIncompleteRule? = nil
     }
 
     private func runRule(
@@ -102,8 +108,11 @@ public struct ScanRunner: Sendable {
         var outcome = RuleOutcome()
 
         do {
-            if let customFindings = try await rule.customScanThrowing(environment: environment) {
-                outcome.findings = customFindings.filter { !exclusionList.isExcluded($0.path) }
+            if let result = try await rule.customScanResult(environment: environment) {
+                outcome.findings = result.findings.filter { !exclusionList.isExcluded($0.path) }
+                outcome.incomplete = result.incompleteMessage.map {
+                    ScanIncompleteRule(ruleID: rule.id, ruleTitle: rule.title, message: $0)
+                }
                 return outcome
             }
         } catch {

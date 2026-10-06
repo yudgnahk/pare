@@ -531,6 +531,62 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertEqual(report.totalReclaimableBytes, 40)
     }
 
+    // MARK: - Partial results from a rule that stopped early
+
+    private struct PartialRule: ScanRule {
+        let id = "partial-rule"
+        let title = "Partial Rule"
+        let reason = "Stopped early"
+        let category: ScanCategory = .projectArtifacts
+        let riskLevel: RiskLevel = .safe
+        let confidence = 1.0
+
+        func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
+        func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool { false }
+        func customScanResult(environment: ScanEnvironment) async throws -> ScanRuleResult? {
+            let finding = ScanFinding(
+                category: category, riskLevel: riskLevel, reason: reason,
+                path: "/tmp/project/target", sizeBytes: 700, lastUsed: nil, confidence: confidence
+            )
+            return ScanRuleResult(findings: [finding], incompleteMessage: "Stopped after 1 s")
+        }
+    }
+
+    func testIncompleteRuleKeepsPartialFindingsAndReportsNotice() async {
+        let cacheDir = URL(fileURLWithPath: "/tmp/cache")
+        let runner = makeDedupeRunner(filesByDirectory: [
+            cacheDir.path: [ScannedFile(url: cacheDir.appendingPathComponent("a.cache"), sizeBytes: 100, lastModified: nil)]
+        ])
+        let rules: [any ScanRule] = [
+            PartialRule(),
+            TestRule(id: "cache", title: "Cache", category: .userCaches, targets: [cacheDir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.findings.count, 2)
+        XCTAssertEqual(report.summaries.first(where: { $0.category == .projectArtifacts })?.reclaimableBytes, 700)
+        XCTAssertEqual(report.totalReclaimableBytes, 800)
+        XCTAssertEqual(report.incompleteRules.count, 1)
+        XCTAssertEqual(report.incompleteRules.first?.ruleID, "partial-rule")
+        XCTAssertEqual(report.incompleteRules.first?.ruleTitle, "Partial Rule")
+        XCTAssertEqual(report.incompleteRules.first?.message, "Stopped after 1 s")
+        XCTAssertTrue(report.ruleFailures.isEmpty)
+    }
+
+    func testCompleteRulesReportNoIncompleteNotice() async {
+        let cacheDir = URL(fileURLWithPath: "/tmp/cache")
+        let runner = makeDedupeRunner(filesByDirectory: [
+            cacheDir.path: [ScannedFile(url: cacheDir.appendingPathComponent("a.cache"), sizeBytes: 100, lastModified: nil)]
+        ])
+
+        let report = await runner.run(rules: [
+            TestRule(id: "cache", title: "Cache", category: .userCaches, targets: [cacheDir])
+        ])
+
+        XCTAssertTrue(report.incompleteRules.isEmpty)
+    }
+
     // MARK: - R1.2: per-rule error channel
 
     private struct ThrowingRule: ScanRule {
