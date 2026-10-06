@@ -39,7 +39,7 @@ final class ScanRunnerTests: XCTestCase {
 
     func testBaselineRuleIncludesKnownRules() {
         let rules = RuleCatalog.baseline
-        XCTAssertEqual(rules.count, 11, "Baseline includes core + Phase 5–8 additions")
+        XCTAssertEqual(rules.count, 13, "Baseline includes core + Phase 5–8 additions + diagnostics")
         XCTAssertTrue(rules.contains(where: { $0.id == "user-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "temporary-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "logs-crash-reports" }))
