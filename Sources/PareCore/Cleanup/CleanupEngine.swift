@@ -320,7 +320,7 @@ public actor CleanupEngine {
                     // Fail-closed: unreadable attributes / missing dates block cleanup —
                     // never assume the age gate is satisfied when age is unknowable.
                     let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
-                    guard let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) else {
+                    guard let date = res.flatMap({ ScanPolicy.projectArtifactAgeDate(for: url, values: $0) }) else {
                         skipped.append(CleanupSkippedItem(path: finding.path, error: .attributesUnreadable(finding.path)))
                         continue
                     }

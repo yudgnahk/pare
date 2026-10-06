@@ -77,6 +77,16 @@ extension ScanPolicy {
         return status == .ignoredUntracked
     }
 
+    /// True when the artifact has no sibling-marker requirement, or one of its markers sits beside it.
+    public static func hasRequiredSiblingMarker(
+        _ url: URL,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> Bool {
+        guard let markers = projectArtifactRequiredSiblingMarkers[url.lastPathComponent.lowercased()] else { return true }
+        let parent = url.deletingLastPathComponent().path
+        return markers.contains { fileExists(parent + "/" + $0) }
+    }
+
     /// Cleanup-time gate for project build artifacts. Fail-closed: a bare directory
     /// named `build`/`dist`/`target` anywhere on disk is NOT enough — the path must be
     /// under a registered project scan root, or an ancestor directory must contain a
@@ -90,6 +100,8 @@ extension ScanPolicy {
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> Bool {
         guard isProjectArtifact(url) else { return false }
+        // Before the registered-root shortcut: a root does not prove `.build` belongs to a Swift package.
+        guard hasRequiredSiblingMarker(url, fileExists: fileExists) else { return false }
 
         let path = url.path
         let underRegisteredRoot = registeredRootPaths.contains { root in

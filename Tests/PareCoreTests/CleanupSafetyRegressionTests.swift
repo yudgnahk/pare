@@ -102,6 +102,51 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: build.path))
     }
 
+    // MARK: - Hidden build caches need their sibling manifest
+
+    /// A registered root is not enough: `.build` must sit next to `Package.swift`.
+    func testSwiftBuildWithoutPackageManifestIsBlockedUnderRegisteredRoot() async throws {
+        let package = root.appending(path: "Documents/pkg")
+        let build = try makeDirectory(at: package.appending(path: ".build"))
+        let engine = makeEngine(projectRoots: [package.path])
+
+        let result = try await engine.clean(findings: [finding(for: build)], profileName: "test", dryRun: true)
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        guard case .some(.unsafePath(_)) = result.skipped.first?.error else {
+            return XCTFail("expected .unsafePath, got \(result.skipped)")
+        }
+    }
+
+    func testSwiftBuildNextToPackageManifestIsCleanableWithoutGit() async throws {
+        let package = root.appending(path: "Documents/pkg")
+        let build = try makeDirectory(at: package.appending(path: ".build"))
+        try Data().write(to: package.appending(path: "Package.swift"))
+        let engine = makeEngine(projectRoots: [], gitStatus: .notInRepository)
+
+        let result = try await engine.clean(findings: [finding(for: build)], profileName: "test", dryRun: true)
+
+        XCTAssertEqual(result.succeeded.count, 1, "skipped: \(result.skipped)")
+    }
+
+    /// An old `.build` that was rebuilt today is young: its age is its newest direct child.
+    func testRebuiltSwiftBuildIsTooNewAtCleanup() async throws {
+        let package = root.appending(path: "Documents/pkg")
+        let build = try makeDirectory(at: package.appending(path: ".build"))
+        try Data().write(to: package.appending(path: "Package.swift"))
+        try Data().write(to: build.appending(path: "build.db"))
+        let old = Date().addingTimeInterval(-10 * 24 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: build.path)
+        let engine = makeEngine(projectRoots: [package.path])
+
+        let result = try await engine.clean(findings: [finding(for: build)], profileName: "test", dryRun: true)
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        guard case .some(.tooNew(_)) = result.skipped.first?.error else {
+            return XCTFail("expected .tooNew, got \(result.skipped)")
+        }
+    }
+
     // MARK: - Git-ignore evidence for build/dist/target
 
     /// Root evidence alone is not enough: the output must be ignored and untracked at cleanup time.
