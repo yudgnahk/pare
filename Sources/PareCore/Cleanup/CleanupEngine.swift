@@ -129,6 +129,8 @@ public actor CleanupEngine {
     private let now: @Sendable () -> Date
     /// Moves one item to the Trash and returns where it landed; injectable so tests never touch the real Trash.
     private let trashItem: @Sendable (URL) throws -> URL?
+    /// Codex staging folders are only cleanable while Codex and ChatGPT are not running. Injectable.
+    private let isCodexRunning: @Sendable () async -> Bool
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -139,7 +141,8 @@ public actor CleanupEngine {
         projectRootsProvider: (@Sendable () async -> [String])? = nil,
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
-        trashItem: (@Sendable (URL) throws -> URL?)? = nil
+        trashItem: (@Sendable (URL) throws -> URL?)? = nil,
+        isCodexRunning: (@Sendable () async -> Bool)? = nil
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -151,6 +154,7 @@ public actor CleanupEngine {
         }
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
+        self.isCodexRunning = isCodexRunning ?? CodexActivity.system
     }
 
     private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -211,6 +215,10 @@ public actor CleanupEngine {
         // and exclusions must be honored at cleanup time (not only at scan time).
         let projectRootPaths = await projectRootsProvider()
         let exclusions = exclusionsProvider()
+        // Checked once per batch, and only when it contains Codex staging paths.
+        let codexIdle = findings.contains { ScanPolicy.codexStagingRoot(containing: $0.path) != nil }
+            ? !(await isCodexRunning())
+            : false
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -280,7 +288,8 @@ public actor CleanupEngine {
             // with project-root evidence or under a registered project scan root.
             guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
                     || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
-                    || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
+                    || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths)
+                    || (codexIdle && ScanPolicy.isReclaimableCodexStagingEntry(url, now: now())) else {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                 continue
             }
