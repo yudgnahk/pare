@@ -213,8 +213,9 @@ final class ScanIntegrationTests: XCTestCase {
         let runner = makeRunner()
         let report = await runner.run(rules: RuleCatalog.baseline)
 
-        // All baseline rules produce safe-risk findings.
-        for finding in report.findings {
+        // All baseline rules produce safe-risk findings on the fixture home. Diagnostics read the live
+        // machine (lsof, sysctl), not the fixture, and are explain-only `.advanced` by design.
+        for finding in report.findings where finding.category != .diagnostics {
             XCTAssertEqual(finding.riskLevel, .safe,
                            "Baseline finding at \(finding.path) should be .safe")
         }
