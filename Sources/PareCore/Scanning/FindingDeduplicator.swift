@@ -83,7 +83,9 @@ enum FindingDeduplicator {
             path: finding.path,
             sizeBytes: finding.sizeBytes,
             lastUsed: finding.lastUsed,
-            confidence: finding.confidence
+            confidence: finding.confidence,
+            annotations: finding.annotations,
+            isSizeComplete: finding.isSizeComplete
         )
     }
 }
