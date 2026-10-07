@@ -11,7 +11,8 @@ final class VersionSiblingTests: XCTestCase {
         // Canonical `/private/var/…` spelling, as directory listings and `ps` report it.
         root = ScanPolicy.canonicalPathURL(FileManager.default.temporaryDirectory)
             .appending(path: "pare_versions_\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        // A real home holds `Library`; dot-directory roots count only directly inside such a folder.
+        try FileManager.default.createDirectory(at: home.appending(path: "Library"), withIntermediateDirectories: true)
     }
 
     override func tearDownWithError() throws {
@@ -224,6 +225,22 @@ final class VersionSiblingTests: XCTestCase {
 
     private func rule(_ executables: StubExecutables) -> VersionSiblingsRule {
         VersionSiblingsRule(runningExecutables: executables)
+    }
+
+    func testSiblingsOutsideTheRuleRootsAreNeverReclaimable() throws {
+        for tree in ["Documents/Releases", "Desktop/Builds", "Library/Mobile Documents/com~apple~CloudDocs/.app", "Projects/app/.cache"] {
+            let parent = home.appending(path: tree)
+            let oldest = try makeVersion(parent, "MyApp-1.0.0")
+            try makeVersion(parent, "MyApp-1.1.0")
+            try makeVersion(parent, "MyApp-1.2.0")
+
+            XCTAssertFalse(ScanPolicy.isReclaimableVersionSibling(oldest, runningExecutables: []), tree)
+        }
+        let allowed = home.appending(path: ".tool/versions")
+        let oldest = try makeVersion(allowed, "MyApp-1.0.0")
+        try makeVersion(allowed, "MyApp-1.1.0")
+        try makeVersion(allowed, "MyApp-1.2.0")
+        XCTAssertTrue(ScanPolicy.isReclaimableVersionSibling(oldest, runningExecutables: []), "control: inside a home dot directory")
     }
 
     @discardableResult
