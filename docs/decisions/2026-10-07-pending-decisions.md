@@ -357,6 +357,48 @@ Rule for per-finding metadata:
 5. **`LsofFieldParser`.** Internal only.
 6. **`FindingInsight`.** Rebase #67 (and its slice 2) and #66 onto it. Add `.regrew(days:)` for #63.
 
+### Merge note: step 2 started early, on #50
+
+`aa2e74e` on #50 (`feat/in-use-cleanup-gate`) adds `Tests/PareCoreTests/Support/CleanupEngineFixture.make(...)`.
+It stubs the in-use gate: nothing is open and nothing is running. On that branch, 28 `CleanupEngine(` test call sites
+and `HermeticCleanupFixture.makeEngine()` now use it. No test there runs the real `lsof` any more.
+`InUseGateFailureTests` still runs the real provider type on purpose, but against a temp shell script.
+
+`integration/2026-10-07` was merged from #50 at `3d87c17`, before this commit. When #50 is re-merged:
+
+- **Expected text conflicts** are in test files that other PRs in the stack also changed:
+  - `CleanupSafetyRegressionTests` (4 PRs)
+  - `ScanIntegrationTests` (2)
+  - `InUseGateTests` (2)
+  - `ExclusionListTests` (1)
+
+  To resolve, keep the other PR's arguments and rename `CleanupEngine(` → `CleanupEngineFixture.make(`. The argument labels are identical.
+- **13 call sites from other PRs still build `CleanupEngine(` directly:**
+  - `CodexStagingRuleTests`
+  - `DiagnosticsFindingsTests`
+  - `GoWorkingSetTests` ×2
+  - `LaunchdRestartLoopRuleTests`
+  - `OrphanedLaunchAgentsSafetyTests`
+  - `PnpmOldStoreRuleTests`
+  - `ProtectedUserDataTests`
+  - `StaleUpgradeBackupsTests`
+  - `TinyFileQueueRuleTests`
+  - `VerifiedReclaimTests`
+  - `VersionSiblingTests`
+  - one new site in `CleanupSafetyRegressionTests`
+
+  Integration has 52 `CleanupEngine(` occurrences in `Tests/`.
+- **Finishing step 2 after the stack merges:**
+  - Give `make()` the later init parameters, with stub defaults:
+    - `gitInspector` (#41, real `git`)
+    - `goCacheLocations` (#46)
+    - `freeSpace` (#54)
+    - `runningExecutables` (#57, real `ps`)
+    - `isCodexRunning` (#59; `nil` falls back to `CodexActivity.system`, which runs `ps` and reads `NSWorkspace`)
+    - `pnpmActiveStore` (#61; `nil` locates the real pnpm store)
+  - Then switch those 13 sites.
+  - The five `CleanupEngine()` sites in `DiskAnalyzerViewModelTests` never reach `clean`, so they spawn nothing. They still default to the shared undo store, so switch them in the same PR.
+
 ---
 
 ## D. Open questions left in PR bodies
