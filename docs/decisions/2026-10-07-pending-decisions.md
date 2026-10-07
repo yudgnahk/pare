@@ -14,6 +14,9 @@ Under the Phase 12 spec that is the *critical* pressure tier.
 | A | Cache activity cut-offs N/M; one-click override for hot | Keep **N = 3, M = 30**. Hot rows stay **unchecked but selectable, one click per row**. |
 | B | Dependency folders of inactive projects (12.2) | Keep tiers **14 / 7 / 3**. **Require a lockfile** at first. Report broken venvs, but **defer the package-list export**. **Land after #50** and the free-space seam. Ship in 4 slices. |
 | C | Seam consolidation | **After** merging the stack. Do 6 small refactor PRs, starting with `FindingKey` + `ScanFinding.replacing` (which fixes a real `GoCachesRule` bug), then a test fixture, free space, processes, lsof, and finding insights. |
+| D1 | #49: Google/Mozilla prefix protection only at scan time | **Intended. Keep it**: `ProductivityCachesRule` cleans `com.google.drivefs.finderext` on purpose. Add a one-line comment. |
+| D2 | #64: `brew cleanup` deletes directly | **Accept.** Homebrew's own store, a fresh preview and an explicit confirmation. Document the native-command exception, with no Undo. |
+| D3 | #57: version-shaped items only pass the version-sibling gate | **Accept.** It can only narrow (fail closed). Follow up with a clearer skip reason. |
 
 ---
 
@@ -353,3 +356,57 @@ Rule for per-finding metadata:
 4. **`RunningProcesses`.** Fold #48 into #50's type, add executables (#57), then `CodexActivity` (#59), then `CaskLeaveHomebrew`.
 5. **`LsofFieldParser`.** Internal only.
 6. **`FindingInsight`.** Rebase #67 (and its slice 2) and #66 onto it. Add `.regrew(days:)` for #63.
+
+---
+
+## D. Open questions left in PR bodies
+
+### D1. #49: `com.google.*` / `org.mozilla.*` cache folders are protected only at scan time. Intended?
+
+**Facts.**
+- `ScanPolicy.isUserCacheFolderProtected(name:)` is called only from `UserCachesRule`.
+- At cleanup time, only `GIPPseudonymousID` and `CCTClearcutLogger` are blocked, through `neverCleanUserDataComponentSequences` → `isNeverCleanPath`. Those are the two folders Google apps rewrite at about 50 MB/s.
+- `ProductivityCachesRule` *deliberately* reports `Library/Caches/com.google.drivefs.finderext` (also in the markers list). The prefix check needs a dot (`com.google.`), so `com.googlecode.iterm2` here does not match it.
+
+| Option | Consequence |
+|---|---|
+| **Keep scan-only (as shipped)** | The prefix is a noise filter for the generic rule. The real hazards (identity caches) are blocked at cleanup for every rule. |
+| Promote the prefixes to cleanup-time never-clean | Silently breaks the Drive Finder-extension cleanup, unless that rule gets an exception carved out of a never-clean list. |
+
+**Recommendation: keep it, it is intended.** Add a one-line comment on `userCacheProtectedFolderPrefixes` saying it is scan-time only because of `com.google.drivefs.finderext`. No other code change.
+
+### D2. #64: `brew cleanup` deletes directly instead of using the Trash. Acceptable?
+
+**Facts.**
+- Before running, #64 re-runs `brew cleanup -n`, refuses when the result is empty, and asks for confirmation in a dialog that says "deletes directly". It never passes `--prune=all`.
+- The Maintenance tab already runs native commands that delete directly (`docker system prune -f`, `docker builder prune`).
+- Here, `brew cleanup -n` had nothing to remove, and `~/Library/Caches/Homebrew` is 37 MB.
+
+| Option | Consequence |
+|---|---|
+| **Accept** | Homebrew acts on its own store, and everything it removes is an old keg or a download it can fetch again. There is no undo record. |
+| Route through the Trash: parse the `-n` list and Trash each path via `CleanupEngine` | Moving Cellar kegs behind Homebrew's back leaves stale links and metadata. It also needs Homebrew paths allowed in `ScanPolicy`. |
+| Preview only, with no execution | Safe, but the user has to run it in Terminal. |
+
+**Recommendation: accept.**
+- State the exception once in `CLAUDE.md`: "`CleanupEngine` always uses the Trash; native tool commands in Maintenance/Homebrew delete directly behind a preview and a confirmation".
+- Make sure the Homebrew result card never offers Undo.
+
+### D3. #57: the engine routes every version-shaped item through the new gate. Acceptable?
+
+**Facts.**
+- `CleanupEngine`'s routing on `integration/2026-10-07` is exclusive and ordered: never-clean → search index → advanced/diagnostics → upgrade-backup names (#56) → **version-sibling members** → pnpm (#61) → Codex staging (#59) → the generic allow-lists.
+- `isVersionSiblingMember` needs three things: a semver token in the name, at least 3 sibling folders with the same prefix and suffix, and a location outside the excluded trees.
+- When another rule's finding matches that shape, it is judged *only* by the stricter gate: keep the newest 2, not executed from, `~/.<dir>` or Application Support. That gate can only reject, never widen, so the worst case is an "unsafe path" skip.
+- One match on this machine: `~/.cache/node/corepack/v1/pnpm/{10.9.0,12.3.4,12.9.1}`. Neither `.cache` nor `corepack` is in `versionSiblingExcludedDirectoryNames`, and depth 5 is within range. `VersionSiblingsRule` would offer `10.9.0` as `.review`. Corepack re-downloads it on demand. No other rule reports that path, so there is no conflict.
+- Upgrade-backup names are checked first, so #56 is unaffected.
+
+| Option | Consequence |
+|---|---|
+| **Accept the shape-based routing** | The same fail-closed pattern as #56 and pnpm. Detection does not trust the finding's origin label. |
+| Route by the finding's rule ID instead | Simpler to reason about, but the engine would trust a label that a mis-reporting rule could get wrong. |
+| Accept, and give these skips a clearer reason | Same safety. A skipped item says "kept: fewer than 2 newer versions" instead of "unsafe path". |
+
+**Recommendation: accept**, and take the clearer skip reason as a small follow-up. Also add the
+`isNeverCleanPath` check flagged in #57's own notes now that #46 and #49 are in the stack. The
+engine already runs never-clean first, so this is only for the policy function's own callers.
