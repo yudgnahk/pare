@@ -26,9 +26,20 @@ public struct MaintenanceRunner: Sendable {
     public static let shared = MaintenanceRunner()
 
     private let processRunner: any ProcessRunning
+    private let homeDirectory: URL
+    private let freeSpace: any FreeSpaceProviding
+    private let runningApps: any RunningAppChecking
 
-    public init(processRunner: any ProcessRunning = SystemProcessRunner()) {
+    public init(
+        processRunner: any ProcessRunning = SystemProcessRunner(),
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        freeSpace: any FreeSpaceProviding = StatfsFreeSpace(),
+        runningApps: any RunningAppChecking = WorkspaceRunningApps()
+    ) {
         self.processRunner = processRunner
+        self.homeDirectory = homeDirectory
+        self.freeSpace = freeSpace
+        self.runningApps = runningApps
     }
 
     // MARK: - Docker availability
@@ -102,68 +113,58 @@ public struct MaintenanceRunner: Sendable {
     }
 
     private func runVacuumDatabases() -> AsyncThrowingStream<String, Error> {
-        AsyncThrowingStream { continuation in
+        let vacuum = SQLiteVacuumRunner(processRunner: processRunner, freeSpace: freeSpace, runningApps: runningApps)
+        let targets = Self.vacuumTargets(homeDirectory: homeDirectory)
+        return AsyncThrowingStream { continuation in
             Task {
-                let home = FileManager.default.homeDirectoryForCurrentUser
-                let sqlite3 = "/usr/bin/sqlite3"
+                let sqlite3 = SQLiteVacuumRunner.defaultSQLite3Path
                 guard FileManager.default.fileExists(atPath: sqlite3) else {
                     continuation.finish(throwing: MaintenanceError.executableNotFound(sqlite3))
                     return
                 }
-
-                var dbPaths: [(String, String)] = []
-
-                // Mail — version directory varies (V9, V10, …)
-                let mailBase = home.appending(path: "Library/Mail")
-                if let vDirs = try? FileManager.default.contentsOfDirectory(
-                    at: mailBase,
-                    includingPropertiesForKeys: [.isDirectoryKey],
-                    options: [.skipsHiddenFiles]
-                ) {
-                    for vDir in vDirs where vDir.lastPathComponent.hasPrefix("V") {
-                        let envelope = vDir.appending(path: "MailData/Envelope Index")
-                        if FileManager.default.fileExists(atPath: envelope.path) {
-                            dbPaths.append(("Mail Envelope Index", envelope.path))
-                        }
-                    }
-                }
-
-                // Safari
-                let safariHistory = home.appending(path: "Library/Safari/History.db")
-                if FileManager.default.fileExists(atPath: safariHistory.path) {
-                    dbPaths.append(("Safari History", safariHistory.path))
-                }
-
-                // Messages
-                let messages = home.appending(path: "Library/Messages/chat.db")
-                if FileManager.default.fileExists(atPath: messages.path) {
-                    dbPaths.append(("Messages", messages.path))
-                }
-
-                if dbPaths.isEmpty {
+                guard !targets.isEmpty else {
                     continuation.yield("No databases found.")
                     continuation.finish()
                     return
                 }
-
-                for (label, path) in dbPaths {
-                    continuation.yield("→ Vacuuming \(label)…")
-                    let stream = shellStream(sqlite3, [path, "VACUUM"])
-                    do {
-                        for try await line in stream where !line.isEmpty {
-                            continuation.yield(line)
-                        }
-                        continuation.yield("  ✓ \(label) done.")
-                    } catch let err as MaintenanceError {
-                        // sqlite3 VACUUM on a locked db exits non-zero; treat as warning
-                        continuation.yield("  ⚠ \(label): \(err.localizedDescription)")
-                    }
-                }
-
+                await vacuum.vacuum(targets) { continuation.yield($0) }
                 continuation.yield("Vacuum complete.")
                 continuation.finish()
             }
         }
+    }
+
+    /// Mail's envelope index (any `V*` version) and Safari history. Messages' `chat.db` is never
+    /// included: a system daemon keeps it open even when Messages is quit.
+    static func vacuumTargets(homeDirectory home: URL) -> [SQLiteVacuumTarget] {
+        var targets: [SQLiteVacuumTarget] = []
+        let mailBase = home.appending(path: "Library/Mail")
+        let versionDirs = (try? FileManager.default.contentsOfDirectory(
+            at: mailBase,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        for versionDir in versionDirs.sorted(by: { $0.path < $1.path }) where versionDir.lastPathComponent.hasPrefix("V") {
+            let envelope = versionDir.appending(path: "MailData/Envelope Index")
+            if FileManager.default.fileExists(atPath: envelope.path) {
+                targets.append(SQLiteVacuumTarget(
+                    label: "Mail Envelope Index",
+                    path: envelope.path,
+                    ownerBundleIdentifier: "com.apple.mail",
+                    ownerName: "Mail"
+                ))
+            }
+        }
+        let safariHistory = home.appending(path: "Library/Safari/History.db")
+        if FileManager.default.fileExists(atPath: safariHistory.path) {
+            targets.append(SQLiteVacuumTarget(
+                label: "Safari History",
+                path: safariHistory.path,
+                ownerBundleIdentifier: "com.apple.Safari",
+                ownerName: "Safari"
+            ))
+        }
+        return targets
     }
 
     /// Docker prune arguments. **Must never include `--volumes`** — volumes hold user
