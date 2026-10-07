@@ -61,7 +61,9 @@ public struct SwapUsageRule: ScanRule {
             "G": 1024 * 1024 * 1024,
             "T": 1024 * 1024 * 1024 * 1024,
         ]
-        guard let multiplier = multipliers[unit], let value = Double(token.dropLast()) else { return nil }
+        // sysctl prints a locale decimal separator (`4908,88M` under de_DE).
+        let number = token.dropLast().replacingOccurrences(of: ",", with: ".")
+        guard let multiplier = multipliers[unit], let value = Double(number) else { return nil }
         return Int64(value * multiplier)
     }
 }

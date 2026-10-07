@@ -98,6 +98,7 @@ final class DiagnosticsFindingsTests: XCTestCase {
             ("total = 2048.00M  used = 0.00M  free = 2048.00M  (encrypted)", 0),
             ("vm.swapusage: total = 4.00G  used = 1.50G  free = 2.50G", Int64(1.5 * 1_073_741_824)),
             ("vm.swapusage: total = 512.00K  used = 256.00K  free = 256.00K", 256 * 1024),
+            ("vm.swapusage: total = 8192,00M  used = 4908,88M  free = 3283,12M  (encrypted)", Int64(4908.88 * 1_048_576)),
             ("", nil),
             ("garbage", nil),
             ("vm.swapusage: total = 8192.00M  used = lots  free = 0M", nil),
