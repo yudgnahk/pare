@@ -301,7 +301,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         )
 
         // Run quick clean.
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let result = try await engine.quickClean(findings: report.findings, profileName: "baseline")
 
         XCTAssertEqual(result.succeeded.count, report.findings.filter { $0.riskLevel == .safe }.count)
@@ -325,7 +325,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
 
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let cleanResult = try await engine.quickClean(findings: report.findings, profileName: "baseline")
 
         guard let tx = cleanResult.transaction else {
@@ -363,7 +363,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
 
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let result = try await engine.quickClean(findings: report.findings, profileName: "baseline", dryRun: true)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: file1.path),
@@ -389,7 +389,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
             confidence: 0.9
         )
 
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let result = try await engine.deepClean(
             findings: [reviewFinding],
             profileName: "test",
@@ -411,7 +411,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
         let store = makeStore()
-        let engine = CleanupEngine(store: store)
+        let engine = CleanupEngineFixture.make(store: store)
         let cleanResult = try await engine.quickClean(findings: report.findings, profileName: "baseline")
 
         guard let tx = cleanResult.transaction else {
@@ -441,7 +441,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
             CleanupItem(originalPath: finding.path, trashedPath: nil, sizeBytes: 1,
                         reason: "test", riskLevel: .safe)
         ])
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let (restored, skipped) = await engine.restore(transaction: tx)
 
         XCTAssertTrue(restored.isEmpty, "Dry-run transaction should not restore anything")

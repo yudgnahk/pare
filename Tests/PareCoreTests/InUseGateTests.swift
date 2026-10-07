@@ -279,26 +279,3 @@ private final class Fixture: @unchecked Sendable {
         )
     }
 }
-
-final class CountingSnapshotProvider: OpenFileSnapshotProviding, @unchecked Sendable {
-    private let snapshotValue: OpenFileSnapshot?
-    private let lock = NSLock()
-    private var count = 0
-
-    init(snapshot: OpenFileSnapshot?) {
-        snapshotValue = snapshot
-    }
-
-    var calls: Int { lock.withLock { count } }
-
-    func snapshot() async -> OpenFileSnapshot? {
-        lock.withLock { count += 1 }
-        return snapshotValue
-    }
-}
-
-struct FixedRunningAppsList: RunningAppsProviding {
-    let apps: [RunningApp]
-
-    func runningApps() -> [RunningApp] { apps }
-}

@@ -323,7 +323,7 @@ final class ClockInjectionTests: XCTestCase {
         let store = CleanupTransactionStore(directory: storeDir)
 
         // Real clock: the fresh file is younger than the cache minimum age → skipped.
-        let realClockEngine = CleanupEngine(store: store)
+        let realClockEngine = CleanupEngineFixture.make(store: store)
         let skippedResult = try await realClockEngine.clean(
             findings: [finding], profileName: "test", dryRun: true
         )
@@ -332,7 +332,7 @@ final class ClockInjectionTests: XCTestCase {
 
         // Clock shifted 30 days forward: the same file now passes the age gate.
         let shifted = Date().addingTimeInterval(30 * 86_400)
-        let shiftedClockEngine = CleanupEngine(store: store, now: { shifted })
+        let shiftedClockEngine = CleanupEngineFixture.make(store: store, now: { shifted })
         let cleanedResult = try await shiftedClockEngine.clean(
             findings: [finding], profileName: "test", dryRun: true
         )
