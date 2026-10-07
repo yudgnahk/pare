@@ -71,6 +71,24 @@ final class DiagnosticsFindingsTests: XCTestCase {
         XCTAssertEqual(finding.annotations, [.explainOnly(action: "Restart node to reclaim the space")])
     }
 
+    func testLsofEscapedNamesAreDecoded() {
+        // Real `env -i lsof +L1 -Fn` output for a deleted file named `Tiếng Việt\x41.log`.
+        let cases: [(raw: String, decoded: String)] = [
+            (#"/private/tmp/q/Ti\xe1\xba\xbfng Vi\xe1\xbb\x87t\\x41.log"#, #"/private/tmp/q/Tiếng Việt\x41.log"#),
+            ("/Users/u/Library/Caches/plain.db", "/Users/u/Library/Caches/plain.db"),
+            (#"/tmp/a\tb"#, "/tmp/a\tb"),
+            (#"/tmp/bad\xff"#, #"/tmp/bad\xff"#),
+            (#"/tmp/trailing\"#, #"/tmp/trailing\"#),
+            (#"/tmp/short\x4"#, #"/tmp/short\x4"#),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(DeletedOpenFilesRule.unescapedLsofName(testCase.raw), testCase.decoded, testCase.raw)
+        }
+
+        let output = "p42\ncTool\nf3\nD0x1\ni9\ns\(20 * Self.megabyte)\n" + #"n/private/tmp/q/Ti\xe1\xba\xbfng.log"#
+        XCTAssertEqual(DeletedOpenFilesRule.findings(fromLsofOutput: output).first?.path, "/private/tmp/q/Tiếng.log")
+    }
+
     func testDeletedOpenParserToleratesEmptyAndGarbageOutput() {
         let cases = [
             "",
