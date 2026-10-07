@@ -48,7 +48,7 @@ public enum SwapUsageParser {
     private static let unitMultipliers: [Character: Double] = ["K": 1024, "M": 1024 * 1024, "G": 1024 * 1024 * 1024, "T": 1024 * 1024 * 1024 * 1024]
 
     public static func usedBytes(fromSysctlOutput output: String) -> Int64? {
-        guard let range = output.range(of: #"used\s*=\s*[0-9]+(\.[0-9]+)?[A-Za-z]"#, options: .regularExpression) else {
+        guard let range = output.range(of: #"used\s*=\s*[0-9]+([.,][0-9]+)?[A-Za-z]"#, options: .regularExpression) else {
             return nil
         }
         let field = output[range]
@@ -56,6 +56,7 @@ public enum SwapUsageParser {
               let multiplier = unitMultipliers[Character(unit.uppercased())] else { return nil }
         let number = field[field.index(after: equals)..<field.index(before: field.endIndex)]
             .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: ",", with: ".")  // comma-decimal locales print `4908,88M`
         guard let value = Double(number) else { return nil }
         return Int64((value * multiplier).rounded())
     }
@@ -66,10 +67,11 @@ public enum LocalSnapshotParser {
     public static func count(fromTmutilOutput output: String) -> Int? {
         let lines = output.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        let snapshots = lines.filter { $0.hasPrefix("com.apple.") && !$0.contains(" ") }
-        let recognizedOtherwise = lines.allSatisfy { line in
-            snapshots.contains(line) || line.hasPrefix("Snapshots for disk") || line.hasPrefix("No local snapshots")
-        }
+        // Headers include "Snapshots for disk /:" and "Snapshots for volume group containing disk /:";
+        // names are single tokens, not only `com.apple.*` (backup tools add their own).
+        let isHeader = { (line: String) in line.hasPrefix("Snapshots for ") || line.hasPrefix("No local snapshots") }
+        let snapshots = lines.filter { !isHeader($0) && !$0.contains(" ") }
+        let recognizedOtherwise = lines.allSatisfy { isHeader($0) || !$0.contains(" ") }
         return recognizedOtherwise ? snapshots.count : nil
     }
 }
