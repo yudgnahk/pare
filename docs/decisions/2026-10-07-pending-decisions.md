@@ -13,6 +13,7 @@ Under the Phase 12 spec that is the *critical* pressure tier.
 |---|---|---|
 | A | Cache activity cut-offs N/M; one-click override for hot | Keep **N = 3, M = 30**. Hot rows stay **unchecked but selectable, one click per row**. |
 | B | Dependency folders of inactive projects (12.2) | Keep tiers **14 / 7 / 3**. **Require a lockfile** at first. Report broken venvs, but **defer the package-list export**. **Land after #50** and the free-space seam. Ship in 4 slices. |
+| C | Seam consolidation | **After** merging the stack. Do 6 small refactor PRs, starting with `FindingKey` + `ScanFinding.replacing` (which fixes a real `GoCachesRule` bug), then a test fixture, free space, processes, lsof, and finding insights. |
 
 ---
 
@@ -248,3 +249,107 @@ Recommendation: **land after #50.** Also land after the free-space consolidation
    - "Save package list" export;
    - manifest-only projects, with the drift warning;
    - an "empty the Trash to get the space back" note at critical pressure, which uses #54's verified reclaim.
+
+---
+
+## C. Seam consolidation
+
+**Context.** Today's PRs each added their own injectable seam for the same system facts. This
+section reads `integration/2026-10-07`, which has #38–#64 merged. #66 and #67 are separate:
+each branches from master directly and is not in integration.
+
+### Inventory
+
+**Free space**: five readers.
+
+| Seam | PR | File | Shape |
+|---|---|---|---|
+| `FreeSpaceProviding` / `StatfsFreeSpace` | #48 | `Maintenance/SQLiteVacuumEnvironment.swift` | `availableBytes(atPath:) -> Int64?` (statfs `f_bavail`) |
+| `VolumeFreeSpaceProviding` / `SystemVolumeFreeSpace` | #54 | `Cleanup/VolumeFreeSpace.swift` | `freeSpace(forVolumeContaining:) -> VolumeFreeSpace?` (important-usage + available) |
+| private `volumeCapacity` closure | #60 | `DiskHealth/DiskHeaderProvider.swift` | re-implements #54 line for line |
+| `freeDiskBytes` closure | #53 | `Rules/MemoryPressureRule.swift` | important-usage only |
+| inline `resourceValues` | master | `PareApp/ViewModels/VolumeUsageModel.swift` | total + important-usage |
+
+The "swap plus low disk" warning is also written twice, with different thresholds:
+- `DiskHeaderSnapshot.warnsOfSwapPressure`: swap > 4 GB and free < 10 GB;
+- `MemoryPressureRule`: swap > 1 GiB and free < 10 GiB.
+
+The `sysctl vm.swapusage` parser is duplicated too: `SwapUsageRule` (#51) and `SwapUsageParser` (#60).
+
+**Running apps and processes**: five checks.
+
+| Seam | PR | File | Shape |
+|---|---|---|---|
+| `RunningAppChecking` | #48 | `Maintenance/SQLiteVacuumEnvironment.swift` | `isRunning(bundleIdentifier:) -> Bool` |
+| `RunningAppsProviding` | #50 | `Cleanup/InUseGate.swift` | `runningApps() -> [RunningApp]` |
+| `RunningExecutablesProviding` | #57 | `Scanning/RunningExecutables.swift` | `runningExecutablePaths() async -> [String]?` (`ps -axo comm=`, 5 s) |
+| `CodexActivity` closure | #59 | `Rules/CodexStagingRule.swift` | `() async -> Bool` (`ps -axco comm=`, 3 s, plus `NSWorkspace`) |
+| `RunningAppsProvider` typealias | master | `Homebrew/CaskLeaveHomebrew.swift` | `() -> [String]` (bundle paths) |
+
+There are four live `NSWorkspace.shared.runningApplications` implementations and two `ps` invocations with different flags.
+
+**lsof**: two parsers over the same `ToolCommandRunner` (10 s timeout).
+
+| | #50 `OpenFileSnapshot` | #51 `DeletedOpenFilesRule` |
+|---|---|---|
+| Arguments | `-n -P -w -Fpcn` | `+L1 -n -P -w -FpcDisn` |
+| Result | path → holder index, including ancestors | private `[OpenDeletedFile]` |
+| Seam | `OpenFileSnapshotProviding` | `Listing` closure |
+
+Both exited 0 here: 0.3 s and 0.1 s.
+
+**Per-finding metadata**: four storage styles.
+
+| Data | PR | Where it lives |
+|---|---|---|
+| `isSizeComplete` | #58 | field on `ScanFinding` |
+| `annotations: [FindingAnnotation]` | #46 + #51 | field on `ScanFinding`. Integration's merge already resolved it to the union `.workingSet(selfTrimDays:)` + `.explainOnly(action:)`. No app view reads it; it only feeds `reason` text. |
+| Regrowth | #63 | no field: `RegrowthDetector` rebuilds the finding as `.review` and appends to `reason` |
+| Cache activity | #67 | `[String: CacheActivityLabel]` on the view model, keyed by **raw** path |
+| Growth | #66 | `GrowthSnapshot` per report, with its own canonical key |
+
+The canonical-key expression `ScanPolicy.canonicalPathURL(…).path.lowercased()` is copied four
+times: `OpenFileSnapshot`, `RegrowthDetector`, `ScanPolicy+VersionSiblings` and #66.
+
+**Real bug found while reading.** `GoCachesRule`'s private `annotated(with:)`
+(`Rules/GoCachesRule.swift:69`) rebuilds `ScanFinding` without `isSizeComplete`, so the flag
+silently resets to `true`. Impact is small: the finding is `.advanced`, so only the "at least" size text is wrong.
+
+**Test hermeticity.** About 50 `CleanupEngine(` call sites in tests inject none of `openFiles:`,
+`runningApps:`, `freeSpace:` or `runningExecutables:`. Non-dry-run tests therefore call the real
+lsof and `NSWorkspace`.
+
+### Target shape: one seam per concern
+
+All of these go under a new `Sources/PareCore/System/` folder:
+
+| File | Type | Replaces |
+|---|---|---|
+| `VolumeCapacity.swift` | `struct VolumeCapacity { totalBytes, importantUsageBytes, availableBytes }`, `protocol VolumeCapacityProviding { func capacity(forVolumeContaining: URL) -> VolumeCapacity? }`, live `SystemVolumeCapacity` | #48, #54 (rename), #60 closure, #53 closure, `VolumeUsageModel` inline read. #48's VACUUM check reads `availableBytes` (space writable now); everything else reads `importantUsageBytes`. One swap-pressure threshold pair lives here too. |
+| `SwapUsage.swift` | one parser and reader | #51 + #60 parsers |
+| `RunningProcesses.swift` | `struct RunningApp { bundleIdentifier, name, bundlePath }`, `protocol RunningProcessesProviding { func runningApps() -> [RunningApp]; func runningExecutablePaths() async -> [String]? }`, `isRunning(bundleIdentifier:)` as an extension, live `SystemRunningProcesses` (one `NSWorkspace` read, one `ps -axo comm=`) | #48, #50, #57, #59 (match on basenames of the full paths, so no second `ps`), `CaskLeaveHomebrew`'s typealias. `nil` still means unknown, which fails closed. |
+| `Lsof.swift` | `LsofFieldParser` → `[LsofProcess { pid, command, files }]` | Both parsers. #50 and #51 keep their own arguments. |
+| `Models/FindingKey.swift` | `FindingKey(path:)` (canonical, lowercased) and `ScanFinding.replacing(riskLevel:reason:annotations:)`, a copy helper that keeps every field | Four key copies and every hand-written rebuild, which also fixes the Go bug |
+
+Rule for per-finding metadata:
+- Facts known at scan time stay on `ScanFinding`: `isSizeComplete`, plus `annotations`, which gains `.regrew(days:)` so #63 stops encoding it only in `reason`.
+- Display facts computed after the scan go in one `[FindingKey: FindingInsight]` dictionary on the view model. These are #67's activity, #66's per-path growth and later in-use.
+
+### Before or after merging the stack?
+
+| Option | Consequence |
+|---|---|
+| C1 Before: rewrite the seams inside the open PRs | Every rebase re-resolves the 27-PR merge that `integration/2026-10-07` already rehearsed. Stacked PRs (#46 → #49 → #57) churn three times. |
+| **C2 After: merge the stack as rehearsed, then six small refactor PRs** | No behaviour changes, each PR is reviewable on its own, and the conflict work is already done. Duplicates live on master for a few days. |
+| C3 Hybrid: only #66 and #67, which are outside integration, adopt `FindingKey` before merging | Needs refactor step 1 to land first. |
+
+**Recommendation: C2, then rebase #66 and #67 onto step 1 (C3 for those two only).** None of the duplicated seams are user-visible, and all of them fail closed, so waiting costs nothing.
+
+### Migration order (after the stack merges)
+
+1. **`FindingKey` + `ScanFinding.replacing` + one swap parser.** No API change. Fixes the `GoCachesRule` bug.
+2. **`CleanupEngineFixture`**, a test factory that injects fakes for every seam. After this, steps 3–5 touch one test file instead of about 50 call sites, and tests stop calling the real lsof and `NSWorkspace`.
+3. **`VolumeCapacity`.** Repoint #48 (two consumers, one fake), then #54, #60, #53 and `VolumeUsageModel`. Delete `FreeSpaceProviding`. Phase 12.2b needs this for its pressure tiers.
+4. **`RunningProcesses`.** Fold #48 into #50's type, add executables (#57), then `CodexActivity` (#59), then `CaskLeaveHomebrew`.
+5. **`LsofFieldParser`.** Internal only.
+6. **`FindingInsight`.** Rebase #67 (and its slice 2) and #66 onto it. Add `.regrew(days:)` for #63.
