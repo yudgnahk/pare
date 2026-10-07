@@ -23,8 +23,14 @@ public enum SQLiteVacuumPlan {
     static let vacuum = "VACUUM;"
 
     /// Argument lists for `sqlite3`; the first is the integrity check whose output must be `ok`.
+    /// `-init /dev/null` stops a user's `~/.sqliterc` (e.g. `.headers on`) from changing the output parsed here.
     public static func steps(dbPath: String) -> [[String]] {
-        [quickCheck, truncateCheckpoint, vacuum, truncateCheckpoint].map { [dbPath, $0] }
+        [quickCheck, truncateCheckpoint, vacuum, truncateCheckpoint].map { [dbPath, "-init", "/dev/null", $0] }
+    }
+
+    /// `wal_checkpoint` prints `busy|log|checkpointed` and exits 0 even when a reader blocked it.
+    static func checkpointWasBlocked(_ output: String) -> Bool {
+        output.split(separator: "|").first?.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
     }
 }
 
@@ -101,14 +107,28 @@ public struct SQLiteVacuumRunner: Sendable {
                 log("  ⚠ Skipped \(target.label): integrity check failed")
                 return
             }
-            for step in steps.dropFirst() {
+            var walStillOpen = false
+            for (index, step) in steps.enumerated().dropFirst() {
                 let result = try await processRunner.run(executablePath: sqlite3Path, arguments: step, environment: nil)
                 guard result.exitCode == 0 else {
                     log("  ⚠ \(target.label): \(Self.describe(result))")
                     return
                 }
+                guard step.last == SQLiteVacuumPlan.truncateCheckpoint,
+                      SQLiteVacuumPlan.checkpointWasBlocked(result.standardOutput) else { continue }
+                // Blocked before VACUUM: the rewrite would land in a WAL that cannot be truncated.
+                if index < steps.count - 1 {
+                    log("  ⚠ Skipped \(target.label): another process is reading it")
+                    return
+                }
+                walStillOpen = true
             }
             let sizeAfter = Self.fileSize(target.path)
+            if walStillOpen {
+                log("  ⚠ \(target.label) compacted (\(Self.formatted(sizeBefore)) → \(Self.formatted(sizeAfter))), "
+                    + "but another process kept its WAL open; it shrinks once that app closes the database.")
+                return
+            }
             log("  ✓ \(target.label) done (\(Self.formatted(sizeBefore)) → \(Self.formatted(sizeAfter))).")
         } catch {
             // Catch everything: one database that cannot be opened must not abort the rest.

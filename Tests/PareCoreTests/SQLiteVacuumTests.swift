@@ -22,11 +22,47 @@ final class SQLiteVacuumTests: XCTestCase {
 
     func testVacuumPlanOrder() {
         XCTAssertEqual(SQLiteVacuumPlan.steps(dbPath: "/x/History.db"), [
-            ["/x/History.db", "PRAGMA quick_check;"],
-            ["/x/History.db", "PRAGMA wal_checkpoint(TRUNCATE);"],
-            ["/x/History.db", "VACUUM;"],
-            ["/x/History.db", "PRAGMA wal_checkpoint(TRUNCATE);"],
+            ["/x/History.db", "-init", "/dev/null", "PRAGMA quick_check;"],
+            ["/x/History.db", "-init", "/dev/null", "PRAGMA wal_checkpoint(TRUNCATE);"],
+            ["/x/History.db", "-init", "/dev/null", "VACUUM;"],
+            ["/x/History.db", "-init", "/dev/null", "PRAGMA wal_checkpoint(TRUNCATE);"],
         ])
+    }
+
+    func testCheckpointBusyColumn() {
+        let cases: [(output: String, blocked: Bool)] = [
+            ("0|0|0\n", false), ("1|671|0\n", true), ("0|-1|-1", false), ("", false), ("10|0|0", false),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(SQLiteVacuumPlan.checkpointWasBlocked(testCase.output), testCase.blocked, testCase.output)
+        }
+    }
+
+    func testBlockedCheckpointIsNeverReportedAsDone() async throws {
+        // A reader holding a transaction makes TRUNCATE report busy=1 while sqlite3 still exits 0.
+        let cases: [(name: String, blockedCall: Int, vacuumRuns: Bool, skipped: Bool)] = [
+            ("blocked before VACUUM", 1, false, true),
+            ("blocked after VACUUM", 2, true, false),
+        ]
+        for testCase in cases {
+            let db = try makeDatabase("History.db", bytes: 100)
+            let checkpoints = Counter()
+            let runner = ScriptedProcessRunner { invocation in
+                switch invocation.arguments.last {
+                case "PRAGMA quick_check;": return .ok("ok")
+                case "PRAGMA wal_checkpoint(TRUNCATE);":
+                    return checkpoints.next() == testCase.blockedCall ? .ok("1|671|0") : .ok("0|0|0")
+                default: return .ok()
+                }
+            }
+
+            let log = await vacuum([target(db)], processRunner: runner)
+
+            XCTAssertEqual(runner.invocations.contains { $0.arguments.last == "VACUUM;" }, testCase.vacuumRuns, testCase.name)
+            XCTAssertFalse(log.contains { $0.contains("✓") }, "\(testCase.name): \(log)")
+            XCTAssertEqual(log.contains { $0.contains("Skipped") }, testCase.skipped, "\(testCase.name): \(log)")
+            XCTAssertTrue(log.contains { $0.contains("another process") }, "\(testCase.name): \(log)")
+        }
     }
 
     // MARK: - Skips
@@ -44,7 +80,7 @@ final class SQLiteVacuumTests: XCTestCase {
 
             let log = await vacuum([target(db)], processRunner: runner)
 
-            XCTAssertEqual(runner.invocations.map(\.arguments), [[db.path, "PRAGMA quick_check;"]], testCase.name)
+            XCTAssertEqual(runner.invocations.map(\.arguments), [[db.path, "-init", "/dev/null", "PRAGMA quick_check;"]], testCase.name)
             XCTAssertTrue(log.contains { $0.contains("Skipped") }, "\(testCase.name): \(log)")
         }
     }
@@ -85,7 +121,7 @@ final class SQLiteVacuumTests: XCTestCase {
         let second = try makeDatabase("second.db", bytes: 100)
         let runner = ScriptedProcessRunner { invocation in
             if invocation.arguments.last == "PRAGMA quick_check;" { return .ok("ok") }
-            if invocation.arguments == [first.path, "VACUUM;"] {
+            if invocation.arguments.first == first.path, invocation.arguments.last == "VACUUM;" {
                 return .failure("Error: database is locked", exitCode: 5)
             }
             return .ok()
@@ -275,6 +311,16 @@ struct FixedRunningApps: RunningAppChecking {
 
     func isRunning(bundleIdentifier: String) -> Bool {
         running.contains(bundleIdentifier)
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+
+    /// 1 on the first call, then 2, 3, …
+    func next() -> Int {
+        lock.withLock { value += 1; return value }
     }
 }
 
