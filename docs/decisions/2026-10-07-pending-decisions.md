@@ -12,6 +12,7 @@ Under the Phase 12 spec that is the *critical* pressure tier.
 | # | Decision | Recommendation |
 |---|---|---|
 | A | Cache activity cut-offs N/M; one-click override for hot | Keep **N = 3, M = 30**. Hot rows stay **unchecked but selectable, one click per row**. |
+| B | Dependency folders of inactive projects (12.2) | Keep tiers **14 / 7 / 3**. **Require a lockfile** at first. Report broken venvs, but **defer the package-list export**. **Land after #50** and the free-space seam. Ship in 4 slices. |
 
 ---
 
@@ -122,3 +123,128 @@ What the numbers say:
   - `CleanConfirmationSheet`: one line for the hot items included.
   - No engine change.
 - **H1:** a new fail-closed check in `ScanPolicy`, called from `CleanupEngine`, with its own tests.
+
+---
+
+## B. Phase 12.2: dependency folders of inactive projects
+
+**Context.** The spec is `docs/features/project-dependency-reclaim.md` (Phase 12 in the roadmap).
+It brings back `node_modules`, `venv`, `.venv` and `.bundle` directly under a confirmed project
+root, as `.review` only. A folder is reported when the project has restore evidence, has been
+inactive longer than the disk-pressure tier allows (14, 7 or 3 days), and is not in use.
+Phase 12.1 (SwiftPM `.build`) is already covered by #44.
+
+### Evidence
+
+Every dependency folder under `~/Projects` to depth 4 was listed, without descending into
+dependency, `.git` or build folders. Project activity is the newest of the enclosing repo's
+`.git/index`, `.git/logs/HEAD` and `.git/FETCH_HEAD`, the lockfile and manifest, and the
+project's top-level entries other than dependency and artifact folders.
+
+| Dependency folder | Size | Project inactive (days) | Folder's own mtime (days) | Lockfile |
+|---|---:|---:|---:|---|
+| `yudgnahk/mv-studio/analysis/.venv` | 1.3 GB | 0.1 | 0.1 | `uv.lock` |
+| `yudgnahk/chess-puzzle/node_modules` | 241 MB | 0.0 | 2.3 | `pnpm-lock.yaml` |
+| `yudgnahk/chess-puzzle-wt/tap-perf/node_modules` | 240 MB | 0.0 | 0.0 | `pnpm-lock.yaml` |
+| `yudgnahk/chess-puzzle-wt/webkit/node_modules` | 240 MB | 0.0 | 0.0 | `pnpm-lock.yaml` |
+| `yudgnahk/games/zoominoes/node_modules` | 224 MB | 0.0 | 5.2 | `package-lock.json` |
+| **`yudgnahk/pixel-flow/node_modules`** | **156 MB** | **5.4** | 7.3 | `package-lock.json` |
+| `yudgnahk/resuforge/node_modules` | 153 MB | 0.0 | 0.1 | `pnpm-lock.yaml` |
+| `yudgnahk/mv-studio/app/node_modules` | 125 MB | 0.1 | 7.7 | `bun.lock` |
+| `yudgnahk/mayhoa/node_modules` | 121 MB | 0.0 | 0.1 | `pnpm-lock.yaml` |
+| **`mcp/serena/.venv`** | **120 MB** | **50.7** | 460.9 | `uv.lock` |
+| `yudgnahk/pantheora/node_modules` | 100 MB | 0.0 | 0.0 | `pnpm-lock.yaml` |
+| `yudgnahk/exam-prep-kit/.venv` | 85 MB | 0.0 | 36.4 | none, and no manifest |
+| `yudgnahk/fable-moonshot-wt/song/node_modules` | 61 MB | 0.0 | 0.1 | `bun.lock` |
+| `yudgnahk/fable-moonshot-wt/stereo/node_modules` | 61 MB | 0.0 | 0.0 | `bun.lock` |
+| `yudgnahk/fable-moonshot/node_modules` | 61 MB | 0.0 | 0.1 | `bun.lock` |
+| `yudgnahk/mv-studio/studio/node_modules` | 37 MB | 0.1 | 7.2 | `bun.lock` |
+
+What that means:
+
+- **16 folders, 3.3 GB in total. 14 of them belong to projects touched in the last 3 hours.**
+- What would be offered under each tier:
+  - Comfortable (14 days): 120 MB (`serena`).
+  - Low (7 days): 120 MB.
+  - Critical (3 days, today's tier): 276 MB (`serena` and `pixel-flow`).
+- The 11 GB from the 2026-09-30 field run was already deleted by hand, so this machine now under-shows the feature.
+- **The folder's own mtime is the wrong clock, as the spec says.** `serena/.venv` is 461 days old, but the project was touched 51 days ago. `exam-prep-kit/.venv` is 36 days old in a project that is active today.
+- Neither inactive project had a running process today (`ps -axo comm=,args=`).
+- **Going deeper (depth 6–8) finds 30–34 folders, and the extra ones are traps the rule must handle:**
+  - pnpm workspace members such as `apps/web/node_modules` and `packages/engine/node_modules` are 0–3 MB symlink farms. Fold them into the workspace root instead of reporting each one.
+  - `actions-runner/externals/node20/lib/node_modules` is a bundled runtime with no lockfile. Requiring restore evidence rejects it.
+  - Fixtures such as `dev-env-optimizer/testdata/…/node_modules` and `.venv` are 0 MB. A minimum size rejects them.
+  - In git worktrees such as `mv-studio-wt/revapp/app/node_modules` (118 MB), `.git` is a file. Activity has to follow `gitdir:` to `.git/worktrees/<name>/index`. Otherwise it falls back to the `.git` file's creation date and looks older than it is.
+  - Nested projects with no `.git` of their own, such as `mv-studio/tools/py-inspect/.venv` (38 MB) and `pantheora/assets/runtime/ground-trial/.venv` (62 MB), must use the enclosing repo's git markers. With the enclosing repo's markers, an active monorepo protects all its sub-projects.
+- **On a 245 GB disk the percentage limits bind, not the GB limits:**
+  - comfortable needs ≥ 36.8 GB free (15 %);
+  - critical starts below 12.3 GB (5 %);
+  - today's 8.0 GB is critical.
+
+### Decide-points
+
+**B1 Tier thresholds**
+
+| Option | Consequence here |
+|---|---|
+| **Keep 14 / 7 / 3 with the 72-hour floor** | Offers 120 MB / 120 MB / 276 MB. The tiers only change the outcome for projects idle 3–14 days, which here is only `pixel-flow`. |
+| Flat 14 days, no pressure scaling | Simpler, with no free-space dependency. Offers 120 MB today, at critical pressure. |
+| 30 / 14 / 7 | Offers 120 MB at every tier. `pixel-flow` is never offered. |
+
+Recommendation: **keep 14 / 7 / 3.**
+- Every finding is `.review` and never preselected, so a lower threshold costs at most one unchecked row.
+- The spec's open question was whether the tiers suit a 228 GiB disk. They do: the percentage limits apply and are sensible.
+
+**B2 Require a lockfile?**
+
+| Option | Consequence here |
+|---|---|
+| Lockfile **or** manifest (spec); manifest-only shows a drift warning | Same result here, because no folder is manifest-only. Elsewhere, `requirements.txt`/`package.json`-only projects come back with versions that may drift. |
+| **Lockfile only, first PR** | Same 276 MB here, and restore is exact. Manifest-only projects are never offered. |
+| Lockfile only for Node and Ruby; lockfile or manifest for Python | Covers the common `requirements.txt` venv without a lockfile, at the cost of a split rule. |
+
+Recommendation: **lockfile only in the first PR.**
+- 15 of 16 real folders have a lockfile. Manifest-only adds 0 bytes here and is the one path where a restore can differ.
+- Add manifest-only, with the drift warning, in a later slice if users ask for it.
+
+**B3 Broken venvs (dangling `bin/python`)**
+
+Measured: there are none today. The `tts/.venv` case was fixed by hand on 2026-09-30, and `exam-prep-kit/.venv/bin/python` still resolves.
+
+| Option | Consequence |
+|---|---|
+| Spec: report regardless of activity, and offer "Save package list" when there is no manifest | Adds Pare's first write into a user's project (`venv-packages-<date>.txt`). |
+| **Report broken venvs regardless of activity, only when a lockfile or manifest exists; defer the export** | No new write path. A broken venv with no manifest stays unreported, which is the fail-closed choice. |
+| Skip broken venvs | Loses the clearest win of the 2026-09-30 field run. |
+
+Recommendation: **the middle option.** The package-list export becomes its own slice with its own tests.
+
+**B4 Does it depend on #50 (in-use gate)?**
+
+#50 already checks every cleanup item with `OpenFileSnapshot.holder(atOrUnder:)`. That uses lsof `-Fpcn`, which lists each process's cwd as well as its open files. `holder(atOrUnder:)` can take the **project root** instead of the item, which is exactly what the spec asks for.
+
+| Option | Consequence |
+|---|---|
+| **Land after #50, and check the project root at cleanup time** | No new lsof code. #50 is already in `integration/2026-10-07`. |
+| Ship without an in-use check, relying on ≥ 3 days of inactivity | A dev server or MCP server started from a stale project could lose its `.venv` mid-run. |
+| Separate lsof call in the rule | Duplicates #50 and adds to section C's lsof consolidation. |
+
+Recommendation: **land after #50.** Also land after the free-space consolidation (C step 3), because the pressure tier needs one free-space reader.
+
+### Implementation order (PR slices)
+
+1. **12.2a, policy only.** In `ScanPolicy+ProjectDependencies.swift`:
+   - the tier constants and the 72-hour floor;
+   - `projectActivityDate(root:)`, covering the enclosing repo, worktree `gitdir:`, lockfile and top-level entries;
+   - the lockfile → restore-command table;
+   - a fail-closed `isReclaimableProjectDependency`;
+   - table-driven tests and the snapshot digest. No rule yet.
+2. **12.2b, the rule and the engine route.** Needs #44, #45, #50 and C step 3.
+   - `ProjectDependencyRule` (`.review`, never preselected) runs over the confirmed roots from #45. It folds workspace members into the root and has a minimum size, which is a `ScanPolicy` constant.
+   - The reason text reads "Inactive 9 days · free space is critical (3-day threshold) · restore with `pnpm install`".
+   - `CleanupEngine` routes dependency-named items only through the new gate, using the same exclusive pattern as #56/#57, plus #50's holder check on the project root.
+3. **12.2c:** broken-venv detection (needs a lockfile or manifest).
+4. **12.2d:**
+   - "Save package list" export;
+   - manifest-only projects, with the drift warning;
+   - an "empty the Trash to get the space back" note at critical pressure, which uses #54's verified reclaim.
