@@ -38,6 +38,8 @@ Clean merges: #39, #40, #47, #42, #43, #53, #60, `feat/brew-cleanup-preview`, #5
 - #63: ScanRunnerTests.swift — union (dedupe/incomplete tests + regrowth test). ScanRunner.swift — regrowth post-pass now sits after FindingDeduplicator (comment updated). FIX in rehearsal: RegrowthDetector.demoted() now copies annotations (#46) and isSizeComplete (#58) instead of dropping them — must be carried into #63 before/at merge.
 - #57 review fix 100bf4f (version siblings only inside the rule's own roots; refuses protected locations and iCloud Drive) merged after landing — clean.
 
+- #50 update `3d87c17` (inUseCheckUnavailable + 30 s re-snapshot + result-card line), merged after the rest: CleanupEngine.swift — kept the merged batch setup, `InUseBatchCheck` now built with `now:` (#50); ScanDashboardView.swift — `CleanResultCard` gets `resultExplanation` (#50, includes the symlink note) and `reclaim:` (#54). `make build` passes.
+
 ## CleanupEngine gate order (W2 safety review rules, applied)
 
 1. User exclusions → Docker never-delete → **NeverClean** (#46/#49, Go caches + OpenCode/Google identity data) → search-index → `.advanced` block.
