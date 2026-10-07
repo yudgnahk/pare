@@ -62,7 +62,11 @@ final class TinyFileQueueRuleTests: XCTestCase {
         let overBudget = await scan(entryBudget: 10)
         XCTAssertTrue(overBudget.isEmpty, "the walk stops once its entry budget is spent")
 
-        let frozen = Date(timeIntervalSinceReferenceDate: 0)
+        // A present-day clock, so the age gate would pass and only the deadline can reject the folder.
+        let frozen = Date()
+        let withinDeadline = await TinyFileQueueRule(thresholds: Self.thresholds, now: { frozen })
+            .customScan(environment: ScanEnvironment(homeDirectory: home)) ?? []
+        XCTAssertEqual(withinDeadline.count, 1, "control: the same clock reports the folder when time remains")
         let pastDeadline = await TinyFileQueueRule(thresholds: Self.thresholds, perDirectoryBudgetSeconds: 0, now: { frozen })
             .customScan(environment: ScanEnvironment(homeDirectory: home)) ?? []
         XCTAssertTrue(pastDeadline.isEmpty, "a directory not fully measured before its deadline is not reported")
