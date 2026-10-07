@@ -161,6 +161,58 @@ final class InUseGateTests: XCTestCase {
     }
 }
 
+// MARK: - Unavailable flag and snapshot refresh
+
+final class InUseSnapshotRefreshTests: XCTestCase {
+
+    func testResultFlagsAnUnavailableCheckOnlyWhenOneWasNeeded() async throws {
+        let fixture = try Fixture()
+        let cache = try fixture.makeCache("com.example.app")
+
+        let unavailable = try await fixture.engine(snapshot: nil).clean(findings: [fixture.finding(cache)], profileName: "test", dryRun: true)
+        XCTAssertTrue(unavailable.inUseCheckUnavailable)
+
+        let available = try await fixture.engine(snapshot: OpenFileSnapshot(lsofFieldOutput: "p1\ncX\nf3\nn/elsewhere/file\n"))
+            .clean(findings: [fixture.finding(cache)], profileName: "test", dryRun: true)
+        XCTAssertFalse(available.inUseCheckUnavailable)
+
+        let advanced = fixture.finding(cache, risk: .advanced)
+        let neverNeeded = try await fixture.engine(snapshot: nil).clean(findings: [advanced], profileName: "test", dryRun: true)
+        XCTAssertFalse(neverNeeded.inUseCheckUnavailable, "no snapshot is taken when nothing reaches the trash step")
+    }
+
+    func testSnapshotIsRetakenOnlyAfterTheRefreshInterval() async {
+        let provider = CountingSnapshotProvider(snapshot: OpenFileSnapshot(lsofFieldOutput: ""))
+        let clock = AdjustableClock()
+        let check = InUseBatchCheck(
+            openFiles: provider, runningApps: FixedRunningAppsList(apps: []), now: clock.now, refreshInterval: 30, log: { _ in }
+        )
+
+        _ = await check.holder(forPath: "/a")
+        clock.advance(by: 29)
+        _ = await check.holder(forPath: "/b")
+        XCTAssertEqual(provider.calls, 1, "still fresh within the interval")
+
+        clock.advance(by: 2)
+        _ = await check.holder(forPath: "/c")
+        XCTAssertEqual(provider.calls, 2, "re-taken once older than the interval")
+
+        _ = await check.holder(forPath: "/d")
+        XCTAssertEqual(provider.calls, 2)
+    }
+}
+
+private final class AdjustableClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = Date(timeIntervalSinceReferenceDate: 0)
+
+    var now: @Sendable () -> Date { { [self] in lock.withLock { current } } }
+
+    func advance(by seconds: TimeInterval) {
+        lock.withLock { current = current.addingTimeInterval(seconds) }
+    }
+}
+
 // MARK: - Test support
 
 private final class Fixture: @unchecked Sendable {

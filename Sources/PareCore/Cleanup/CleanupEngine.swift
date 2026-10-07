@@ -89,17 +89,25 @@ public struct CleanupResult: Sendable {
     /// Non-nil when the undo transaction could not be (fully) persisted to disk.
     /// Files may already have been moved to Trash — surfaced here instead of throwing.
     public let transactionSaveError: String?
+    /// True when the open-file check could not run for this batch: only running apps' caches, cached
+    /// databases and partial downloads were held back.
+    public let inUseCheckUnavailable: Bool
+
+    public static let inUseCheckUnavailableNote =
+        "Couldn't check which files are in use — only app caches, databases and partial downloads were held back."
 
     init(
         succeeded: [CleanupItem],
         skipped: [CleanupSkippedItem],
         transaction: CleanupTransaction?,
-        transactionSaveError: String? = nil
+        transactionSaveError: String? = nil,
+        inUseCheckUnavailable: Bool = false
     ) {
         self.succeeded = succeeded
         self.skipped = skipped
         self.transaction = transaction
         self.transactionSaveError = transactionSaveError
+        self.inUseCheckUnavailable = inUseCheckUnavailable
     }
 
     public var totalBytesFreed: Int64 {
@@ -222,7 +230,7 @@ public actor CleanupEngine {
         // and exclusions must be honored at cleanup time (not only at scan time).
         let projectRootPaths = await projectRootsProvider()
         let exclusions = exclusionsProvider()
-        let inUse = InUseBatchCheck(openFiles: openFiles, runningApps: runningApps)
+        let inUse = InUseBatchCheck(openFiles: openFiles, runningApps: runningApps, now: now)
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -403,7 +411,8 @@ public actor CleanupEngine {
             succeeded: succeeded,
             skipped: skipped,
             transaction: resultTransaction,
-            transactionSaveError: transactionSaveError
+            transactionSaveError: transactionSaveError,
+            inUseCheckUnavailable: await inUse.snapshotWasUnavailable
         )
     }
 

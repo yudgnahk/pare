@@ -56,33 +56,48 @@ public enum InUseGate {
     }
 }
 
-/// Per-cleanup-batch state: the snapshot and app list are taken on first use, never per item.
+/// Per-cleanup-batch state: the snapshot and app list are taken on first use, never per item, and the
+/// snapshot is re-taken once it is older than `snapshotRefreshInterval` (a long batch must not trust it).
 actor InUseBatchCheck {
     static let logger = Logger(subsystem: "Pare", category: "cleanup")
+    /// How long one open-file snapshot is trusted before the next trash step takes a fresh one.
+    static let snapshotRefreshInterval: TimeInterval = 30
 
     private let openFiles: any OpenFileSnapshotProviding
     private let runningAppsProvider: any RunningAppsProviding
     private let log: @Sendable (String) -> Void
+    private let now: @Sendable () -> Date
+    private let refreshInterval: TimeInterval
     private var snapshot: OpenFileSnapshot??
+    private var snapshotTakenAt: Date?
     private var apps: [RunningApp]?
+    /// True once any snapshot in this batch was unavailable, so the result can say so.
+    private(set) var snapshotWasUnavailable = false
 
     init(
         openFiles: any OpenFileSnapshotProviding,
         runningApps: any RunningAppsProviding,
+        now: @escaping @Sendable () -> Date = { Date() },
+        refreshInterval: TimeInterval = InUseBatchCheck.snapshotRefreshInterval,
         log: @escaping @Sendable (String) -> Void = { InUseBatchCheck.logger.notice("\($0, privacy: .public)") }
     ) {
         self.openFiles = openFiles
         self.runningAppsProvider = runningApps
+        self.now = now
+        self.refreshInterval = refreshInterval
         self.log = log
     }
 
     func holder(forPath path: String) async -> String? {
-        if snapshot == nil {
+        let isStale = snapshotTakenAt.map { now().timeIntervalSince($0) >= refreshInterval } ?? true
+        if snapshot == nil || isStale {
             let taken = await openFiles.snapshot()
             if taken == nil {
+                snapshotWasUnavailable = true
                 log("Open-file snapshot unavailable; only risky cache items are held back")
             }
             snapshot = .some(taken)
+            snapshotTakenAt = now()
         }
         return InUseGate.holder(forPath: path, snapshot: snapshot ?? nil) {
             if let apps { return apps }
