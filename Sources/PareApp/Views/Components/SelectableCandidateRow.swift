@@ -17,6 +17,8 @@ struct SelectableCandidateRow: View {
     var onExclude: (() -> Void)? = nil
     /// Folder-style leading icon when this row is a bulk folder group.
     var isFolder: Bool = false
+    /// Display-only cache activity ("In active use", "Not used in 45 days").
+    var activityText: String? = nil
     @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
@@ -66,11 +68,19 @@ struct SelectableCandidateRow: View {
                 .background(riskColor.opacity(0.2), in: Capsule(style: .continuous))
                 .foregroundStyle(riskColor)
 
-            Text(sizeText)
-                .font(scale.font(13, weight: .bold, design: .rounded))
-                .foregroundStyle(AppTheme.textPrimary)
-                .lineLimit(1)
-                .layoutPriority(1)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(sizeText)
+                    .font(scale.font(13, weight: .bold, design: .rounded))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .lineLimit(1)
+                if let activityText {
+                    Text(activityText)
+                        .font(scale.font(10, weight: .medium))
+                        .foregroundStyle(AppTheme.textTertiary)
+                        .lineLimit(1)
+                }
+            }
+            .layoutPriority(1)
 
             Button(action: onReveal) {
                 Image(systemName: "folder")

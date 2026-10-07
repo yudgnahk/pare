@@ -38,6 +38,8 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var totalReclaimableBytes: Int64 = 0
     /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
     @Published private(set) var scanWarnings: [String] = []
+    /// Display-only cache activity by finding path; filled after results appear, never affects selection.
+    @Published private(set) var cacheActivity: [String: CacheActivityLabel] = [:]
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
     @Published private(set) var perToolRollups: [ToolRollup] = []
@@ -437,7 +439,18 @@ final class ScanDashboardViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
 
             applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
+
+            cacheActivity = [:]
+            let activity = await Task.detached(priority: .utility) {
+                CacheActivityLabeler.labels(for: report.findings)
+            }.value
+            guard !Task.isCancelled else { return }
+            cacheActivity = activity
         }
+    }
+
+    func cacheActivityText(path: String) -> String? {
+        cacheActivity[path]?.text(now: Date())
     }
 
     /// Pure post-scan aggregation — safe to call from a background task.

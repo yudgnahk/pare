@@ -554,7 +554,8 @@ struct ScanDashboardView: View {
             onToggle: { viewModel.toggleSelection(path: finding.path) },
             onReveal: { viewModel.revealInFinder(path: finding.path) },
             onExclude: { viewModel.exclude(path: finding.path) },
-            isFolder: isLikelyFolderFinding(finding)
+            isFolder: isLikelyFolderFinding(finding),
+            activityText: viewModel.cacheActivityText(path: finding.path)
         )
     }
 
