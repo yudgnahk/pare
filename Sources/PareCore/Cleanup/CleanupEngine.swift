@@ -100,17 +100,25 @@ public struct CleanupResult: Sendable {
     /// Non-nil when the undo transaction could not be (fully) persisted to disk.
     /// Files may already have been moved to Trash — surfaced here instead of throwing.
     public let transactionSaveError: String?
+    /// True when the open-file check could not run for this batch: only running apps' caches, cached
+    /// databases and partial downloads were held back.
+    public let inUseCheckUnavailable: Bool
+
+    public static let inUseCheckUnavailableNote =
+        "Couldn't check which files are in use — only app caches, databases and partial downloads were held back."
 
     init(
         succeeded: [CleanupItem],
         skipped: [CleanupSkippedItem],
         transaction: CleanupTransaction?,
-        transactionSaveError: String? = nil
+        transactionSaveError: String? = nil,
+        inUseCheckUnavailable: Bool = false
     ) {
         self.succeeded = succeeded
         self.skipped = skipped
         self.transaction = transaction
         self.transactionSaveError = transactionSaveError
+        self.inUseCheckUnavailable = inUseCheckUnavailable
     }
 
     public var totalBytesFreed: Int64 {
@@ -284,7 +292,7 @@ public actor CleanupEngine {
             for: findings.map { URL(fileURLWithPath: $0.path) }.filter(ScanPolicy.requiresGitIgnoreEvidence)
         )
         let goCacheRoots = await goCacheLocations.resolveIfNeeded().all
-        let inUse = InUseBatchCheck(openFiles: openFiles, runningApps: runningApps)
+        let inUse = InUseBatchCheck(openFiles: openFiles, runningApps: runningApps, now: now)
         // Checked once per batch, and only when it contains Codex staging paths.
         let codexIdle = findings.contains { ScanPolicy.codexStagingRoot(containing: $0.path) != nil }
             ? !(await isCodexRunning())
@@ -509,7 +517,8 @@ public actor CleanupEngine {
             succeeded: succeeded,
             skipped: skipped,
             transaction: resultTransaction,
-            transactionSaveError: transactionSaveError
+            transactionSaveError: transactionSaveError,
+            inUseCheckUnavailable: await inUse.snapshotWasUnavailable
         )
     }
 
