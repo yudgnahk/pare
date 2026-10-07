@@ -105,7 +105,9 @@ final class VerifiedReclaimTests: XCTestCase {
             ("not measured", nil, "Estimated \(estimate)"),
             ("gained", 1 * gb, "Estimated \(estimate) · Disk actually gained \(format(gb))"),
             ("zero", 0, "Estimated \(estimate) · Disk actually gained nothing"),
-            ("negative", -3_000_000, "Estimated \(estimate) · Disk actually gained nothing (free space fell by \(format(3_000_000)))"),
+            ("negative", -300_000_000, "Estimated \(estimate) · Disk actually gained nothing (free space fell by \(format(300_000_000)))"),
+            ("drift up", 3_000_000, "Estimated \(estimate) · Disk actually gained nothing"),
+            ("drift down", -3_000_000, "Estimated \(estimate) · Disk actually gained nothing"),
         ]
         for testCase in cases {
             XCTAssertEqual(
@@ -125,6 +127,7 @@ final class VerifiedReclaimTests: XCTestCase {
             ("zero", 2 * gb, 0, true),
             ("negative", 2 * gb, -5, true),
             ("nothing estimated", 0, 0, false),
+            ("tiny cleanup, drift above estimate", 4_096, 3_000_000, true),
         ]
         for testCase in cases {
             let summary = ReclaimSummary(estimatedBytes: testCase.estimated, measuredBytes: testCase.measured)
