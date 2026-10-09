@@ -36,6 +36,8 @@ final class ScanDashboardViewModel: ObservableObject {
 
     @Published private(set) var state: ScanState = .idle
     @Published private(set) var totalReclaimableBytes: Int64 = 0
+    /// "Grew since last scan: …" for the results summary; nil on the first scan or when nothing grew.
+    @Published private(set) var growthSinceLastScan: String?
     /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
     @Published private(set) var scanWarnings: [String] = []
     @Published private(set) var summaries: [SummaryItem] = []
@@ -82,10 +84,14 @@ final class ScanDashboardViewModel: ObservableObject {
     private let scanCache = ScanMetadataCache()
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
+    private let growthStore: GrowthSnapshotStore
+    /// Bumped per scan so a growth line computed for an older scan cannot land after a newer one started.
+    private var scanGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
-    init(cleanup: CleanupCoordinator = CleanupCoordinator()) {
+    init(cleanup: CleanupCoordinator = CleanupCoordinator(), growthStore: GrowthSnapshotStore = GrowthSnapshotStore()) {
         self.cleanup = cleanup
+        self.growthStore = growthStore
         // Child observable objects publish through the dashboard so existing
         // `@ObservedObject var viewModel` views keep re-rendering.
         permissions.objectWillChange
@@ -330,6 +336,7 @@ final class ScanDashboardViewModel: ObservableObject {
     // MARK: - Scan lifecycle
 
     func cancelScan() {
+        scanGeneration += 1
         scanTask?.cancel()
         scanTask = nil
         state = .idle
@@ -389,6 +396,9 @@ final class ScanDashboardViewModel: ObservableObject {
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
+        scanGeneration += 1
+        let generation = scanGeneration
+        growthSinceLastScan = nil
         state = .scanning
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
@@ -437,7 +447,36 @@ final class ScanDashboardViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
 
             applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
+
+            let store = growthStore
+            let growth = await Task.detached(priority: .utility) {
+                Self.recordGrowth(report: report, store: store)
+            }.value
+            guard generation == scanGeneration, !Task.isCancelled else { return }
+            growthSinceLastScan = growth
         }
+    }
+
+    /// Compares with the last complete snapshot, saves this scan's, and returns the top growth as one line.
+    nonisolated private static func recordGrowth(report: ScanReport, store: GrowthSnapshotStore) -> String? {
+        let current = GrowthSnapshot(report: report)
+        let previous = store.latestComplete()
+        do {
+            try store.save(current)
+        } catch {
+            NSLog("Saving growth snapshot failed: \(error.localizedDescription)")
+        }
+        guard let previous else { return nil }
+        let delta = GrowthDelta.compute(previous: previous, current: current)
+        let pathNames = Dictionary(
+            report.findings.map { (GrowthSnapshot.key($0.path), URL(fileURLWithPath: $0.path).lastPathComponent) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let top = (delta.paths.isEmpty ? delta.categories : delta.paths).prefix(5).map { entry in
+            let size = ScanReportPresenter.formatBytes(entry.grewBy)
+            return "\(pathNames[entry.key] ?? entry.key) " + (entry.isNew ? "new \(size)" : "+\(size)")
+        }
+        return top.isEmpty ? nil : "Grew since last scan: " + top.joined(separator: ", ")
     }
 
     /// Pure post-scan aggregation — safe to call from a background task.

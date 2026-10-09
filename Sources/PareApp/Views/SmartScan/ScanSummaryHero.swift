@@ -77,6 +77,14 @@ struct ScanSummaryHero: View {
                 .font(scale.body)
                 .foregroundStyle(AppTheme.textSecondary)
 
+            if let growth = viewModel.growthSinceLastScan {
+                Text(growth)
+                    .font(scale.body)
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
             CategoryShareBar(summaries: viewModel.summaries, formatBytes: viewModel.formattedBytes)
                 .padding(.top, 6)
                 .frame(maxWidth: 520)
