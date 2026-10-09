@@ -60,6 +60,7 @@ public enum RuleCatalog {
             RustCachesRule(),
             GoCachesRule(),
             ProjectArtifactsRule(),
+            ProjectDependenciesRule(),
         ] + baseline
     }
 

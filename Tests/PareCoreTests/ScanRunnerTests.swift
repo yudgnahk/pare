@@ -60,7 +60,7 @@ final class ScanRunnerTests: XCTestCase {
         let ids = all.map(\.id)
         XCTAssertEqual(ids.count, Set(ids).count, "RuleCatalog.all must be unique by id")
         // Keep in sync with RuleCatalog constructors (developer ∪ designer ∪ videoBuilder).
-        XCTAssertEqual(all.count, 36, "Update this when adding/removing rules from RuleCatalog")
+        XCTAssertEqual(all.count, 37, "Update this when adding/removing rules from RuleCatalog")
     }
 
     func testBrowserRuleSkipsSensitiveFiles() {
@@ -159,6 +159,7 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "ai-tool-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "homebrew-cache" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "project-artifacts-v2" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "project-dependencies" }))
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-vm-data-advanced" }))
         // Orphaned logs-only rule is not registered; DockerStorageRule covers logs + VM visibility.
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-logs-review-required" }))
