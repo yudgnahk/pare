@@ -44,6 +44,8 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var growthSinceLastScan: String?
     /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
     @Published private(set) var scanWarnings: [String] = []
+    /// Display-only cache activity by finding path; filled after results appear, never affects selection.
+    @Published private(set) var cacheActivity: [String: CacheActivityLabel] = [:]
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
     @Published private(set) var perToolRollups: [ToolRollup] = []
@@ -89,7 +91,7 @@ final class ScanDashboardViewModel: ObservableObject {
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
     private let growthStore: GrowthSnapshotStore
-    /// Bumped per scan so a growth line computed for an older scan cannot land after a newer one started.
+    /// Bumped per scan so growth lines or labels computed for an older scan cannot land after a newer one started.
     private var scanGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
@@ -455,13 +457,27 @@ final class ScanDashboardViewModel: ObservableObject {
 
             applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
 
-            let store = growthStore
-            let growth = await Task.detached(priority: .utility) {
-                Self.recordGrowth(report: report, store: store)
-            }.value
-            guard generation == scanGeneration, !Task.isCancelled else { return }
-            growthSinceLastScan = growth
+            await publishPostScanDetails(report: report, generation: generation)
         }
+    }
+
+    /// Growth recording and cache-activity labeling run side by side; each lands only while its scan is current.
+    private func publishPostScanDetails(report: ScanReport, generation: Int) async {
+        cacheActivity = [:]
+        let store = growthStore
+        // Only the rows "Largest items" shows can display a label.
+        let shown = largestItems.compactMap { findingsByPath[$0.path] }
+        let growthJob = Task.detached(priority: .utility) { Self.recordGrowth(report: report, store: store) }
+        let activityJob = Task.detached(priority: .utility) { CacheActivityLabeler.labels(for: shown) }
+
+        let activity = await activityJob.value
+        if generation == scanGeneration, !Task.isCancelled { cacheActivity = activity }
+        let growth = await growthJob.value
+        if generation == scanGeneration, !Task.isCancelled { growthSinceLastScan = growth }
+    }
+
+    func cacheActivityText(path: String) -> String? {
+        cacheActivity[path]?.text(now: Date())
     }
 
     /// Compares with the last complete snapshot, saves this scan's, and returns the top growth as one line.
