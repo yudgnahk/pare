@@ -168,6 +168,43 @@ final class MemoryPressureRuleTests: XCTestCase {
         XCTAssertEqual(unbudgeted.count, 1, "control: the default budget reads both")
     }
 
+    func testCountIsAFloorWhenTheByteBudgetCutsTheList() async throws {
+        for index in 0..<3 {
+            try write("JetsamEvent-s\(index).ips", date: nil, largest: "Xcode", reason: "vm-pageshortage",
+                      age: TimeInterval(index + 1) * 3_600)
+        }
+        let reportBytes = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: reports.appending(path: "JetsamEvent-s0.ips").path)[.size] as? Int
+        )
+        let budgeted = MemoryPressureRule(
+            reportDirectories: [reports], swapUsedBytes: { 0 }, freeDiskBytes: { Int64.max }, now: { Self.now },
+            inspectedBytesBudget: Int64(reportBytes) * 2
+        )
+
+        let cutFindings = await budgeted.customScan(environment: .current()) ?? []
+        let wholeFindings = await rule().customScan(environment: .current()) ?? []
+        let cut = try XCTUnwrap(cutFindings.first)
+        let whole = try XCTUnwrap(wholeFindings.first)
+
+        XCTAssertTrue(cut.reason.contains("At least 2 memory shortages in the last 7 days"), cut.reason)
+        XCTAssertTrue(whole.reason.contains("3 memory shortages in the last 7 days"), whole.reason)
+        XCTAssertFalse(whole.reason.contains("At least"), whole.reason)
+    }
+
+    func testCancelledScanReadsNothing() async throws {
+        try write("JetsamEvent-1.ips", date: nil, largest: "Xcode", reason: "vm-pageshortage", age: 3_600)
+        let subject = rule()
+        let task = Task { () -> [ScanFinding] in
+            while !Task.isCancelled { await Task.yield() }
+            return await subject.customScan(environment: .current()) ?? []
+        }
+
+        task.cancel()
+
+        let findings = await task.value
+        XCTAssertTrue(findings.isEmpty)
+    }
+
     func testSizeZeroDiagnosticSurvivesScanAndStaysOutOfTotals() async throws {
         try write("JetsamEvent-1.ips", date: nil, largest: "Google Chrome", reason: "vm-pageshortage", age: 3600)
 

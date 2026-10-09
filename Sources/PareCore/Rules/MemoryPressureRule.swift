@@ -51,16 +51,21 @@ public struct MemoryPressureRule: ScanRule {
             URL(fileURLWithPath: "/Library/Logs/DiagnosticReports"),
             environment.homeDirectory.appending(path: "Library/Logs/DiagnosticReports"),
         ]
-        let events = recentReports(in: directories).compactMap { report -> (URL, JetsamEvent)? in
+        let inspection = recentReports(in: directories)
+        var events: [(URL, JetsamEvent)] = []
+        for report in inspection.reports {
+            if Task.isCancelled { return [] }
             guard let text = try? String(contentsOf: report.url, encoding: .utf8),
-                  let event = Self.event(fromReport: text) else { return nil }
-            let dated = event.date == nil ? event.with(date: report.modified) : event
-            return (report.url, dated)
+                  let event = Self.event(fromReport: text) else { continue }
+            events.append((report.url, event.date == nil ? event.with(date: report.modified) : event))
         }
         let shortages = events.filter { $0.1.isSystemMemoryShortage }
         guard let latest = shortages.first else { return [] }
         let warning = await lowDiskWithHighSwapWarning()
-        return [finding(for: latest.1, at: latest.0, shortageCount: shortages.count, warning: warning)]
+        return [finding(
+            for: latest.1, at: latest.0, shortageCount: shortages.count,
+            isCountFloor: inspection.isTruncated, warning: warning
+        )]
     }
 
     static func event(fromReport report: String) -> JetsamEvent? {
@@ -76,7 +81,7 @@ public struct MemoryPressureRule: ScanRule {
     }
 
     /// Newest `JetsamEvent-*.ips` files within the recency window, up to `inspectedBytesBudget` in total.
-    private func recentReports(in directories: [URL]) -> [Report] {
+    private func recentReports(in directories: [URL]) -> (reports: [Report], isTruncated: Bool) {
         let cutoff = now().addingTimeInterval(-Self.recentEventWindowSeconds)
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
         let reports = directories
@@ -93,10 +98,11 @@ public struct MemoryPressureRule: ScanRule {
             }
             .sorted { $0.modified > $1.modified }
         var remaining = inspectedBytesBudget
-        return reports.prefix { report in
+        let within = reports.prefix { report in
             remaining -= report.bytes
             return remaining >= 0
-        }.map { $0 }
+        }
+        return (Array(within), within.count < reports.count)
     }
 
     private func lowDiskWithHighSwapWarning() async -> String? {
@@ -105,7 +111,7 @@ public struct MemoryPressureRule: ScanRule {
         return "Low disk space coincides with high swap use — free up disk so macOS can grow swap."
     }
 
-    private func finding(for event: JetsamEvent, at url: URL, shortageCount: Int, warning: String?) -> ScanFinding {
+    private func finding(for event: JetsamEvent, at url: URL, shortageCount: Int, isCountFloor: Bool, warning: String?) -> ScanFinding {
         let largest = event.largestProcess ?? "an unknown process"
         let largestSize = event.topProcesses.first { $0.name == largest }.map { " (\(Self.memory($0.residentBytes)))" } ?? ""
         let when = event.date.map { DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short) } ?? "a recent day"
@@ -114,7 +120,9 @@ public struct MemoryPressureRule: ScanRule {
         if !others.isEmpty {
             sentences.append("Other large processes: \(others.map { "\($0.name) (\(Self.memory($0.residentBytes)))" }.joined(separator: ", ")).")
         }
-        if shortageCount > 1 {
+        if isCountFloor {
+            sentences.append("At least \(shortageCount) memory \(shortageCount == 1 ? "shortage" : "shortages") in the last 7 days.")
+        } else if shortageCount > 1 {
             sentences.append("\(shortageCount) memory shortages in the last 7 days.")
         }
         if let warning { sentences.append(warning) }
