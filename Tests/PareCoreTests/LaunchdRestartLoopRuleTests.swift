@@ -57,6 +57,8 @@ final class LaunchdRestartLoopRuleTests: XCTestCase {
         let cases: [(runs: String?, exit: String?, loop: Bool)] = [
             ("\(threshold + 1)", "last exit code = 1", true),
             ("\(threshold + 1)", "last exit code = 78", true),
+            ("\(threshold + 1)", "last exit code = 78: EX_CONFIG", true),
+            ("\(threshold + 1)", "last exit code = 0: Undefined error: 0", false),
             ("\(threshold + 1)", "last terminating signal = Bus error: 10", true),
             ("\(threshold)", "last exit code = 1", false),
             ("\(threshold + 1)", "last exit code = 0", false),

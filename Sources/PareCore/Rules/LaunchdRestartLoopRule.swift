@@ -101,7 +101,8 @@ public struct LaunchdRestartLoopRule: ScanRule {
         return Service(
             label: label,
             runs: fields["runs"].flatMap { Int($0) },
-            lastExitCode: fields["last exit code"].flatMap { Int($0) },
+            // launchd prints `%d` or `%d: %s` (e.g. `78: EX_CONFIG`).
+            lastExitCode: fields["last exit code"].flatMap { Int($0.prefix { $0 == "-" || $0.isNumber }) },
             lastSignal: fields["last terminating signal"],
             plistPath: path,
             program: fields["program"].flatMap { $0.hasPrefix("/") ? $0 : nil }
