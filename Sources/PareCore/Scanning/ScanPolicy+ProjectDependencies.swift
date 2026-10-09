@@ -39,7 +39,10 @@ extension ScanPolicy {
         "package.json", "pyproject.toml", "requirements.txt", "setup.py", "Pipfile", "Gemfile",
     ]
     static let projectActivityGitMarkers = ["index", "logs/HEAD", "FETCH_HEAD"]
-    static let projectActivityTopLevelEntryLimit = 500
+    /// Entries and seconds the activity walk may spend per project; a project too big to read counts as active.
+    public static let projectActivityEntryBudget = 20_000
+    public static let projectActivityTimeBudget: TimeInterval = 2
+    static let projectActivityDeadlineCheckInterval = 256
 
     public static func diskPressureTier(freeBytes: Int64, totalBytes: Int64) -> DiskPressureTier {
         // Unknown capacity gets the strictest threshold.
@@ -70,27 +73,64 @@ extension ScanPolicy {
     }
 
     /// Newest mtime among the project's git markers (its own repo, a worktree's `gitdir:`, or the enclosing
-    /// repo), lockfiles, manifests and top-level entries. Dependency and build folders never count.
+    /// repo) and every file below it, skipping dependency and build folders. Nil when unknown, or when the walk
+    /// runs out of budget or hits an unreadable folder: callers treat nil as active.
     public static func projectActivityDate(
         projectRoot: URL,
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        entryBudget: Int = projectActivityEntryBudget,
+        timeBudget: TimeInterval = projectActivityTimeBudget,
+        now: () -> Date = { Date() }
     ) -> Date? {
-        var candidates: [URL] = []
+        var markerDates: [Date] = []
         if let gitDir = gitDirectory(enclosing: projectRoot, homeDirectory: homeDirectory) {
-            candidates += projectActivityGitMarkers.map { gitDir.appending(path: $0) }
+            markerDates = projectActivityGitMarkers.compactMap { modificationDate(of: gitDir.appending(path: $0)) }
         }
-        let evidence = projectDependencyLockfiles.values.flatMap { $0 } + projectActivityManifestNames
-        candidates += Set(evidence).map { projectRoot.appending(path: $0) }
-        let entries = (try? FileManager.default.contentsOfDirectory(atPath: projectRoot.path)) ?? []
-        candidates += entries.prefix(projectActivityTopLevelEntryLimit)
-            .filter { name in
-                let lower = name.lowercased()
-                return lower != ".git" && lower != ".ds_store" && !isProjectDependencyDirectory(lower)
-                    && !projectLocalArtifactDirectoryNames.contains(lower)
-                    && !projectArtifactDirectoryNames.contains(lower)
+        let walk = newestFileModification(
+            under: projectRoot, entryBudget: entryBudget, deadline: now().addingTimeInterval(timeBudget), now: now
+        )
+        guard case .finished(let newestFile) = walk else { return nil }
+        return (markerDates + [newestFile].compactMap { $0 }).max()
+    }
+
+    private enum ActivityWalk {
+        case finished(Date?)
+        case gaveUp
+    }
+
+    /// Directory mtimes are ignored: creating a folder (or a tool touching one) is not editing the project.
+    private static func newestFileModification(
+        under root: URL, entryBudget: Int, deadline: Date, now: () -> Date
+    ) -> ActivityWalk {
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey, .contentModificationDateKey]
+        var unreadable = false
+        guard let enumerator = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in
+                unreadable = true
+                return false
             }
-            .map { projectRoot.appending(path: $0) }
-        return candidates.compactMap(modificationDate(of:)).max()
+        ) else { return .gaveUp }
+        var newest: Date?
+        var visited = 0
+        for case let entry as URL in enumerator {
+            visited += 1
+            if visited > entryBudget || Task.isCancelled
+                || (visited % projectActivityDeadlineCheckInterval == 0 && now() >= deadline) {
+                return .gaveUp
+            }
+            let lower = entry.lastPathComponent.lowercased()
+            guard let values = try? entry.resourceValues(forKeys: Set(keys)) else { return .gaveUp }
+            if values.isDirectory == true {
+                if lower == ".git" || isProjectDependencyDirectory(lower) || projectArtifactDirectoryNames.contains(lower) {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
+            guard values.isRegularFile == true, lower != ".git", lower != ".ds_store",
+                  let modified = values.contentModificationDate else { continue }
+            newest = max(newest ?? modified, modified)
+        }
+        return unreadable || now() >= deadline ? .gaveUp : .finished(newest)
     }
 
     /// Cleanup- and scan-time gate. Fail-closed: a dependency name directly under a project inside a confirmed
@@ -102,15 +142,29 @@ extension ScanPolicy {
         now: Date,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> Bool {
-        guard isProjectDependencyDirectory(url.lastPathComponent) else { return false }
+        reclaimableProjectDependencyActivity(
+            url, registeredRootPaths: registeredRootPaths, tier: tier, now: now, homeDirectory: homeDirectory
+        ) != nil
+    }
+
+    /// The project's last activity when `isReclaimableProjectDependency` holds, so callers walk the project once.
+    public static func reclaimableProjectDependencyActivity(
+        _ url: URL,
+        registeredRootPaths: [String],
+        tier: DiskPressureTier,
+        now: Date,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Date? {
+        guard isProjectDependencyDirectory(url.lastPathComponent) else { return nil }
         let project = url.deletingLastPathComponent()
-        guard project.path != "/", !isEqualToOrDescendant(candidate: homeDirectory, root: project) else { return false }
+        guard project.path != "/", !isEqualToOrDescendant(candidate: homeDirectory, root: project) else { return nil }
         let underRoot = registeredRootPaths.contains { rootPath in
             !rootPath.isEmpty && isEqualToOrDescendant(candidate: project, root: URL(fileURLWithPath: rootPath))
         }
         guard underRoot, projectDependencyLockfile(for: url) != nil,
-              let activity = projectActivityDate(projectRoot: project, homeDirectory: homeDirectory) else { return false }
-        return now.timeIntervalSince(activity) >= projectDependencyInactivitySeconds(for: tier)
+              let activity = projectActivityDate(projectRoot: project, homeDirectory: homeDirectory),
+              now.timeIntervalSince(activity) >= projectDependencyInactivitySeconds(for: tier) else { return nil }
+        return activity
     }
 
     /// A tracked or unignored dependency folder may be vendored on purpose; no answer fails closed.

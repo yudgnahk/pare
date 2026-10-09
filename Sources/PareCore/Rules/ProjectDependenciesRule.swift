@@ -53,8 +53,8 @@ public struct ProjectDependenciesRule: ScanRule {
         var reported = Set<String>()
         return candidates.compactMap { url in
             guard reported.insert(url.standardizedFileURL.path).inserted,
-                  ScanPolicy.isReclaimableProjectDependency(url, registeredRootPaths: rootPaths, tier: tier, now: scanTime),
-                  let activity = ScanPolicy.projectActivityDate(projectRoot: url.deletingLastPathComponent()) else {
+                  let activity = ScanPolicy.reclaimableProjectDependencyActivity(
+                    url, registeredRootPaths: rootPaths, tier: tier, now: scanTime) else {
                 return nil
             }
             let size = environment.sizeIndex.directorySize(url: url)

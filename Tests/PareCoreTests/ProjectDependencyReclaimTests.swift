@@ -63,6 +63,36 @@ final class ProjectDependencyReclaimTests: XCTestCase {
         XCTAssertEqual(now.timeIntervalSince(freshActivity) / day, 1, accuracy: 0.01)
     }
 
+    /// Trap: a non-git project edited daily deep under `src/` must not look idle from its top-level dates.
+    func testActivitySeesNestedEditsButNotDependencyOrBuildFolders() throws {
+        let project = try makeProject("deep-edit", lockfile: "package-lock.json", inactiveDays: 30)
+        try makeFile(project.appending(path: "build/out.js"), ageDays: 0)
+        try makeFile(project.appending(path: ".next/cache/x"), ageDays: 0)
+        try makeFile(project.appending(path: "node_modules/pkg/index.js"), ageDays: 0)
+        try backdateTopLevel(of: project, days: 30)
+
+        let idle = try XCTUnwrap(ScanPolicy.projectActivityDate(projectRoot: project))
+        XCTAssertEqual(now.timeIntervalSince(idle) / day, 30, accuracy: 0.01, "dependency and build output never count")
+
+        try makeFile(project.appending(path: "src/components/Button.tsx"), ageDays: 1)
+        try setAge(project.appending(path: "src/components"), days: 30)
+        try setAge(project.appending(path: "src"), days: 30)
+        let edited = try XCTUnwrap(ScanPolicy.projectActivityDate(projectRoot: project))
+        XCTAssertEqual(now.timeIntervalSince(edited) / day, 1, accuracy: 0.01)
+        XCTAssertFalse(isReclaimable(project.appending(path: "node_modules"), tier: .critical))
+    }
+
+    func testActivityWalkOutOfBudgetCountsAsActive() throws {
+        let project = try makeProject("huge", lockfile: "package-lock.json", inactiveDays: 30)
+        for index in 0..<10 {
+            try makeFile(project.appending(path: "data/file-\(index).txt"), ageDays: 30)
+        }
+
+        XCTAssertNotNil(ScanPolicy.projectActivityDate(projectRoot: project))
+        XCTAssertNil(ScanPolicy.projectActivityDate(projectRoot: project, entryBudget: 5), "entry budget")
+        XCTAssertNil(ScanPolicy.projectActivityDate(projectRoot: project, timeBudget: 0), "time budget")
+    }
+
     func testActivityUsesGitIndexAndLog() throws {
         for marker in ["index", "logs/HEAD"] {
             let project = try makeProject("git-\(marker.replacingOccurrences(of: "/", with: "-"))",
