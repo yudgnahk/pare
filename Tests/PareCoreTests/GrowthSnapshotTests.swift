@@ -68,6 +68,79 @@ final class GrowthSnapshotTests: XCTestCase {
         XCTAssertEqual(delta.paths.map(\.key), ["/grew", "/new"], "sorted by growth; shrink, noise and vanished ignored")
         XCTAssertEqual(delta.paths.first?.grewBy, 2_500 * Self.megabyte)
         XCTAssertEqual(delta.paths.last?.grewBy, 200 * Self.megabyte, "a new path grew from zero")
+        XCTAssertEqual(delta.paths.map(\.isNew), [false, true])
+    }
+
+    func testPathCrossingTheReportingFloorCountsOnlyItsChange() {
+        let previous = snapshot(at: 1, categories: [:], paths: ["/crossing": 90 * Self.megabyte, "/jump": 40 * Self.megabyte])
+        let current = snapshot(at: 2, categories: [:], paths: [
+            "/crossing": 110 * Self.megabyte, "/jump": 400 * Self.megabyte, "/small": 80 * Self.megabyte,
+        ])
+
+        let delta = GrowthDelta.compute(previous: previous, current: current)
+
+        XCTAssertEqual(delta.paths.map(\.key), ["/jump"], "20 MB is noise; a path under the reporting floor is not reported")
+        XCTAssertEqual(delta.paths.first?.grewBy, 360 * Self.megabyte)
+    }
+
+    func testIncompleteBaselineYieldsNoGrowth() {
+        let partial = GrowthSnapshot(takenAt: Date(timeIntervalSince1970: 1), perCategory: [:], perPath: [:], isComplete: false)
+        let current = snapshot(at: 2, categories: ["Logs": 900 * Self.megabyte], paths: ["/a": 900 * Self.megabyte])
+
+        XCTAssertTrue(GrowthDelta.compute(previous: partial, current: current).isEmpty)
+    }
+
+    func testLatestCompleteSkipsPartialSnapshots() throws {
+        let store = GrowthSnapshotStore(directory: directory)
+        let full = snapshot(at: 1_000, categories: ["Logs": 5], paths: [:])
+        let partial = GrowthSnapshot(takenAt: Date(timeIntervalSince1970: 2_000), perCategory: [:], perPath: [:], isComplete: false)
+        try store.save(full)
+        try store.save(partial)
+
+        XCTAssertEqual(store.latest(), partial)
+        XCTAssertEqual(store.latestComplete(), full)
+    }
+
+    func testSnapshotWithoutCompletenessFlagIsNotABaseline() throws {
+        let store = GrowthSnapshotStore(directory: directory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let legacy = #"{"takenAt":1000,"perCategory":{},"perPath":{}}"#
+        try Data(legacy.utf8).write(to: directory.appending(path: "growth-0000000001000.json"))
+
+        XCTAssertNotNil(store.latest())
+        XCTAssertNil(store.latestComplete())
+    }
+
+    func testReportWithFailuresOrUnreadableLocationsMakesAPartialSnapshot() {
+        let summaries = [ScanCategorySummary(category: .userCaches, reclaimableBytes: 1, fileCount: 1)]
+        let failure = ScanRuleFailure(ruleID: "r", ruleTitle: "R", message: "boom")
+        let cases: [(name: String, report: ScanReport, complete: Bool)] = [
+            ("clean", ScanReport(findings: [], summaries: summaries), true),
+            ("rule failed", ScanReport(findings: [], summaries: summaries, ruleFailures: [failure]), false),
+            ("unreadable", ScanReport(findings: [], summaries: summaries, unreadableLocations: ["/x"]), false),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(GrowthSnapshot(report: testCase.report).isComplete, testCase.complete, testCase.name)
+        }
+    }
+
+    func testAdvancedFindingsStayOutOfPerPath() {
+        let safe = finding("/Users/u/Library/Caches/a", bytes: 200 * Self.megabyte)
+        let advanced = ScanFinding(
+            category: .userCaches, riskLevel: .advanced, reason: "test", path: "/Users/u/Library/b",
+            sizeBytes: 500 * Self.megabyte, lastUsed: nil, confidence: 1
+        )
+        let report = ScanReport(findings: [safe, advanced], summaries: [])
+
+        XCTAssertEqual(Set(GrowthSnapshot(report: report).perPath.keys), [GrowthSnapshot.key(safe.path)])
+    }
+
+    func testPathsAreRecordedFromTheTrackedFloor() {
+        let report = ScanReport(findings: [
+            finding("/Users/u/a", bytes: 20 * Self.megabyte), finding("/Users/u/b", bytes: 5 * Self.megabyte),
+        ], summaries: [])
+
+        XCTAssertEqual(Set(GrowthSnapshot(report: report).perPath.keys), [GrowthSnapshot.key("/Users/u/a")])
     }
 
     func testCategoryDeltasUseTheSameRules() {
@@ -80,7 +153,7 @@ final class GrowthSnapshotTests: XCTestCase {
         XCTAssertTrue(GrowthDelta.compute(previous: current, current: current).isEmpty)
     }
 
-    func testSnapshotFromReportUsesCanonicalKeysAndMinimumSize() {
+    func testSnapshotFromReportUsesCanonicalKeysAndTrackedSize() {
         let big = finding("/var/folders/ab/T/Cache", bytes: 200 * Self.megabyte)
         let alias = finding("/private/var/folders/AB/T/cache", bytes: 100 * Self.megabyte)
         let small = finding("/Users/u/Library/Caches/tiny", bytes: 1024)

@@ -85,6 +85,8 @@ final class ScanDashboardViewModel: ObservableObject {
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
     private let growthStore: GrowthSnapshotStore
+    /// Bumped per scan so a growth line computed for an older scan cannot land after a newer one started.
+    private var scanGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
     init(cleanup: CleanupCoordinator = CleanupCoordinator(), growthStore: GrowthSnapshotStore = GrowthSnapshotStore()) {
@@ -334,6 +336,7 @@ final class ScanDashboardViewModel: ObservableObject {
     // MARK: - Scan lifecycle
 
     func cancelScan() {
+        scanGeneration += 1
         scanTask?.cancel()
         scanTask = nil
         state = .idle
@@ -393,6 +396,9 @@ final class ScanDashboardViewModel: ObservableObject {
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
+        scanGeneration += 1
+        let generation = scanGeneration
+        growthSinceLastScan = nil
         state = .scanning
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
@@ -443,17 +449,23 @@ final class ScanDashboardViewModel: ObservableObject {
             applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
 
             let store = growthStore
-            growthSinceLastScan = await Task.detached(priority: .utility) {
+            let growth = await Task.detached(priority: .utility) {
                 Self.recordGrowth(report: report, store: store)
             }.value
+            guard generation == scanGeneration, !Task.isCancelled else { return }
+            growthSinceLastScan = growth
         }
     }
 
-    /// Compares with the previous snapshot, saves this scan's, and returns the top growth as one line.
+    /// Compares with the last complete snapshot, saves this scan's, and returns the top growth as one line.
     nonisolated private static func recordGrowth(report: ScanReport, store: GrowthSnapshotStore) -> String? {
         let current = GrowthSnapshot(report: report)
-        let previous = store.latest()
-        try? store.save(current)
+        let previous = store.latestComplete()
+        do {
+            try store.save(current)
+        } catch {
+            NSLog("Saving growth snapshot failed: \(error.localizedDescription)")
+        }
         guard let previous else { return nil }
         let delta = GrowthDelta.compute(previous: previous, current: current)
         let pathNames = Dictionary(
@@ -461,7 +473,8 @@ final class ScanDashboardViewModel: ObservableObject {
             uniquingKeysWith: { first, _ in first }
         )
         let top = (delta.paths.isEmpty ? delta.categories : delta.paths).prefix(5).map { entry in
-            "\(pathNames[entry.key] ?? entry.key) +\(ScanReportPresenter.formatBytes(entry.grewBy))"
+            let size = ScanReportPresenter.formatBytes(entry.grewBy)
+            return "\(pathNames[entry.key] ?? entry.key) " + (entry.isNew ? "new \(size)" : "+\(size)")
         }
         return top.isEmpty ? nil : "Grew since last scan: " + top.joined(separator: ", ")
     }
