@@ -168,8 +168,6 @@ public actor CleanupEngine {
     private let isCodexRunning: @Sendable () async -> Bool
     /// The active pnpm store (`…/store/v<N>`), re-resolved at cleanup; nil fails closed. Injectable.
     private let pnpmActiveStore: @Sendable () async -> URL?
-    /// Disk-pressure tier for re-checking dependency folders of inactive projects.
-    private let diskPressure: @Sendable () -> DiskPressureTier
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -188,8 +186,7 @@ public actor CleanupEngine {
         freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace(),
         runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider(),
         isCodexRunning: (@Sendable () async -> Bool)? = nil,
-        pnpmActiveStore: (@Sendable () async -> URL?)? = nil,
-        diskPressure: @escaping @Sendable () -> DiskPressureTier = { DiskPressure.current() }
+        pnpmActiveStore: (@Sendable () async -> URL?)? = nil
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -211,7 +208,6 @@ public actor CleanupEngine {
         self.openFiles = openFiles
         self.runningApps = runningApps
         self.freeSpace = freeSpace
-        self.diskPressure = diskPressure
     }
 
     /// Both readings in one metric (Finder's "important usage" when both have it), so the delta is meaningful.
@@ -415,7 +411,7 @@ public actor CleanupEngine {
                 // Dependency folders pass only their own gate, even under a low-impact or persona path.
                 isProjectDependency = true
                 if !ScanPolicy.isReclaimableProjectDependency(
-                    url, registeredRootPaths: projectRootPaths, tier: diskPressure(), now: now()) {
+                    url, registeredRootPaths: projectRootPaths, tier: dependencyTier(for: url), now: now()) {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                     continue
                 }
@@ -654,6 +650,11 @@ public actor CleanupEngine {
             return nil
         }
         return projectArtifactRejection
+    }
+
+    /// Re-read per folder from its own volume, through the same seam the verified-reclaim readings use.
+    private func dependencyTier(for url: URL) -> DiskPressureTier {
+        DiskPressure.tier(for: freeSpace.freeSpace(forVolumeContaining: url.deletingLastPathComponent()))
     }
 
     private func isPersonaPath(_ url: URL) -> Bool {

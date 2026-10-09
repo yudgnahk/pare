@@ -218,12 +218,16 @@ extension ScanPolicy {
 /// Live disk-pressure tier of the volume holding `volume`; unreadable capacity gives the strictest tier.
 public enum DiskPressure {
     public static func current(
-        volume: URL = FileManager.default.homeDirectoryForCurrentUser
+        volume: URL = FileManager.default.homeDirectoryForCurrentUser,
+        freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace()
     ) -> DiskPressureTier {
-        let keys: Set<URLResourceKey> = [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey]
-        guard let values = try? volume.resourceValues(forKeys: keys),
-              let free = values.volumeAvailableCapacityForImportantUsage,
-              let total = values.volumeTotalCapacity else { return .comfortable }
-        return ScanPolicy.diskPressureTier(freeBytes: free, totalBytes: Int64(total))
+        tier(for: freeSpace.freeSpace(forVolumeContaining: volume))
+    }
+
+    /// Finder's figure (purgeable included) when known, as the free-space header shows it.
+    public static func tier(for reading: VolumeFreeSpace?) -> DiskPressureTier {
+        guard let free = reading?.importantUsageBytes ?? reading?.availableBytes,
+              let total = reading?.totalBytes else { return .comfortable }
+        return ScanPolicy.diskPressureTier(freeBytes: free, totalBytes: total)
     }
 }

@@ -2,7 +2,7 @@ import Foundation
 @testable import PareCore
 
 /// Builds a `CleanupEngine` whose in-use gate never spawns `lsof` or reads `NSWorkspace`: by default
-/// nothing is open, nothing is running and disk pressure is comfortable. Others keep production defaults.
+/// nothing is open, nothing is running and free space is unknown. Others keep production defaults.
 enum CleanupEngineFixture {
     static func make(
         store: CleanupTransactionStore,
@@ -13,7 +13,7 @@ enum CleanupEngineFixture {
         gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector(),
         openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen),
         runningApps: any RunningAppsProviding = FixedRunningAppsList(apps: []),
-        diskPressure: @escaping @Sendable () -> DiskPressureTier = { .comfortable }
+        freeSpace: any VolumeFreeSpaceProviding = FixedFreeSpace(reading: nil)
     ) -> CleanupEngine {
         CleanupEngine(
             store: store,
@@ -24,7 +24,7 @@ enum CleanupEngineFixture {
             gitInspector: gitInspector,
             openFiles: openFiles,
             runningApps: runningApps,
-            diskPressure: diskPressure
+            freeSpace: freeSpace
         )
     }
 }
@@ -56,4 +56,22 @@ struct FixedRunningAppsList: RunningAppsProviding {
     let apps: [RunningApp]
 
     func runningApps() -> [RunningApp] { apps }
+}
+
+/// One canned reading for every volume; nil is an unreadable volume.
+struct FixedFreeSpace: VolumeFreeSpaceProviding {
+    let reading: VolumeFreeSpace?
+
+    func freeSpace(forVolumeContaining url: URL) -> VolumeFreeSpace? { reading }
+
+    /// A 245 GB volume whose free space lands in `tier`.
+    static func tier(_ tier: DiskPressureTier) -> FixedFreeSpace {
+        let gb: Int64 = 1_000_000_000
+        let free: Int64 = switch tier {
+        case .comfortable: 100 * gb
+        case .low: 30 * gb
+        case .critical: 5 * gb
+        }
+        return FixedFreeSpace(reading: VolumeFreeSpace(importantUsageBytes: free, availableBytes: free, totalBytes: 245 * gb))
+    }
 }

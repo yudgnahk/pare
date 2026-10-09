@@ -37,6 +37,24 @@ final class ProjectDependencyReclaimTests: XCTestCase {
         }
     }
 
+    func testPressureTierFromAVolumeReading() {
+        let gb: Int64 = 1_000_000_000
+        let cases: [(name: String, reading: VolumeFreeSpace?, expected: DiskPressureTier)] = [
+            ("unreadable volume", nil, .comfortable),
+            ("no total capacity", VolumeFreeSpace(importantUsageBytes: 1 * gb, availableBytes: 1 * gb), .comfortable),
+            ("Finder's figure wins", VolumeFreeSpace(importantUsageBytes: 100 * gb, availableBytes: 5 * gb, totalBytes: 245 * gb),
+             .comfortable),
+            ("available when Finder's is missing", VolumeFreeSpace(importantUsageBytes: nil, availableBytes: 5 * gb, totalBytes: 245 * gb),
+             .critical),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(DiskPressure.tier(for: testCase.reading), testCase.expected, testCase.name)
+        }
+        for tier in DiskPressureTier.allCases {
+            XCTAssertEqual(DiskPressure.current(volume: root, freeSpace: FixedFreeSpace.tier(tier)), tier)
+        }
+    }
+
     func testInactivityThresholdPerTierNeverUnder72Hours() {
         XCTAssertEqual(ScanPolicy.projectDependencyInactivitySeconds(for: .comfortable), 14 * day)
         XCTAssertEqual(ScanPolicy.projectDependencyInactivitySeconds(for: .low), 7 * day)
@@ -422,7 +440,7 @@ final class ProjectDependencyReclaimTests: XCTestCase {
             now: { [now] in now },
             gitInspector: gitInspector,
             openFiles: openFiles,
-            diskPressure: { tier }
+            freeSpace: FixedFreeSpace.tier(tier)
         )
     }
 
