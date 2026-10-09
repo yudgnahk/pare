@@ -4,6 +4,50 @@ All notable changes to Pare are documented here.
 
 ---
 
+## [Unreleased]
+
+These are open pull requests from 2026-10-07, pending review and merge; nothing below is on `master` yet.
+
+### Safety
+- Build, `dist` and `target` folders are reclaimed only when git ignores them and tracks nothing inside, checked again at cleanup time (#41).
+- Go build and module caches are reported as a working set and never cleaned; Go trims them itself (#46).
+- The Launch Services rebuild is gone, and orphaned launch agents are report-only (#47).
+- Database maintenance vacuums SQLite safely: integrity check first, WAL truncated, enough free space required, apps that own the database must be quit (#48).
+- OpenCode sessions, database and credentials, and Google identity caches, are never cleaned (#49).
+- Cleanup skips anything another process has open, and says so when the open-file check is unavailable (#50).
+- Caches that grow straight back after cleaning are no longer proposed for Quick Clean (#63).
+- PareCore resources load without crashing when the bundle is misplaced; one locked database no longer stops the rest of maintenance; dev builds keep Full Disk Access across rebuilds (#42).
+
+### Scan coverage
+- Package-manager and toolchain trees (Go modules, Cargo, pub cache, Flutter SDKs, runner toolchains) no longer count as projects (#38).
+- Totals count each path once when rules overlap; the CLI no longer lists Chrome IndexedDB twice (#39).
+- A scan that hits its time limit says which part is incomplete instead of reporting nothing (#40).
+- SwiftPM `.build` and other hidden build caches are reclaimed when their project manifest sits beside them (#44).
+- Project discovery refreshes daily or on Rescan, and finds Node, Flutter and PHP projects (#45).
+- Old upgrade backups are offered for review once the app has moved on (#56).
+- Old app versions kept side by side are offered for review; the newest two and any running version are kept (#57).
+- Folder sizing has a deadline; slow folders show "at least" instead of a guess (#58).
+- Abandoned Codex marketplace staging folders can be cleaned while Codex is not running (#59).
+- pnpm store versions the current pnpm no longer uses are offered for review (#61).
+
+### Diagnostics
+- Deleted-but-open files and swap usage are explained, with how to get the space back (#51).
+- Crash loops and runaway logs are reported, explain-only (#52).
+- Pare says when the Mac recently ran out of memory and which process was largest (#53).
+- Launch agents stuck in a restart loop are flagged (#55).
+- Folders full of tiny files that waste disk blocks are explained (#62).
+
+### App
+- After a cleanup, the estimate is shown next to how much space the disk actually gained, with an empty-the-Trash hint (#54).
+- The sidebar disk meter shows purgeable space, swap and APFS local snapshots (#60).
+- The Homebrew tab previews `brew cleanup` and runs it after confirmation (#64).
+- Documentation describes the reference cleanup tool neutrally (#43).
+
+### Notes
+- `FileSystemUtils.directorySize` counts hidden files on purpose (it no longer skips them), so project and cache sizes include dot-files such as `node_modules/.pnpm`.
+
+---
+
 ## [1.0.0] — 2026-06-29
 
 Initial public release.

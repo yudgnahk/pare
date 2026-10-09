@@ -446,7 +446,7 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         let outer = tmp.appending(path: "app/.cache")
         let inner = outer.appending(path: "subdir/.cache")
         try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
-        // Visible file under outer — directorySize skips hidden paths.
+        // Each cache gets a payload; only the outer one may be reported.
         try Data(repeating: 0x00, count: 256).write(to: outer.appending(path: "blob.bin"))
         try Data(repeating: 0x00, count: 256).write(to: inner.appending(path: "inner.bin"))
         backdateItem(at: outer, days: 10)
