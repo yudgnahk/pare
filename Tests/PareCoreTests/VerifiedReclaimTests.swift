@@ -118,6 +118,13 @@ final class VerifiedReclaimTests: XCTestCase {
         }
     }
 
+    func testSmallCleanupInsideNoiseIsNotReportedAsGainingNothing() {
+        let summary = ReclaimSummary(estimatedBytes: 30_000_000, measuredBytes: 30_000_000)
+
+        XCTAssertEqual(summary.text, "Estimated \(format(30_000_000))")
+        XCTAssertNil(summary.trashHint)
+    }
+
     func testTrashHintOnlyWhenGainFallsWellShortOfEstimate() {
         let cases: [(name: String, estimated: Int64, measured: Int64?, hint: Bool)] = [
             ("not measured", 2 * gb, nil, false),
@@ -127,7 +134,8 @@ final class VerifiedReclaimTests: XCTestCase {
             ("zero", 2 * gb, 0, true),
             ("negative", 2 * gb, -5, true),
             ("nothing estimated", 0, 0, false),
-            ("tiny cleanup, drift above estimate", 4_096, 3_000_000, true),
+            ("tiny cleanup, drift above estimate", 4_096, 3_000_000, false),
+            ("30 MB cleanup that fully landed", 30_000_000, 30_000_000, false),
         ]
         for testCase in cases {
             let summary = ReclaimSummary(estimatedBytes: testCase.estimated, measuredBytes: testCase.measured)
