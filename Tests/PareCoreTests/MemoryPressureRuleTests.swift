@@ -133,15 +133,76 @@ final class MemoryPressureRuleTests: XCTestCase {
         XCTAssertFalse(lowSwap.first?.reason.contains("Low disk") ?? true)
     }
 
-    func testOnlyNewestReportsAreRead() async throws {
-        for index in 0..<(MemoryPressureRule.maxReportsInspected + 2) {
-            let reason = index < MemoryPressureRule.maxReportsInspected ? "per-process-limit" : "vm-pageshortage"
-            try write("JetsamEvent-\(index).ips", date: nil, largest: "p\(index)", reason: reason, age: TimeInterval(index + 1) * 600)
+    func testShortagesBehindManySingleAppReportsAreStillFoundAndCounted() async throws {
+        for index in 0..<8 {
+            try write("JetsamEvent-app-\(index).ips", date: nil, largest: "p\(index)", reason: "per-process-limit",
+                      age: TimeInterval(index + 1) * 600)
+        }
+        for index in 0..<2 {
+            try write("JetsamEvent-short-\(index).ips", date: nil, largest: "Xcode", reason: "vm-pageshortage",
+                      age: TimeInterval(index + 2) * 86_400)
         }
 
         let findings = await rule().customScan(environment: .current()) ?? []
+        let finding = try XCTUnwrap(findings.first)
 
-        XCTAssertTrue(findings.isEmpty, "older shortages beyond the newest \(MemoryPressureRule.maxReportsInspected) are not read")
+        XCTAssertTrue(finding.reason.contains("largest process was Xcode"), finding.reason)
+        XCTAssertTrue(finding.reason.contains("2 memory shortages in the last 7 days"), finding.reason)
+    }
+
+    func testByteBudgetStopsReadingOlderReports() async throws {
+        try write("JetsamEvent-new.ips", date: nil, largest: "p", reason: "per-process-limit", age: 600)
+        try write("JetsamEvent-old.ips", date: nil, largest: "Xcode", reason: "vm-pageshortage", age: 1_200)
+        let newestBytes = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: reports.appending(path: "JetsamEvent-new.ips").path)[.size] as? Int
+        )
+
+        let budgeted = MemoryPressureRule(
+            reportDirectories: [reports], swapUsedBytes: { 0 }, freeDiskBytes: { Int64.max }, now: { Self.now },
+            inspectedBytesBudget: Int64(newestBytes)
+        )
+
+        let findings = await budgeted.customScan(environment: .current()) ?? []
+        XCTAssertTrue(findings.isEmpty, "only the newest report fits the budget")
+        let unbudgeted = await rule().customScan(environment: .current()) ?? []
+        XCTAssertEqual(unbudgeted.count, 1, "control: the default budget reads both")
+    }
+
+    func testCountIsAFloorWhenTheByteBudgetCutsTheList() async throws {
+        for index in 0..<3 {
+            try write("JetsamEvent-s\(index).ips", date: nil, largest: "Xcode", reason: "vm-pageshortage",
+                      age: TimeInterval(index + 1) * 3_600)
+        }
+        let reportBytes = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: reports.appending(path: "JetsamEvent-s0.ips").path)[.size] as? Int
+        )
+        let budgeted = MemoryPressureRule(
+            reportDirectories: [reports], swapUsedBytes: { 0 }, freeDiskBytes: { Int64.max }, now: { Self.now },
+            inspectedBytesBudget: Int64(reportBytes) * 2
+        )
+
+        let cutFindings = await budgeted.customScan(environment: .current()) ?? []
+        let wholeFindings = await rule().customScan(environment: .current()) ?? []
+        let cut = try XCTUnwrap(cutFindings.first)
+        let whole = try XCTUnwrap(wholeFindings.first)
+
+        XCTAssertTrue(cut.reason.contains("At least 2 memory shortages in the last 7 days"), cut.reason)
+        XCTAssertTrue(whole.reason.contains("3 memory shortages in the last 7 days"), whole.reason)
+        XCTAssertFalse(whole.reason.contains("At least"), whole.reason)
+    }
+
+    func testCancelledScanReadsNothing() async throws {
+        try write("JetsamEvent-1.ips", date: nil, largest: "Xcode", reason: "vm-pageshortage", age: 3_600)
+        let subject = rule()
+        let task = Task { () -> [ScanFinding] in
+            while !Task.isCancelled { await Task.yield() }
+            return await subject.customScan(environment: .current()) ?? []
+        }
+
+        task.cancel()
+
+        let findings = await task.value
+        XCTAssertTrue(findings.isEmpty)
     }
 
     func testSizeZeroDiagnosticSurvivesScanAndStaysOutOfTotals() async throws {
