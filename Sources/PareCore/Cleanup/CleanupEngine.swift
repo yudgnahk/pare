@@ -382,12 +382,8 @@ public actor CleanupEngine {
                 continue
             }
 
-            // Dependency folders outside the cache allow-lists pass only their own gate, which
-            // replaces the generic age gate with project activity (never the folder's own date).
-            let allowedByPathPolicy = ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
-                || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
-            let isProjectDependency = !allowedByPathPolicy
-                && ScanPolicy.isProjectDependencyDirectory(url.lastPathComponent)
+            // Set when the dependency gate decides: project activity then replaces the folder's own age.
+            var isProjectDependency = false
 
             if ScanPolicy.hasUpgradeBackupSignal(url.lastPathComponent) {
                 // Backup-named paths pass only through the upgrade-backup gate, never the generic allow-lists.
@@ -412,7 +408,9 @@ public actor CleanupEngine {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                     continue
                 }
-            } else if isProjectDependency {
+            } else if ScanPolicy.isProjectDependencyDirectory(url.lastPathComponent) {
+                // Dependency folders pass only their own gate, even under a low-impact or persona path.
+                isProjectDependency = true
                 if !ScanPolicy.isReclaimableProjectDependency(
                     url, registeredRootPaths: projectRootPaths, tier: diskPressure(), now: now()) {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))

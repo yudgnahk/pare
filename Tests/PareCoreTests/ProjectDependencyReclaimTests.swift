@@ -233,6 +233,26 @@ final class ProjectDependencyReclaimTests: XCTestCase {
         XCTAssertTrue(touched.succeeded.isEmpty, "a project touched since the scan is skipped")
     }
 
+    /// Trap: a `/temp/` path is low-impact and a dependency finding may carry any category; neither skips the gate.
+    func testDependencyGateIsMandatoryUnderAllowListedPaths() async throws {
+        let busy = try makeProject("temp/busy", lockfile: "package-lock.json", inactiveDays: 1)
+        let idle = try makeProject("temp/idle", lockfile: "package-lock.json", inactiveDays: 30)
+        try backdateTopLevel(of: root.appending(path: "temp"), days: 30)
+        let busyDeps = busy.appending(path: "node_modules")
+        let idleDeps = idle.appending(path: "node_modules")
+        XCTAssertTrue(ScanPolicy.isLowImpactPath(busyDeps), "fixture must sit on an allow-listed path")
+
+        for category in [ScanCategory.projectArtifacts, .userCaches] {
+            let findings = [busyDeps, idleDeps].map {
+                ScanFinding(category: category, riskLevel: .review, reason: "test", path: $0.path,
+                            sizeBytes: 1024, lastUsed: nil, confidence: 0.8)
+            }
+            let result = try await engine(tier: .critical).clean(findings: findings, profileName: "test", dryRun: true)
+            XCTAssertEqual(result.succeeded.map(\.originalPath), [idleDeps.path], "\(category)")
+            XCTAssertEqual(result.skipped.map(\.path), [busyDeps.path], "\(category)")
+        }
+    }
+
     func testEngineSkipsWhenAProcessRunsInsideTheProject() async throws {
         let project = try makeProject("served", lockfile: "uv.lock", inactiveDays: 30, dependency: ".venv")
         let venv = project.appending(path: ".venv")
