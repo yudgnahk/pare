@@ -15,7 +15,7 @@ enum CleanupEngineFixture {
         goCacheLocations: GoCacheLocations = GoCacheLocations(query: { nil }),
         openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen),
         runningApps: any RunningAppsProviding = FixedRunningAppsList(apps: []),
-        freeSpace: any VolumeFreeSpaceProviding = FixedFreeSpace(reading: nil),
+        freeSpace: any VolumeFreeSpaceProviding = FixedVolumeFreeSpace(reading: nil),
         runningExecutables: any RunningExecutablesProviding = FixedRunningExecutables(paths: []),
         isCodexRunning: @escaping @Sendable () async -> Bool = { false },
         pnpmActiveStore: @escaping @Sendable () async -> URL? = { nil }
@@ -68,20 +68,20 @@ struct FixedRunningAppsList: RunningAppsProviding {
 }
 
 /// One canned reading for every volume; nil is an unreadable volume.
-struct FixedFreeSpace: VolumeFreeSpaceProviding {
+struct FixedVolumeFreeSpace: VolumeFreeSpaceProviding {
     let reading: VolumeFreeSpace?
 
     func freeSpace(forVolumeContaining url: URL) -> VolumeFreeSpace? { reading }
 
     /// A 245 GB volume whose free space lands in `tier`.
-    static func tier(_ tier: DiskPressureTier) -> FixedFreeSpace {
+    static func tier(_ tier: DiskPressureTier) -> FixedVolumeFreeSpace {
         let gb: Int64 = 1_000_000_000
         let free: Int64 = switch tier {
         case .comfortable: 100 * gb
         case .low: 30 * gb
         case .critical: 5 * gb
         }
-        return FixedFreeSpace(reading: VolumeFreeSpace(importantUsageBytes: free, availableBytes: free, totalBytes: 245 * gb))
+        return FixedVolumeFreeSpace(reading: VolumeFreeSpace(importantUsageBytes: free, availableBytes: free, totalBytes: 245 * gb))
     }
 }
 

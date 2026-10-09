@@ -51,7 +51,7 @@ final class ProjectDependencyReclaimTests: XCTestCase {
             XCTAssertEqual(DiskPressure.tier(for: testCase.reading), testCase.expected, testCase.name)
         }
         for tier in DiskPressureTier.allCases {
-            XCTAssertEqual(DiskPressure.current(volume: root, freeSpace: FixedFreeSpace.tier(tier)), tier)
+            XCTAssertEqual(DiskPressure.current(volume: root, freeSpace: FixedVolumeFreeSpace.tier(tier)), tier)
         }
     }
 
@@ -440,7 +440,7 @@ final class ProjectDependencyReclaimTests: XCTestCase {
             now: { [now] in now },
             gitInspector: gitInspector,
             openFiles: openFiles,
-            freeSpace: FixedFreeSpace.tier(tier)
+            freeSpace: FixedVolumeFreeSpace.tier(tier)
         )
     }
 
