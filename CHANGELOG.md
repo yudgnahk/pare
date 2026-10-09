@@ -6,7 +6,7 @@ All notable changes to Pare are documented here.
 
 ## [Unreleased]
 
-These are open pull requests from 2026-10-07, pending review and merge; nothing below is on `master` yet.
+Pull requests #38–#69, merged together on `integration/2026-10-07` and not yet on `master`.
 
 ### Safety
 - Build, `dist` and `target` folders are reclaimed only when git ignores them and tracks nothing inside, checked again at cleanup time (#41).
@@ -29,6 +29,7 @@ These are open pull requests from 2026-10-07, pending review and merge; nothing 
 - Folder sizing has a deadline; slow folders show "at least" instead of a guess (#58).
 - Abandoned Codex marketplace staging folders can be cleaned while Codex is not running (#59).
 - pnpm store versions the current pnpm no longer uses are offered for review (#61).
+- Dependency folders (`node_modules`, `venv`, `.venv`, `.bundle`) of idle projects are offered for review, with a lockfile, git-ignore evidence and an in-use check on the project (#69).
 
 ### Diagnostics
 - Deleted-but-open files and swap usage are explained, with how to get the space back (#51).
@@ -41,7 +42,11 @@ These are open pull requests from 2026-10-07, pending review and merge; nothing 
 - After a cleanup, the estimate is shown next to how much space the disk actually gained, with an empty-the-Trash hint (#54).
 - The sidebar disk meter shows purgeable space, swap and APFS local snapshots (#60).
 - The Homebrew tab previews `brew cleanup` and runs it after confirmation (#64).
-- Documentation describes the reference cleanup tool neutrally (#43).
+- Smart Scan says what grew since the last complete scan (#66).
+- The largest cache items show how recently they were written; display only (#67).
+
+### Docs
+- The reference cleanup tool is described neutrally (#43); changelog (#65); pending decisions (#68).
 
 ### Notes
 - `FileSystemUtils.directorySize` counts hidden files on purpose (it no longer skips them), so project and cache sizes include dot-files such as `node_modules/.pnpm`.

@@ -89,7 +89,7 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 
 ## Known State
 
-See `docs/roadmap.md` for phase completion status. Phases 1–8 are complete (Phase 8 Maintenance Tab merged). Phase 9 (code signing, notarization, distribution) remains open.
+See `docs/roadmap.md` for phase completion status. Phases 0–8 and 11 are complete. Phase 9 (code signing, notarization, distribution), Phase 10 (selective Docker manager) and Phase 12 follow-ups remain open.
 
 The app runs a single unified scan using `RuleCatalog.all`; the CLI retains profile-based scanning. Parallel rule execution was attempted and reverted — Swift 5.9 nested `withTaskGroup` + actor calls caused empty results. The sequential `runRule` loop is the stable approach; `CachedFileTraversal` already parallelises I/O within each individual rule call.
 
