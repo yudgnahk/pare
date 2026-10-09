@@ -17,7 +17,7 @@ struct SelectableCandidateRow: View {
     var onExclude: (() -> Void)? = nil
     /// Folder-style leading icon when this row is a bulk folder group.
     var isFolder: Bool = false
-    /// Display-only cache activity ("In active use", "Not used in 45 days").
+    /// Display-only cache activity ("Written to recently", "Last written 45 days ago", "Last write unknown").
     var activityText: String? = nil
     @Environment(\.pareDisplayScale) private var scale
 
