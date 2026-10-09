@@ -91,10 +91,10 @@ final class InUseGateTests: XCTestCase {
 
     func testAvailableSnapshotIgnoresRunningAppsWithoutOpenFiles() {
         let running = [RunningApp(bundleIdentifier: "com.apple.Safari", name: "Safari")]
-        let empty = OpenFileSnapshot(lsofFieldOutput: "")
+        let nothingOpen = OpenFileSnapshot.nothingOpen
 
-        XCTAssertNil(InUseGate.holder(forPath: "/Users/u/Library/Caches/com.apple.Safari", snapshot: empty, runningApps: { running }))
-        XCTAssertNil(InUseGate.holder(forPath: "/Users/u/Library/Caches/x.tar.gz.incomplete", snapshot: empty, runningApps: { running }))
+        XCTAssertNil(InUseGate.holder(forPath: "/Users/u/Library/Caches/com.apple.Safari", snapshot: nothingOpen, runningApps: { running }))
+        XCTAssertNil(InUseGate.holder(forPath: "/Users/u/Library/Caches/x.tar.gz.incomplete", snapshot: nothingOpen, runningApps: { running }))
     }
 
     // MARK: - CleanupEngine
@@ -120,7 +120,7 @@ final class InUseGateTests: XCTestCase {
     func testNoOpenFilesCleans() async throws {
         let fixture = try Fixture()
         let cache = try fixture.makeCache("com.example.app")
-        let engine = fixture.engine(snapshot: OpenFileSnapshot(lsofFieldOutput: ""))
+        let engine = fixture.engine(snapshot: .nothingOpen)
 
         let result = try await engine.clean(findings: [fixture.finding(cache)], profileName: "test")
 
@@ -166,7 +166,7 @@ final class InUseGateTests: XCTestCase {
         let fixture = try Fixture()
         let first = try fixture.makeCache("com.example.one")
         let second = try fixture.makeCache("com.example.two")
-        let provider = CountingSnapshotProvider(snapshot: OpenFileSnapshot(lsofFieldOutput: ""))
+        let provider = CountingSnapshotProvider(snapshot: .nothingOpen)
         let engine = fixture.engine(provider: provider)
 
         _ = try await engine.clean(findings: [fixture.finding(first), fixture.finding(second)], profileName: "test")
@@ -199,7 +199,7 @@ final class InUseSnapshotRefreshTests: XCTestCase {
     }
 
     func testSnapshotIsRetakenOnlyAfterTheRefreshInterval() async {
-        let provider = CountingSnapshotProvider(snapshot: OpenFileSnapshot(lsofFieldOutput: ""))
+        let provider = CountingSnapshotProvider(snapshot: .nothingOpen)
         let clock = AdjustableClock()
         let check = InUseBatchCheck(
             openFiles: provider, runningApps: FixedRunningAppsList(apps: []), now: clock.now, refreshInterval: 30, log: { _ in }

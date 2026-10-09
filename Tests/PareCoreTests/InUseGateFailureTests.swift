@@ -144,7 +144,7 @@ final class InUseGateFailureTests: XCTestCase {
     func testAvailableSnapshotLogsNothing() async {
         let log = LogSink()
         let check = InUseBatchCheck(
-            openFiles: CountingSnapshotProvider(snapshot: OpenFileSnapshot(lsofFieldOutput: "")),
+            openFiles: CountingSnapshotProvider(snapshot: .nothingOpen),
             runningApps: FixedRunningAppsList(apps: []),
             log: { log.append($0) }
         )
