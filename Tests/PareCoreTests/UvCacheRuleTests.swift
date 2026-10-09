@@ -170,7 +170,7 @@ final class UvCacheRuleTests: XCTestCase {
 
         let storeDir = makeTempDir()
         defer { try? FileManager.default.removeItem(at: storeDir) }
-        let engine = CleanupEngine(store: CleanupTransactionStore(directory: storeDir))
+        let engine = CleanupEngineFixture.make(store: CleanupTransactionStore(directory: storeDir))
 
         // Direct clean: hard-blocked because the finding is .advanced.
         let result = try await engine.clean(findings: findings, profileName: "test")

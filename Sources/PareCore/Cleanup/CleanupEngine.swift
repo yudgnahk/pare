@@ -27,6 +27,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case trashFailed(String, Error)
     /// Undo failed — the associated value describes what went wrong.
     case restoreFailed(String)
+    /// Another process has a file open at or under the path.
+    case inUse(String, holder: String)
 
     public var errorDescription: String? {
         switch self {
@@ -54,6 +56,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "Failed to move to Trash: \(path) — \(error.localizedDescription)"
         case .restoreFailed(let reason):
             return "Cannot restore — \(reason)"
+        case .inUse(let path, let holder):
+            return "Skipped: in use by \(holder): \(path)"
         }
     }
 }
@@ -85,17 +89,25 @@ public struct CleanupResult: Sendable {
     /// Non-nil when the undo transaction could not be (fully) persisted to disk.
     /// Files may already have been moved to Trash — surfaced here instead of throwing.
     public let transactionSaveError: String?
+    /// True when the open-file check could not run for this batch: only running apps' caches, cached
+    /// databases and partial downloads were held back.
+    public let inUseCheckUnavailable: Bool
+
+    public static let inUseCheckUnavailableNote =
+        "Couldn't check which files are in use — only app caches, databases and partial downloads were held back."
 
     init(
         succeeded: [CleanupItem],
         skipped: [CleanupSkippedItem],
         transaction: CleanupTransaction?,
-        transactionSaveError: String? = nil
+        transactionSaveError: String? = nil,
+        inUseCheckUnavailable: Bool = false
     ) {
         self.succeeded = succeeded
         self.skipped = skipped
         self.transaction = transaction
         self.transactionSaveError = transactionSaveError
+        self.inUseCheckUnavailable = inUseCheckUnavailable
     }
 
     public var totalBytesFreed: Int64 {
@@ -129,6 +141,9 @@ public actor CleanupEngine {
     private let now: @Sendable () -> Date
     /// Moves one item to the Trash and returns where it landed; injectable so tests never touch the real Trash.
     private let trashItem: @Sendable (URL) throws -> URL?
+    /// Open-file snapshot and running apps for the in-use gate; injectable so tests never run lsof.
+    private let openFiles: any OpenFileSnapshotProviding
+    private let runningApps: any RunningAppsProviding
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -139,7 +154,9 @@ public actor CleanupEngine {
         projectRootsProvider: (@Sendable () async -> [String])? = nil,
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
-        trashItem: (@Sendable (URL) throws -> URL?)? = nil
+        trashItem: (@Sendable (URL) throws -> URL?)? = nil,
+        openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
+        runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider()
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -151,6 +168,8 @@ public actor CleanupEngine {
         }
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
+        self.openFiles = openFiles
+        self.runningApps = runningApps
     }
 
     private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -211,6 +230,7 @@ public actor CleanupEngine {
         // and exclusions must be honored at cleanup time (not only at scan time).
         let projectRootPaths = await projectRootsProvider()
         let exclusions = exclusionsProvider()
+        let inUse = InUseBatchCheck(openFiles: openFiles, runningApps: runningApps, now: now)
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -322,6 +342,12 @@ public actor CleanupEngine {
                 }
             }
 
+            // Last gate before trashing, so the batch's single snapshot is only taken when needed.
+            if let holder = await inUse.holder(forPath: finding.path) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .inUse(finding.path, holder: holder)))
+                continue
+            }
+
             if dryRun {
                 succeeded.append(CleanupItem(
                     originalPath: finding.path,
@@ -385,7 +411,8 @@ public actor CleanupEngine {
             succeeded: succeeded,
             skipped: skipped,
             transaction: resultTransaction,
-            transactionSaveError: transactionSaveError
+            transactionSaveError: transactionSaveError,
+            inUseCheckUnavailable: await inUse.snapshotWasUnavailable
         )
     }
 
