@@ -66,7 +66,7 @@ final class CleanupEngineTests: XCTestCase {
 
     func testCleanMovesSafeFileToTrash() async throws {
         let (_, finding) = try makeTempFile(name: "safe-cache.bin")
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
 
         let result = try await engine.clean(findings: [finding], profileName: "test")
 
@@ -80,7 +80,7 @@ final class CleanupEngineTests: XCTestCase {
 
     func testCleanBlocksAdvancedRiskFindings() async throws {
         let (_, finding) = try makeTempFile(name: "docker.raw", riskLevel: .advanced, reason: "Docker VM disk image")
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
 
         let result = try await engine.clean(findings: [finding], profileName: "test")
 
@@ -119,7 +119,7 @@ final class CleanupEngineTests: XCTestCase {
             lastUsed: nil,
             confidence: 1.0
         )
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let result = try await engine.clean(findings: [finding], profileName: "test")
 
         XCTAssertEqual(result.succeeded.count, 0)
@@ -152,7 +152,7 @@ final class CleanupEngineTests: XCTestCase {
             lastUsed: oldDate,
             confidence: 1.0
         )
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let result = try await engine.clean(findings: [finding], profileName: "test")
 
         XCTAssertEqual(result.succeeded.count, 0)
@@ -178,7 +178,7 @@ final class CleanupEngineTests: XCTestCase {
             lastUsed: nil,
             confidence: 0.9
         )
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
 
         let result = try await engine.clean(findings: [finding], profileName: "test")
 
@@ -190,7 +190,7 @@ final class CleanupEngineTests: XCTestCase {
 
     func testDryRunDoesNotDeleteFiles() async throws {
         let (_, finding) = try makeTempFile(name: "dryrun-cache.bin")
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
 
         let result = try await engine.clean(findings: [finding], profileName: "test", dryRun: true)
 
@@ -204,7 +204,7 @@ final class CleanupEngineTests: XCTestCase {
 
     func testDryRunTotalBytesFreedIsZero() async throws {
         let (_, finding) = try makeTempFile(name: "dryrun2.bin", sizeBytes: 2048)
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
 
         let result = try await engine.clean(findings: [finding], profileName: "test", dryRun: true)
 
@@ -218,7 +218,7 @@ final class CleanupEngineTests: XCTestCase {
         let (_, safeFile) = try makeTempFile(name: "qc-safe.bin", riskLevel: .safe)
         let (_, reviewFile) = try makeTempFile(name: "qc-review.bin", riskLevel: .review)
         let (_, advancedFile) = try makeTempFile(name: "qc-advanced.bin", riskLevel: .advanced)
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
 
         let result = try await engine.quickClean(
             findings: [safeFile, reviewFile, advancedFile],

@@ -21,7 +21,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         projectRoots: [String] = [],
         gitStatus: GitArtifactStatus? = nil
     ) -> CleanupEngine {
-        CleanupEngine(
+        CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: storeDir),
             projectRootsProvider: { projectRoots },
             gitInspector: StubGitInspector(status: gitStatus)
@@ -349,7 +349,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
     func testExcludedPathIsSkippedAtCleanupTime() async throws {
         let cacheDir = root.appending(path: "Library/Caches/com.pare.test")
         let dir = try makeDirectory(at: cacheDir.appending(path: "excluded-cache"))
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: storeDir),
             projectRootsProvider: { [] },
             exclusionsProvider: { ExclusionList(entries: [ExclusionEntry(path: dir.path)]) }
@@ -373,7 +373,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
     func testExcludedDescendantBlocksTrashOfItsParentFinding() async throws {
         let parent = try makeDirectory(at: root.appending(path: "Library/Caches/parent-cache"))
         let protected = parent.appending(path: "payload.bin")
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: storeDir),
             exclusionsProvider: { ExclusionList(entries: [ExclusionEntry(path: protected.path, matchType: .exact)]) }
         )
@@ -392,7 +392,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         let target = try makeDirectory(at: root.appending(path: "Library/Caches/real-cache"))
         let alias = root.appending(path: "Library/Caches/alias-cache")
         try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: target)
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: storeDir),
             exclusionsProvider: { .empty }
         )
@@ -428,7 +428,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         let cache = try makeDirectory(at: base.appending(path: "Library/Caches/alias-cache"))
         let trash = root.appending(path: "FakeTrash")
         try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: storeDir),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty },
@@ -459,7 +459,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
 
         let cacheDir = root.appending(path: "Library/Caches/com.pare.test")
         let dir = try makeDirectory(at: cacheDir.appending(path: "victim-cache"))
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: blockedStorePath),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty }
@@ -484,7 +484,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         let a = try makeDirectory(at: cacheDir.appending(path: "cache-a"))
         let b = try makeDirectory(at: cacheDir.appending(path: "cache-b"))
         let store = CleanupTransactionStore(directory: storeDir)
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: store,
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty }
@@ -507,7 +507,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
     func testSkipOnlyRunLeavesNoEmptyTransactionRecord() async throws {
         let dir = try makeDirectory(at: root.appending(path: "Documents/foo/build"))
         let store = CleanupTransactionStore(directory: storeDir)
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: store,
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty }

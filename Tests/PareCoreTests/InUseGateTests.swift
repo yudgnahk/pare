@@ -72,6 +72,11 @@ final class InUseGateTests: XCTestCase {
         }
     }
 
+    func testNothingOpenFixtureIsAListingTheProductionProviderWouldAccept() {
+        XCTAssertTrue(OpenFileSnapshot.isRecognizedFieldOutput(OpenFileSnapshot.nothingOpenListing))
+        XCTAssertFalse(OpenFileSnapshot.isRecognizedFieldOutput(""))
+    }
+
     func testAvailableSnapshotIgnoresRunningAppsWithoutOpenFiles() {
         let running = [RunningApp(bundleIdentifier: "com.apple.Safari", name: "Safari")]
         let empty = OpenFileSnapshot(lsofFieldOutput: "")
@@ -278,27 +283,4 @@ private final class Fixture: @unchecked Sendable {
             runningApps: FixedRunningAppsList(apps: running)
         )
     }
-}
-
-final class CountingSnapshotProvider: OpenFileSnapshotProviding, @unchecked Sendable {
-    private let snapshotValue: OpenFileSnapshot?
-    private let lock = NSLock()
-    private var count = 0
-
-    init(snapshot: OpenFileSnapshot?) {
-        snapshotValue = snapshot
-    }
-
-    var calls: Int { lock.withLock { count } }
-
-    func snapshot() async -> OpenFileSnapshot? {
-        lock.withLock { count += 1 }
-        return snapshotValue
-    }
-}
-
-struct FixedRunningAppsList: RunningAppsProviding {
-    let apps: [RunningApp]
-
-    func runningApps() -> [RunningApp] { apps }
 }
