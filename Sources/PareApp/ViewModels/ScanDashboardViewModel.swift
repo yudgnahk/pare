@@ -38,6 +38,8 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var totalReclaimableBytes: Int64 = 0
     /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
     @Published private(set) var scanWarnings: [String] = []
+    /// Display-only cache activity by finding path; filled after results appear, never affects selection.
+    @Published private(set) var cacheActivity: [String: CacheActivityLabel] = [:]
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
     @Published private(set) var perToolRollups: [ToolRollup] = []
@@ -82,6 +84,8 @@ final class ScanDashboardViewModel: ObservableObject {
     private let scanCache = ScanMetadataCache()
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
+    /// Bumped per scan so labels computed for an older scan cannot land after a newer one started.
+    private var scanGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
     init(cleanup: CleanupCoordinator = CleanupCoordinator()) {
@@ -330,6 +334,7 @@ final class ScanDashboardViewModel: ObservableObject {
     // MARK: - Scan lifecycle
 
     func cancelScan() {
+        scanGeneration += 1
         scanTask?.cancel()
         scanTask = nil
         state = .idle
@@ -389,6 +394,8 @@ final class ScanDashboardViewModel: ObservableObject {
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
+        scanGeneration += 1
+        let generation = scanGeneration
         state = .scanning
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
@@ -437,7 +444,20 @@ final class ScanDashboardViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
 
             applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
+
+            cacheActivity = [:]
+            // Only the rows "Largest items" shows can display a label.
+            let shown = largestItems.compactMap { findingsByPath[$0.path] }
+            let activity = await Task.detached(priority: .utility) {
+                CacheActivityLabeler.labels(for: shown)
+            }.value
+            guard generation == scanGeneration, !Task.isCancelled else { return }
+            cacheActivity = activity
         }
+    }
+
+    func cacheActivityText(path: String) -> String? {
+        cacheActivity[path]?.text(now: Date())
     }
 
     /// Pure post-scan aggregation — safe to call from a background task.
