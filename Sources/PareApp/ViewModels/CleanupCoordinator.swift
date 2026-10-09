@@ -61,6 +61,11 @@ final class CleanupCoordinator: ObservableObject {
         return false
     }
 
+    /// Estimated vs measured reclaim for the last real cleanup; nil when nothing was trashed.
+    var lastReclaim: ReclaimSummary? {
+        lastResult?.transaction.map(ReclaimSummary.init(transaction:))
+    }
+
     var canUndo: Bool {
         if let tx = lastTransaction, !tx.isDryRun, !tx.items.isEmpty { return true }
         return false
