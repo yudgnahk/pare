@@ -41,11 +41,11 @@ final class CacheActivityTests: XCTestCase {
 
     func testLabelText() {
         let cases: [(label: CacheActivityLabel, text: String)] = [
-            (CacheActivityLabel(activity: .hot, newestEntryDate: now), "In active use"),
-            (CacheActivityLabel(activity: .warm, newestEntryDate: now.addingTimeInterval(-10 * day)), "Last used 10 days ago"),
-            (CacheActivityLabel(activity: .warm, newestEntryDate: now.addingTimeInterval(-1 * day)), "Last used 1 day ago"),
-            (CacheActivityLabel(activity: .cold, newestEntryDate: now.addingTimeInterval(-45 * day)), "Not used in 45 days"),
-            (CacheActivityLabel(activity: .warm, newestEntryDate: nil), "Last use unknown"),
+            (CacheActivityLabel(activity: .hot, newestEntryDate: now), "Written to recently"),
+            (CacheActivityLabel(activity: .warm, newestEntryDate: now.addingTimeInterval(-10 * day)), "Last written 10 days ago"),
+            (CacheActivityLabel(activity: .warm, newestEntryDate: now.addingTimeInterval(-1 * day)), "Last written 1 day ago"),
+            (CacheActivityLabel(activity: .cold, newestEntryDate: now.addingTimeInterval(-45 * day)), "Last written 45 days ago"),
+            (CacheActivityLabel(activity: .warm, newestEntryDate: nil), "Last write unknown"),
         ]
         for testCase in cases {
             XCTAssertEqual(testCase.label.text(now: now), testCase.text)
@@ -100,6 +100,29 @@ final class CacheActivityTests: XCTestCase {
         XCTAssertEqual(findings.map { "\($0.path)|\($0.riskLevel)|\($0.reason)|\($0.sizeBytes)" }, before)
         XCTAssertEqual(Set(labels.keys), [findings[0].path, findings[1].path], "advanced and non-cache findings get no label")
         XCTAssertEqual(labels[cache.path]?.activity, .warm, "newest sampled entry is 5 days old")
+    }
+
+    func testLabelerOmitsOlderResultsFromACutShortWalk() throws {
+        let cache = try makeTree()
+
+        let cut = CacheActivityLabeler.labels(for: [finding(cache.path, risk: .safe, category: .userCaches)], maxEntries: 1)
+        let whole = CacheActivityLabeler.labels(for: [finding(cache.path, risk: .safe, category: .userCaches)])
+
+        XCTAssertNil(cut[cache.path], "one sampled entry cannot show that nothing newer was written")
+        XCTAssertEqual(whole[cache.path]?.isComplete, true)
+    }
+
+    func testLabelerKeepsHotResultsFromACutShortWalk() throws {
+        let cache = root.appending(path: "fresh")
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        for index in 0..<3 {
+            try Data(repeating: 0x41, count: 8).write(to: cache.appending(path: "f\(index).bin"))
+        }
+
+        let labels = CacheActivityLabeler.labels(for: [finding(cache.path, risk: .safe, category: .userCaches)], maxEntries: 1)
+
+        XCTAssertEqual(labels[cache.path]?.activity, .hot)
+        XCTAssertEqual(labels[cache.path]?.isComplete, false)
     }
 
     // MARK: - Helpers

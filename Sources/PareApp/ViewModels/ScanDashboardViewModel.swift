@@ -84,6 +84,8 @@ final class ScanDashboardViewModel: ObservableObject {
     private let scanCache = ScanMetadataCache()
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
+    /// Bumped per scan so labels computed for an older scan cannot land after a newer one started.
+    private var scanGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
     init(cleanup: CleanupCoordinator = CleanupCoordinator()) {
@@ -332,6 +334,7 @@ final class ScanDashboardViewModel: ObservableObject {
     // MARK: - Scan lifecycle
 
     func cancelScan() {
+        scanGeneration += 1
         scanTask?.cancel()
         scanTask = nil
         state = .idle
@@ -391,6 +394,8 @@ final class ScanDashboardViewModel: ObservableObject {
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
+        scanGeneration += 1
+        let generation = scanGeneration
         state = .scanning
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
@@ -441,10 +446,12 @@ final class ScanDashboardViewModel: ObservableObject {
             applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
 
             cacheActivity = [:]
+            // Only the rows "Largest items" shows can display a label.
+            let shown = largestItems.compactMap { findingsByPath[$0.path] }
             let activity = await Task.detached(priority: .utility) {
-                CacheActivityLabeler.labels(for: report.findings)
+                CacheActivityLabeler.labels(for: shown)
             }.value
-            guard !Task.isCancelled else { return }
+            guard generation == scanGeneration, !Task.isCancelled else { return }
             cacheActivity = activity
         }
     }
