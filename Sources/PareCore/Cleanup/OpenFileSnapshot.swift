@@ -23,7 +23,7 @@ public struct OpenFileSnapshot: Sendable {
             case "n" where value.hasPrefix("/"):
                 let holder = "\(command.isEmpty ? "process" : command) (pid \(pid))"
                 // Ancestors of an indexed key are already indexed, so stop at the first hit.
-                for key in Self.selfAndAncestors(Self.key(value)) {
+                for key in Self.selfAndAncestors(ScanPolicy.canonicalPathKey(value)) {
                     guard holders[key] == nil else { break }
                     holders[key] = holder
                 }
@@ -43,11 +43,7 @@ public struct OpenFileSnapshot: Sendable {
 
     /// The process holding a file at `path` or anywhere beneath it.
     public func holder(atOrUnder path: String) -> String? {
-        holders[Self.key(path)]
-    }
-
-    private static func key(_ path: String) -> String {
-        ScanPolicy.canonicalPathURL(URL(fileURLWithPath: path)).path.lowercased()
+        holders[ScanPolicy.canonicalPathKey(path)]
     }
 
     /// `/a/b/c` → `/a/b/c`, `/a/b`, `/a`; the root itself is never a key.

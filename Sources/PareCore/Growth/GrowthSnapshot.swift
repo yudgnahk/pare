@@ -58,9 +58,9 @@ public struct GrowthSnapshot: Codable, Sendable, Equatable {
         isComplete = try container.decodeIfPresent(Bool.self, forKey: .isComplete) ?? false
     }
 
-    /// `/var/…` and `/private/var/…`, and differently cased spellings, land on one key.
+    /// The same key `RegrowthDetector` and the in-use gate use, so all three agree on a path.
     public static func key(_ path: String) -> String {
-        ScanPolicy.canonicalPathURL(URL(fileURLWithPath: path)).path.lowercased()
+        ScanPolicy.canonicalPathKey(path)
     }
 }
 

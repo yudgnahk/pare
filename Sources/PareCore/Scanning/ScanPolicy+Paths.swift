@@ -20,6 +20,11 @@ extension ScanPolicy {
         return URL(fileURLWithPath: path)
     }
 
+    /// One lookup key for every spelling of a path: canonical (`/var` → `/private/var`) and lowercased.
+    public static func canonicalPathKey(_ path: String) -> String {
+        canonicalPathURL(URL(fileURLWithPath: path)).path.lowercased()
+    }
+
     /// Mount point of the writable Data volume that firmlinks point into.
     public static let dataVolumeRoot = "/System/Volumes/Data"
 

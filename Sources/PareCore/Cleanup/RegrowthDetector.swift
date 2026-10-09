@@ -28,7 +28,7 @@ public struct RegrowthDetector: Sendable {
         guard !cleans.isEmpty else { return findings }
         return findings.map { (finding: ScanFinding) -> ScanFinding in
             guard finding.riskLevel != .advanced,
-                  let past = cleans[Self.key(finding.path)],
+                  let past = cleans[ScanPolicy.canonicalPathKey(finding.path)],
                   let last = past.max(by: { $0.date < $1.date }) else { return finding }
             let regrew = last.bytes > 0 && Double(finding.sizeBytes) >= Double(last.bytes) * Self.regrowthSizeRatio
             guard regrew || past.count >= Self.repeatCleanCount else { return finding }
@@ -42,7 +42,7 @@ public struct RegrowthDetector: Sendable {
         var cleans: [String: [(date: Date, bytes: Int64)]] = [:]
         for transaction in history() where !transaction.isDryRun && transaction.timestamp >= cutoff {
             for item in transaction.items {
-                cleans[Self.key(item.originalPath), default: []].append((transaction.timestamp, item.sizeBytes))
+                cleans[ScanPolicy.canonicalPathKey(item.originalPath), default: []].append((transaction.timestamp, item.sizeBytes))
             }
         }
         return cleans
@@ -63,9 +63,5 @@ public struct RegrowthDetector: Sendable {
             annotations: finding.annotations,
             isSizeComplete: finding.isSizeComplete
         )
-    }
-
-    private static func key(_ path: String) -> String {
-        ScanPolicy.canonicalPathURL(URL(fileURLWithPath: path)).path.lowercased()
     }
 }
