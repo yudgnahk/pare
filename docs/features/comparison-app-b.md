@@ -158,4 +158,4 @@ Copying these from App B would dilute Pare and explode scope:
 | Support bundle | App B has support path | Diagnostics export (US-4) |
 | Clutter lite | Large downloads/old installers already partly covered | Improve large-file UX; skip photo dups for now |
 
-Detail and ranking: [2026-07-20 competitive gaps](../reviews/2026-07-20-competitive-gaps.md).
+Open items live in [the roadmap](../roadmap.md).
