@@ -26,8 +26,9 @@ enum CleanupEngineFixture {
 }
 
 extension OpenFileSnapshot {
-    /// A successful snapshot with no open files, unlike `nil`, which means the check was unavailable.
-    static let nothingOpen = OpenFileSnapshot(lsofFieldOutput: "")
+    /// A listing that holds nothing relevant; empty output is never returned by the real provider (it yields nil).
+    static let nothingOpenListing = "p1\ncfixture\nn/nonexistent/pare-fixture\n"
+    static let nothingOpen = OpenFileSnapshot(lsofFieldOutput: nothingOpenListing)
 }
 
 final class CountingSnapshotProvider: OpenFileSnapshotProviding, @unchecked Sendable {

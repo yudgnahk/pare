@@ -51,7 +51,10 @@ struct HermeticCleanupFixture {
 
 /// In-use gate stubs so app tests never spawn `lsof` or read `NSWorkspace`.
 private struct NothingOpenProvider: OpenFileSnapshotProviding {
-    func snapshot() async -> OpenFileSnapshot? { OpenFileSnapshot(lsofFieldOutput: "") }
+    // A well-formed listing, as the real provider returns; it yields nil for output without a `p` record.
+    func snapshot() async -> OpenFileSnapshot? {
+        OpenFileSnapshot(lsofFieldOutput: "p1\ncfixture\nn/nonexistent/pare-fixture\n")
+    }
 }
 
 private struct NothingRunningProvider: RunningAppsProviding {

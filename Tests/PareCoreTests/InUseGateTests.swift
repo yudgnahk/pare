@@ -72,6 +72,11 @@ final class InUseGateTests: XCTestCase {
         }
     }
 
+    func testNothingOpenFixtureIsAListingTheProductionProviderWouldAccept() {
+        XCTAssertTrue(OpenFileSnapshot.isRecognizedFieldOutput(OpenFileSnapshot.nothingOpenListing))
+        XCTAssertFalse(OpenFileSnapshot.isRecognizedFieldOutput(""))
+    }
+
     func testAvailableSnapshotIgnoresRunningAppsWithoutOpenFiles() {
         let running = [RunningApp(bundleIdentifier: "com.apple.Safari", name: "Safari")]
         let empty = OpenFileSnapshot(lsofFieldOutput: "")
