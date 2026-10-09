@@ -1,8 +1,8 @@
 import Foundation
 @testable import PareCore
 
-/// Builds a `CleanupEngine` whose in-use gate never spawns `lsof` or reads `NSWorkspace`:
-/// by default nothing is open and nothing is running. Other parameters keep the production defaults.
+/// Builds a `CleanupEngine` whose in-use gate never spawns `lsof` or reads `NSWorkspace`: by default
+/// nothing is open, nothing is running and disk pressure is comfortable. Others keep production defaults.
 enum CleanupEngineFixture {
     static func make(
         store: CleanupTransactionStore,
@@ -12,7 +12,8 @@ enum CleanupEngineFixture {
         trashItem: (@Sendable (URL) throws -> URL?)? = nil,
         gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector(),
         openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen),
-        runningApps: any RunningAppsProviding = FixedRunningAppsList(apps: [])
+        runningApps: any RunningAppsProviding = FixedRunningAppsList(apps: []),
+        diskPressure: @escaping @Sendable () -> DiskPressureTier = { .comfortable }
     ) -> CleanupEngine {
         CleanupEngine(
             store: store,
@@ -22,7 +23,8 @@ enum CleanupEngineFixture {
             trashItem: trashItem,
             gitInspector: gitInspector,
             openFiles: openFiles,
-            runningApps: runningApps
+            runningApps: runningApps,
+            diskPressure: diskPressure
         )
     }
 }

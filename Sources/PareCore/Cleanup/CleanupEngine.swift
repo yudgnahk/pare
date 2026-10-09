@@ -167,6 +167,8 @@ public actor CleanupEngine {
     private let isCodexRunning: @Sendable () async -> Bool
     /// The active pnpm store (`…/store/v<N>`), re-resolved at cleanup; nil fails closed. Injectable.
     private let pnpmActiveStore: @Sendable () async -> URL?
+    /// Disk-pressure tier for re-checking dependency folders of inactive projects.
+    private let diskPressure: @Sendable () -> DiskPressureTier
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -185,7 +187,8 @@ public actor CleanupEngine {
         freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace(),
         runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider(),
         isCodexRunning: (@Sendable () async -> Bool)? = nil,
-        pnpmActiveStore: (@Sendable () async -> URL?)? = nil
+        pnpmActiveStore: (@Sendable () async -> URL?)? = nil,
+        diskPressure: @escaping @Sendable () -> DiskPressureTier = { DiskPressure.current() }
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -207,6 +210,7 @@ public actor CleanupEngine {
         self.openFiles = openFiles
         self.runningApps = runningApps
         self.freeSpace = freeSpace
+        self.diskPressure = diskPressure
     }
 
     /// Both readings in one metric (Finder's "important usage" when both have it), so the delta is meaningful.
@@ -378,6 +382,13 @@ public actor CleanupEngine {
                 continue
             }
 
+            // Dependency folders outside the cache allow-lists pass only their own gate, which
+            // replaces the generic age gate with project activity (never the folder's own date).
+            let allowedByPathPolicy = ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
+                || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
+            let isProjectDependency = !allowedByPathPolicy
+                && ScanPolicy.isProjectDependencyDirectory(url.lastPathComponent)
+
             if ScanPolicy.hasUpgradeBackupSignal(url.lastPathComponent) {
                 // Backup-named paths pass only through the upgrade-backup gate, never the generic allow-lists.
                 if !ScanPolicy.isReclaimableUpgradeBackup(url, now: now()) {
@@ -398,6 +409,12 @@ public actor CleanupEngine {
                 // never the broad pnpm persona marker.
                 if !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore),
                    !ScanPolicy.isCleanableWrongPlatformPath(url) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                    continue
+                }
+            } else if isProjectDependency {
+                if !ScanPolicy.isReclaimableProjectDependency(
+                    url, registeredRootPaths: projectRootPaths, tier: diskPressure(), now: now()) {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                     continue
                 }
@@ -424,7 +441,7 @@ public actor CleanupEngine {
             // Wrong-platform binaries/dirs are exempted: a Windows installer in ~/Downloads
             // or a win32/ native tree is inert on macOS from day zero — age is irrelevant.
             // Reconstructible package caches use a short floor (active download safety).
-            if !ScanPolicy.isCleanableWrongPlatformPath(url),
+            if !isProjectDependency, !ScanPolicy.isCleanableWrongPlatformPath(url),
                let minAge = ScanPolicy.minimumAgeSeconds(forCleanupPath: url, category: finding.category) {
                 if ScanPolicy.isReconstructibleCachePath(url) {
                     // Reconstructible caches have no multi-day age gate (minAge may be 0).
@@ -448,7 +465,9 @@ public actor CleanupEngine {
             }
 
             // Last gate before trashing, so the batch's single snapshot is only taken when needed.
-            if let holder = await inUse.holder(forPath: finding.path) {
+            // A dependency folder is in use when anything inside its project is, e.g. a dev server's cwd.
+            let inUsePath = isProjectDependency ? url.deletingLastPathComponent().path : finding.path
+            if let holder = await inUse.holder(forPath: inUsePath) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .inUse(finding.path, holder: holder)))
                 continue
             }

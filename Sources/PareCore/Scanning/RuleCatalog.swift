@@ -71,6 +71,7 @@ public enum RuleCatalog {
             GoCachesRule(),
             PnpmOldStoreRule(),
             ProjectArtifactsRule(),
+            ProjectDependenciesRule(),
         ] + baseline
     }
 
