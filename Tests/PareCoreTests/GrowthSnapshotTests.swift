@@ -114,10 +114,17 @@ final class GrowthSnapshotTests: XCTestCase {
     func testReportWithFailuresOrUnreadableLocationsMakesAPartialSnapshot() {
         let summaries = [ScanCategorySummary(category: .userCaches, reclaimableBytes: 1, fileCount: 1)]
         let failure = ScanRuleFailure(ruleID: "r", ruleTitle: "R", message: "boom")
+        let incomplete = ScanIncompleteRule(ruleID: "r", ruleTitle: "R", message: "stopped at the deadline")
+        let partialSize = ScanFinding(
+            category: .userCaches, riskLevel: .safe, reason: "test", path: "/Users/u/Library/Caches/a",
+            sizeBytes: 1, lastUsed: nil, confidence: 1, isSizeComplete: false
+        )
         let cases: [(name: String, report: ScanReport, complete: Bool)] = [
             ("clean", ScanReport(findings: [], summaries: summaries), true),
             ("rule failed", ScanReport(findings: [], summaries: summaries, ruleFailures: [failure]), false),
             ("unreadable", ScanReport(findings: [], summaries: summaries, unreadableLocations: ["/x"]), false),
+            ("rule stopped early", ScanReport(findings: [], summaries: summaries, incompleteRules: [incomplete]), false),
+            ("size cut short", ScanReport(findings: [partialSize], summaries: summaries), false),
         ]
         for testCase in cases {
             XCTAssertEqual(GrowthSnapshot(report: testCase.report).isComplete, testCase.complete, testCase.name)
@@ -131,6 +138,21 @@ final class GrowthSnapshotTests: XCTestCase {
             sizeBytes: 500 * Self.megabyte, lastUsed: nil, confidence: 1
         )
         let report = ScanReport(findings: [safe, advanced], summaries: [])
+
+        XCTAssertEqual(Set(GrowthSnapshot(report: report).perPath.keys), [GrowthSnapshot.key(safe.path)])
+    }
+
+    func testExplainOnlyAndWorkingSetFindingsStayOutOfPerPath() {
+        let safe = finding("/Users/u/Library/Caches/a", bytes: 200 * Self.megabyte)
+        let explainOnly = ScanFinding(
+            category: .diagnostics, riskLevel: .review, reason: "test", path: "/private/var/vm",
+            sizeBytes: 500 * Self.megabyte, lastUsed: nil, confidence: 1, annotations: [.explainOnly(action: "restart")]
+        )
+        let workingSet = ScanFinding(
+            category: .userCaches, riskLevel: .safe, reason: "test", path: "/Users/u/Library/Caches/go-build",
+            sizeBytes: 500 * Self.megabyte, lastUsed: nil, confidence: 1, annotations: [.workingSet(selfTrimDays: 5)]
+        )
+        let report = ScanReport(findings: [safe, explainOnly, workingSet], summaries: [])
 
         XCTAssertEqual(Set(GrowthSnapshot(report: report).perPath.keys), [GrowthSnapshot.key(safe.path)])
     }

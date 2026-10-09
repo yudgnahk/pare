@@ -8,7 +8,8 @@ public struct GrowthSnapshot: Codable, Sendable, Equatable {
     public let perCategory: [String: Int64]
     /// Canonical, lowercased finding path → bytes.
     public let perPath: [String: Int64]
-    /// False when rules failed or locations were unreadable: absent keys then mean "not seen", not "empty".
+    /// False when rules failed or stopped early, locations were unreadable or a size was cut short:
+    /// absent keys then mean "not seen", not "empty".
     public let isComplete: Bool
 
     /// Paths are reported as growth only from this size up.
@@ -26,7 +27,7 @@ public struct GrowthSnapshot: Codable, Sendable, Equatable {
     public init(report: ScanReport, takenAt: Date = Date()) {
         var perPath: [String: Int64] = [:]
         // `.advanced` findings are detect-only and absent from the category totals, so they stay out here too.
-        for finding in report.findings where finding.riskLevel != .advanced && finding.sizeBytes >= Self.trackedPathBytes {
+        for finding in report.findings where Self.isTracked(finding) {
             perPath[Self.key(finding.path), default: 0] += finding.sizeBytes
         }
         self.init(
@@ -34,7 +35,18 @@ public struct GrowthSnapshot: Codable, Sendable, Equatable {
             perCategory: Dictionary(report.summaries.map { ($0.category.rawValue, $0.reclaimableBytes) }, uniquingKeysWith: +),
             perPath: perPath,
             isComplete: report.ruleFailures.isEmpty && report.unreadableLocations.isEmpty
+                && report.incompleteRules.isEmpty && report.findings.allSatisfy(\.isSizeComplete)
         )
+    }
+
+    /// Explain-only and working-set findings are never cleanable, so their growth is not reclaimable growth.
+    private static func isTracked(_ finding: ScanFinding) -> Bool {
+        finding.riskLevel != .advanced && finding.sizeBytes >= trackedPathBytes
+            && !finding.annotations.contains { annotation in
+                switch annotation {
+                case .explainOnly, .workingSet: return true
+                }
+            }
     }
 
     public init(from decoder: Decoder) throws {
