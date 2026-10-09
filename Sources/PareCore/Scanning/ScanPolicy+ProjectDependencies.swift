@@ -155,7 +155,7 @@ extension ScanPolicy {
         now: Date,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> Date? {
-        guard isProjectDependencyDirectory(url.lastPathComponent) else { return nil }
+        guard isProjectDependencyDirectory(url.lastPathComponent), !isInsideLibraryOrAppBundle(url) else { return nil }
         let project = url.deletingLastPathComponent()
         guard project.path != "/", !isEqualToOrDescendant(candidate: homeDirectory, root: project) else { return nil }
         let underRoot = registeredRootPaths.contains { rootPath in
@@ -165,6 +165,15 @@ extension ScanPolicy {
               let activity = projectActivityDate(projectRoot: project, homeDirectory: homeDirectory),
               now.timeIntervalSince(activity) >= projectDependencyInactivitySeconds(for: tier) else { return nil }
         return activity
+    }
+
+    /// App data and bundled runtimes keep their own `node_modules`/`venv`; a manual root can reach both.
+    /// Case-insensitive, like the default APFS volume, so `~/library/…` is caught too.
+    public static func isInsideLibraryOrAppBundle(_ url: URL) -> Bool {
+        url.standardizedFileURL.pathComponents.contains { component in
+            let lower = component.lowercased()
+            return lower == "library" || lower.hasSuffix(".app")
+        }
     }
 
     /// A tracked or unignored dependency folder may be vendored on purpose; no answer fails closed.

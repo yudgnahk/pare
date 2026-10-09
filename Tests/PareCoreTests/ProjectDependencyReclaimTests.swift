@@ -239,6 +239,43 @@ final class ProjectDependencyReclaimTests: XCTestCase {
         XCTAssertTrue(findings.allSatisfy { $0.riskLevel == .review })
     }
 
+    /// Trap: a manual root can reach app data or a bundled runtime; neither is a project.
+    func testLibraryAndAppBundlePathsAreNeverReclaimable() throws {
+        let appData = try makeProject("Library/Application Support/Tool/app", lockfile: "package-lock.json", inactiveDays: 30)
+        let bundled = try makeProject("Tools.app/Contents/Resources/app", lockfile: "package-lock.json", inactiveDays: 30)
+        let lowercase = try makeProject("library/app", lockfile: "package-lock.json", inactiveDays: 30)
+        let plain = try makeProject("code/app", lockfile: "package-lock.json", inactiveDays: 30)
+
+        for project in [appData, bundled, lowercase] {
+            XCTAssertTrue(ScanPolicy.isInsideLibraryOrAppBundle(project.appending(path: "node_modules")), project.path)
+            XCTAssertFalse(isReclaimable(project.appending(path: "node_modules"), tier: .critical), project.path)
+        }
+        XCTAssertFalse(ScanPolicy.isInsideLibraryOrAppBundle(plain.appending(path: "node_modules")))
+        XCTAssertTrue(isReclaimable(plain.appending(path: "node_modules"), tier: .critical))
+    }
+
+    func testRuleWalkStopsAtItsEntryBudgetAndSaysSo() async throws {
+        _ = try makeProject("budget/a", lockfile: "package-lock.json", inactiveDays: 30, payloadBytes: 2_000_000)
+
+        let full = await scanResult(roots: [root], tier: .critical)
+        XCTAssertEqual(full.findings.count, 1)
+        XCTAssertNil(full.incompleteMessage)
+
+        let cut = await scanResult(roots: [root], tier: .critical, entryBudget: 1)
+        XCTAssertTrue(cut.findings.isEmpty)
+        XCTAssertNotNil(cut.incompleteMessage)
+    }
+
+    func testRuleFlagsADeadlineCutSizeAsALowerBound() async throws {
+        let project = try makeProject("slow", lockfile: "package-lock.json", inactiveDays: 30, payloadBytes: 2_000_000)
+        let expired = DirectorySizeIndex(budgetSeconds: 0, now: { Date(timeIntervalSinceReferenceDate: 0) })
+
+        let findings = await scanResult(roots: [root], tier: .critical, sizeIndex: expired).findings
+
+        let finding = try XCTUnwrap(findings.first { $0.path == project.appending(path: "node_modules").path })
+        XCTAssertFalse(finding.isSizeComplete)
+    }
+
     // MARK: - Cleanup re-verification
 
     func testEngineRecheckAtCleanupTime() async throws {
@@ -356,9 +393,20 @@ final class ProjectDependencyReclaimTests: XCTestCase {
     }
 
     private func scan(roots: [URL], tier: DiskPressureTier) async -> [ScanFinding] {
-        let rule = ProjectDependenciesRule(rootsProvider: { roots }, diskPressure: { tier }, now: { [now] in now })
-        let env = ScanEnvironment(homeDirectory: root.appending(path: "home"))
-        return await rule.customScan(environment: env) ?? []
+        await scanResult(roots: roots, tier: tier).findings
+    }
+
+    private func scanResult(
+        roots: [URL],
+        tier: DiskPressureTier,
+        entryBudget: Int = ProjectDependenciesRule.defaultEntryBudget,
+        sizeIndex: DirectorySizeIndex = DirectorySizeIndex()
+    ) async -> ScanRuleResult {
+        let rule = ProjectDependenciesRule(
+            rootsProvider: { roots }, diskPressure: { tier }, now: { [now] in now }, entryBudget: entryBudget
+        )
+        let env = ScanEnvironment(homeDirectory: root.appending(path: "home"), sizeIndex: sizeIndex)
+        return (try? await rule.customScanResult(environment: env)) ?? ScanRuleResult(findings: [])
     }
 
     private func engine(
