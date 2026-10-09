@@ -19,15 +19,23 @@ public struct SwapUsageRule: ScanRule {
     /// Returns `sysctl vm.swapusage` output, or nil when it failed or timed out.
     public typealias Listing = @Sendable () async -> String?
 
+    /// The real `sysctl vm.swapusage` reading, shared with other diagnostics.
+    public static let systemListing: Listing = {
+        await ToolCommandRunner().capture(
+            executable: URL(fileURLWithPath: sysctlPath),
+            arguments: ["vm.swapusage"]
+        )
+    }
+
+    /// Swap currently in use, or nil when it could not be read.
+    public static func currentUsedBytes() async -> Int64? {
+        await systemListing().flatMap(usedBytes(fromSysctlOutput:))
+    }
+
     private let listing: Listing
 
     public init(listing: Listing? = nil) {
-        self.listing = listing ?? {
-            await ToolCommandRunner().capture(
-                executable: URL(fileURLWithPath: Self.sysctlPath),
-                arguments: ["vm.swapusage"]
-            )
-        }
+        self.listing = listing ?? Self.systemListing
     }
 
     public func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
