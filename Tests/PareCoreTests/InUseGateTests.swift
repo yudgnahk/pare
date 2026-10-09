@@ -72,6 +72,18 @@ final class InUseGateTests: XCTestCase {
         }
     }
 
+    func testFailClosedWithoutSnapshotBlocksAnyPathButDefersToASnapshot() {
+        let project = "/Users/u/code/app"
+        XCTAssertNil(InUseGate.holder(forPath: project, snapshot: nil, runningApps: { [] }))
+        XCTAssertEqual(
+            InUseGate.holder(forPath: project, snapshot: nil, failClosedWithoutSnapshot: true, runningApps: { [] }),
+            InUseGate.unavailableProjectHolder
+        )
+        XCTAssertNil(InUseGate.holder(
+            forPath: project, snapshot: .nothingOpen, failClosedWithoutSnapshot: true, runningApps: { [] }
+        ))
+    }
+
     func testNothingOpenFixtureIsAListingTheProductionProviderWouldAccept() {
         XCTAssertTrue(OpenFileSnapshot.isRecognizedFieldOutput(OpenFileSnapshot.nothingOpenListing))
         XCTAssertFalse(OpenFileSnapshot.isRecognizedFieldOutput(""))

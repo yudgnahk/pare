@@ -101,11 +101,12 @@ public struct CleanupResult: Sendable {
     /// Files may already have been moved to Trash — surfaced here instead of throwing.
     public let transactionSaveError: String?
     /// True when the open-file check could not run for this batch: only running apps' caches, cached
-    /// databases and partial downloads were held back.
+    /// databases, partial downloads and project dependency folders were held back.
     public let inUseCheckUnavailable: Bool
 
     public static let inUseCheckUnavailableNote =
-        "Couldn't check which files are in use — only app caches, databases and partial downloads were held back."
+        "Couldn't check which files are in use — only app caches, databases, partial downloads "
+        + "and project dependency folders were held back."
 
     init(
         succeeded: [CleanupItem],
@@ -471,7 +472,7 @@ public actor CleanupEngine {
             // Last gate before trashing, so the batch's single snapshot is only taken when needed.
             // A dependency folder is in use when anything inside its project is, e.g. a dev server's cwd.
             let inUsePath = isProjectDependency ? url.deletingLastPathComponent().path : finding.path
-            if let holder = await inUse.holder(forPath: inUsePath) {
+            if let holder = await inUse.holder(forPath: inUsePath, failClosedWithoutSnapshot: isProjectDependency) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .inUse(finding.path, holder: holder)))
                 continue
             }

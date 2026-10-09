@@ -296,6 +296,24 @@ final class ProjectDependencyReclaimTests: XCTestCase {
         XCTAssertEqual(holder, "mcp-server (pid 77)")
     }
 
+    /// Without an open-file snapshot a running dev server is invisible, so dependency folders are held back.
+    func testEngineRefusesDependencyFoldersWhenTheOpenFileCheckIsUnavailable() async throws {
+        let project = try makeProject("unknown-use", lockfile: "yarn.lock", inactiveDays: 30)
+        let deps = project.appending(path: "node_modules")
+        let finding = ScanFinding(category: .projectArtifacts, riskLevel: .review, reason: "test", path: deps.path,
+                                  sizeBytes: 1024, lastUsed: nil, confidence: 0.8)
+
+        let result = try await engine(tier: .critical, openFiles: CountingSnapshotProvider(snapshot: nil))
+            .clean(findings: [finding], profileName: "test", dryRun: true)
+
+        XCTAssertTrue(result.succeeded.isEmpty)
+        XCTAssertTrue(result.inUseCheckUnavailable)
+        guard case .some(.inUse(_, let holder)) = result.skipped.first?.error else {
+            return XCTFail("expected .inUse, got \(String(describing: result.skipped.first?.error))")
+        }
+        XCTAssertEqual(holder, InUseGate.unavailableProjectHolder)
+    }
+
     // MARK: - Helpers
 
     private func isReclaimable(_ url: URL, tier: DiskPressureTier, roots: [URL]? = nil) -> Bool {

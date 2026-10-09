@@ -31,14 +31,19 @@ public struct WorkspaceRunningAppsProvider: RunningAppsProviding {
 public enum InUseGate {
     static let sqliteFileSuffixes = [".db", ".sqlite", ".sqlite3", "-wal", "-shm", "-journal"]
 
+    static let unavailableProjectHolder = "the project may be in use (open-file check unavailable)"
+
     /// The holder blocking `path`, or nil. With a snapshot, any open file at or under the path blocks it.
     /// Without one, only items where trashing a live file does damage fail closed; the rest fail open.
     public static func holder(
         forPath path: String,
         snapshot: OpenFileSnapshot?,
+        failClosedWithoutSnapshot: Bool = false,
         runningApps: () -> [RunningApp]
     ) -> String? {
         if let snapshot { return snapshot.holder(atOrUnder: path) }
+        // A project's dev server keeps nothing open under `/library/caches/`, so the heuristics below would pass it.
+        if failClosedWithoutSnapshot { return unavailableProjectHolder }
 
         let lower = path.lowercased()
         let name = URL(fileURLWithPath: lower).lastPathComponent
@@ -88,7 +93,7 @@ actor InUseBatchCheck {
         self.log = log
     }
 
-    func holder(forPath path: String) async -> String? {
+    func holder(forPath path: String, failClosedWithoutSnapshot: Bool = false) async -> String? {
         let isStale = snapshotTakenAt.map { now().timeIntervalSince($0) >= refreshInterval } ?? true
         if snapshot == nil || isStale {
             let taken = await openFiles.snapshot()
@@ -99,7 +104,9 @@ actor InUseBatchCheck {
             snapshot = .some(taken)
             snapshotTakenAt = now()
         }
-        return InUseGate.holder(forPath: path, snapshot: snapshot ?? nil) {
+        return InUseGate.holder(
+            forPath: path, snapshot: snapshot ?? nil, failClosedWithoutSnapshot: failClosedWithoutSnapshot
+        ) {
             if let apps { return apps }
             let current = runningAppsProvider.runningApps()
             apps = current
