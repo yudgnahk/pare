@@ -68,10 +68,12 @@ public enum LocalSnapshotParser {
         let lines = output.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         // Headers include "Snapshots for disk /:" and "Snapshots for volume group containing disk /:";
-        // names are single tokens, not only `com.apple.*` (backup tools add their own).
+        // names are single tokens, not only `com.apple.*` (backup tools add their own); all carry a date or id,
+        // which keeps a one-word error line from counting.
         let isHeader = { (line: String) in line.hasPrefix("Snapshots for ") || line.hasPrefix("No local snapshots") }
-        let snapshots = lines.filter { !isHeader($0) && !$0.contains(" ") }
-        let recognizedOtherwise = lines.allSatisfy { isHeader($0) || !$0.contains(" ") }
-        return recognizedOtherwise ? snapshots.count : nil
+        let isSnapshotName = { (line: String) in !line.contains(" ") && line.contains(where: \.isNumber) }
+        let snapshots = lines.filter { !isHeader($0) && isSnapshotName($0) }
+        let recognized = lines.allSatisfy { isHeader($0) || isSnapshotName($0) }
+        return recognized ? snapshots.count : nil
     }
 }

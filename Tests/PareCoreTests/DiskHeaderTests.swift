@@ -39,6 +39,8 @@ final class DiskHeaderTests: XCTestCase {
             ("no local snapshots", "No local snapshots found", 0),
             ("empty", "", 0),
             ("error text", "Failed to list snapshots: Operation not permitted", nil),
+            ("one-word error", "Error", nil),
+            ("one-word error after a header", "Snapshots for disk /:\nUnauthorized", nil),
             ("garbage", "something unexpected\nmore text", nil),
         ]
         for testCase in cases {
