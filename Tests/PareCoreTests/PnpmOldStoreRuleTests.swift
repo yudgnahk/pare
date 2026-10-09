@@ -135,7 +135,7 @@ final class PnpmOldStoreRuleTests: XCTestCase {
     }
 
     private func cleanDryRun(_ urls: [URL], activeStore: URL?) async throws -> CleanupResult {
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: home.deletingLastPathComponent().appending(path: "transactions")),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty },

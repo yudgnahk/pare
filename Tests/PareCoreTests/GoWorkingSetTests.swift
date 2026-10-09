@@ -142,7 +142,7 @@ final class GoWorkingSetTests: XCTestCase {
         let goBuild = try makeCache("Library/Caches/go-build")
         let moduleBuild = try makeCache("go/pkg/mod/github.com/acme/lib@v1.2.3/build")
         try Data("module acme/lib\n".utf8).write(to: moduleBuild.deletingLastPathComponent().appending(path: "go.mod"))
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: tmp.appending(path: "store")),
             projectRootsProvider: { [] },
             goCacheLocations: GoCacheLocations(query: { nil })
@@ -166,7 +166,7 @@ final class GoWorkingSetTests: XCTestCase {
 
     func testCleanupSkipsCustomGoEnvLocation() async throws {
         let custom = try makeCache("Library/Caches/custom-gocache")
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: tmp.appending(path: "store")),
             projectRootsProvider: { [] },
             goCacheLocations: GoCacheLocations(query: { [path = custom.path] in path })

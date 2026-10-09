@@ -1,8 +1,9 @@
 import Foundation
 @testable import PareCore
 
-/// Builds a `CleanupEngine` whose in-use gate never spawns `lsof` or reads `NSWorkspace`: by default
-/// nothing is open, nothing is running and free space is unknown. Others keep production defaults.
+/// Builds a `CleanupEngine` that never spawns git, go, ps, pnpm or lsof, or reads `NSWorkspace`: by default
+/// nothing is open or running, nothing is in a git repository, Codex is idle, no pnpm store or Go cache
+/// override exists, and free space is unknown.
 enum CleanupEngineFixture {
     static func make(
         store: CleanupTransactionStore,
@@ -10,10 +11,14 @@ enum CleanupEngineFixture {
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
         trashItem: (@Sendable (URL) throws -> URL?)? = nil,
-        gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector(),
+        gitInspector: any GitArtifactInspecting = StubGitInspector(status: .notInRepository),
+        goCacheLocations: GoCacheLocations = GoCacheLocations(query: { nil }),
         openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen),
         runningApps: any RunningAppsProviding = FixedRunningAppsList(apps: []),
-        freeSpace: any VolumeFreeSpaceProviding = FixedFreeSpace(reading: nil)
+        freeSpace: any VolumeFreeSpaceProviding = FixedFreeSpace(reading: nil),
+        runningExecutables: any RunningExecutablesProviding = FixedRunningExecutables(paths: []),
+        isCodexRunning: @escaping @Sendable () async -> Bool = { false },
+        pnpmActiveStore: @escaping @Sendable () async -> URL? = { nil }
     ) -> CleanupEngine {
         CleanupEngine(
             store: store,
@@ -22,9 +27,13 @@ enum CleanupEngineFixture {
             now: now,
             trashItem: trashItem,
             gitInspector: gitInspector,
+            goCacheLocations: goCacheLocations,
             openFiles: openFiles,
             runningApps: runningApps,
-            freeSpace: freeSpace
+            freeSpace: freeSpace,
+            runningExecutables: runningExecutables,
+            isCodexRunning: isCodexRunning,
+            pnpmActiveStore: pnpmActiveStore
         )
     }
 }
@@ -74,4 +83,11 @@ struct FixedFreeSpace: VolumeFreeSpaceProviding {
         }
         return FixedFreeSpace(reading: VolumeFreeSpace(importantUsageBytes: free, availableBytes: free, totalBytes: 245 * gb))
     }
+}
+
+/// A fixed process list; nil is "could not list processes".
+struct FixedRunningExecutables: RunningExecutablesProviding {
+    let paths: [String]?
+
+    func runningExecutablePaths() async -> [String]? { paths }
 }

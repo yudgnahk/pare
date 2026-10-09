@@ -164,7 +164,7 @@ final class DiagnosticsFindingsTests: XCTestCase {
     func testCleanupEngineRefusesDiagnosticsEvenWhenMislabelled() async throws {
         let store = FileManager.default.temporaryDirectory.appending(path: "pare_diag_\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: store) }
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: store),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty },

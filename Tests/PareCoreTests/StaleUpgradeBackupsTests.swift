@@ -198,7 +198,7 @@ final class StaleUpgradeBackupsTests: XCTestCase {
         category: ScanCategory = .applications,
         risk: RiskLevel = .review
     ) async throws -> CleanupResult {
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: home.deletingLastPathComponent().appending(path: "store")),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty }

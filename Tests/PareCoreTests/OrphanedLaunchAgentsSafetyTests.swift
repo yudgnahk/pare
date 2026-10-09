@@ -43,7 +43,7 @@ final class OrphanedLaunchAgentsSafetyTests: XCTestCase {
     /// Even mislabelled `.review`, a LaunchAgents plist no longer passes any cleanup allow-list.
     func testCleanupBlocksLaunchAgentPlist() async throws {
         let plist = try makeOrphanedAgent("com.example.gone")
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: home.appending(path: "store")),
             projectRootsProvider: { [] }
         )

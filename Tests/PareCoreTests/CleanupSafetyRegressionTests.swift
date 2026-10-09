@@ -114,7 +114,7 @@ final class CleanupSafetyRegressionTests: XCTestCase {
         let seeded = ProjectRootsStore(confirmed: [moduleRoot.path], excluded: [], manual: [], lastDiscoveredAt: Date())
         try JSONEncoder().encode(seeded).write(to: storeURL)
         let discovery = ProjectRootDiscovery(storeURL: storeURL)
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: storeDir),
             projectRootsProvider: { await discovery.confirmedRoots().map(\.path) }
         )

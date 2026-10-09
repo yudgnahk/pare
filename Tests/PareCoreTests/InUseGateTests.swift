@@ -281,7 +281,7 @@ private final class Fixture: @unchecked Sendable {
     }
 
     func engine(provider: CountingSnapshotProvider, running: [RunningApp] = []) -> CleanupEngine {
-        CleanupEngine(
+        CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: root.appending(path: "store")),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty },

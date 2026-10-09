@@ -259,7 +259,7 @@ final class VersionSiblingTests: XCTestCase {
     private func engine(_ executables: StubExecutables) -> CleanupEngine {
         let trash = root.appending(path: "Trash")
         try? FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
-        return CleanupEngine(
+        return CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: root.appending(path: "store")),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty },

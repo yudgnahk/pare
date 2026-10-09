@@ -118,7 +118,7 @@ final class ProtectedUserDataTests: XCTestCase {
     // MARK: - Helpers
 
     private func dryRunClean(_ urls: [URL], category: ScanCategory) async throws -> CleanupResult {
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: tmp.appending(path: "store")),
             projectRootsProvider: { [] },
             goCacheLocations: GoCacheLocations(query: { nil })

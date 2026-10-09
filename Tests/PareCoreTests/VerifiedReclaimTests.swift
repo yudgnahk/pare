@@ -186,7 +186,7 @@ final class VerifiedReclaimTests: XCTestCase {
     private func makeEngine(_ provider: StubFreeSpace) -> CleanupEngine {
         let trash = root.appending(path: "Trash")
         try? FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
-        return CleanupEngine(
+        return CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: root.appending(path: "transactions")),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty },

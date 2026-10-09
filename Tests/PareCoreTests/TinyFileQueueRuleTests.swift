@@ -76,7 +76,7 @@ final class TinyFileQueueRuleTests: XCTestCase {
         try makeFiles(count: 60, bytes: 200, daysAgo: 40)
         let findings = await scan()
         XCTAssertEqual(findings.count, 1)
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: home.deletingLastPathComponent().appending(path: "store")),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty },

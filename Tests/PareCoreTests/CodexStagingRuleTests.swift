@@ -137,7 +137,7 @@ final class CodexStagingRuleTests: XCTestCase {
     }
 
     private func cleanDryRun(_ urls: [URL], codexRunning: Bool) async throws -> CleanupResult {
-        let engine = CleanupEngine(
+        let engine = CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: home.deletingLastPathComponent().appending(path: "store")),
             projectRootsProvider: { [] },
             exclusionsProvider: { .empty },

@@ -56,7 +56,7 @@ final class InUseGateFailureTests: XCTestCase {
             let ordinaryFile = try makeFile(caches.appending(path: "com.example.idle/blob.bin"))
             let trash = root.appending(path: "Trash-\(kind.rawValue)")
             try FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
-            let engine = CleanupEngine(
+            let engine = CleanupEngineFixture.make(
                 store: CleanupTransactionStore(directory: root.appending(path: "store-\(kind.rawValue)")),
                 projectRootsProvider: { [] },
                 exclusionsProvider: { .empty },
