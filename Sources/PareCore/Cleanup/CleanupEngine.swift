@@ -293,7 +293,9 @@ public actor CleanupEngine {
         let exclusions = exclusionsProvider()
         // The .gitignore can change, or files be force-added, between scan and clean.
         let gitStatuses = await gitInspector.statuses(
-            for: findings.map { URL(fileURLWithPath: $0.path) }.filter(ScanPolicy.requiresGitIgnoreEvidence)
+            for: findings.map { URL(fileURLWithPath: $0.path) }.filter {
+                ScanPolicy.requiresGitIgnoreEvidence($0) || ScanPolicy.isProjectDependencyDirectory($0.lastPathComponent)
+            }
         )
         let goCacheRoots = await goCacheLocations.resolveIfNeeded().all
         let inUse = InUseBatchCheck(openFiles: openFiles, runningApps: runningApps, now: now)
@@ -414,6 +416,10 @@ public actor CleanupEngine {
                 if !ScanPolicy.isReclaimableProjectDependency(
                     url, registeredRootPaths: projectRootPaths, tier: diskPressure(), now: now()) {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                    continue
+                }
+                if !ScanPolicy.gitEvidenceAllows(dependency: url, status: gitStatuses[url.path]) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .notGitIgnored(finding.path)))
                     continue
                 }
             } else if codexIdle, ScanPolicy.isReclaimableCodexStagingEntry(url, now: now()) {

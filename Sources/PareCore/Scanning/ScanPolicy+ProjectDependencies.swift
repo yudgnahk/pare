@@ -113,6 +113,11 @@ extension ScanPolicy {
         return now.timeIntervalSince(activity) >= projectDependencyInactivitySeconds(for: tier)
     }
 
+    /// A tracked or unignored dependency folder may be vendored on purpose; no answer fails closed.
+    public static func gitEvidenceAllows(dependency url: URL, status: GitArtifactStatus?) -> Bool {
+        status == .ignoredUntracked || status == .notInRepository
+    }
+
     /// The git directory for `projectRoot`: its own `.git`, a worktree's `gitdir:` target, or the nearest
     /// enclosing repo's. Stops at the home directory so a dotfile repo never counts.
     static func gitDirectory(enclosing projectRoot: URL, homeDirectory: URL) -> URL? {

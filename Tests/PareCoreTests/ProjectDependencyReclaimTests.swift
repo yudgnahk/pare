@@ -253,6 +253,32 @@ final class ProjectDependencyReclaimTests: XCTestCase {
         }
     }
 
+    /// A tracked or unignored `node_modules` may be vendored on purpose; only ignored or repo-less folders pass.
+    func testEngineRequiresGitEvidenceForDependencyFolders() async throws {
+        let project = try makeProject("vendored", lockfile: "package-lock.json", inactiveDays: 30)
+        let deps = project.appending(path: "node_modules")
+        let finding = ScanFinding(category: .projectArtifacts, riskLevel: .review, reason: "test", path: deps.path,
+                                  sizeBytes: 1024, lastUsed: nil, confidence: 0.8)
+        let cases: [(status: GitArtifactStatus?, allowed: Bool)] = [
+            (.ignoredUntracked, true), (.notInRepository, true),
+            (.notIgnored, false), (.containsTrackedFiles, false), (.failed, false), (.gitUnavailable, false), (nil, false),
+        ]
+        for testCase in cases {
+            let inspector = StubGitInspector(status: testCase.status)
+            let result = try await engine(tier: .critical, gitInspector: inspector)
+                .clean(findings: [finding], profileName: "test", dryRun: true)
+
+            XCTAssertEqual(inspector.calls, [[deps.path]], "\(String(describing: testCase.status))")
+            XCTAssertEqual(result.succeeded.count, testCase.allowed ? 1 : 0, "\(String(describing: testCase.status))")
+            XCTAssertEqual(ScanPolicy.gitEvidenceAllows(dependency: deps, status: testCase.status), testCase.allowed)
+            if !testCase.allowed {
+                guard case .some(.notGitIgnored) = result.skipped.first?.error else {
+                    return XCTFail("expected .notGitIgnored for \(String(describing: testCase.status))")
+                }
+            }
+        }
+    }
+
     func testEngineSkipsWhenAProcessRunsInsideTheProject() async throws {
         let project = try makeProject("served", lockfile: "uv.lock", inactiveDays: 30, dependency: ".venv")
         let venv = project.appending(path: ".venv")
@@ -289,7 +315,8 @@ final class ProjectDependencyReclaimTests: XCTestCase {
 
     private func engine(
         tier: DiskPressureTier,
-        openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen)
+        openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen),
+        gitInspector: any GitArtifactInspecting = StubGitInspector(status: .notInRepository)
     ) -> CleanupEngine {
         let rootPath: String = root.path
         return CleanupEngineFixture.make(
@@ -297,6 +324,7 @@ final class ProjectDependencyReclaimTests: XCTestCase {
             projectRootsProvider: { [rootPath] },
             exclusionsProvider: { .empty },
             now: { [now] in now },
+            gitInspector: gitInspector,
             openFiles: openFiles,
             diskPressure: { tier }
         )
