@@ -14,6 +14,8 @@ public struct VersionSiblingsRule: ScanRule {
     static let maxDepth = 5
     /// Shared cap on listed directory entries so large dot-directories cannot slow the scan.
     static let entryBudget = 50_000
+    /// Wider directories (session stores, message logs) only have their versioned names checked, never descended into.
+    static let fanOutLimit = 256
     /// Parent names too generic to identify the app; the grandparent names it instead.
     static let genericParentNames: Set<String> = ["releases", "versions", "version", "builds", "bin", "app", "packages"]
 
@@ -49,10 +51,25 @@ public struct VersionSiblingsRule: ScanRule {
     }
 
     private static func directories(in parent: URL) -> [URL] {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .isPackageKey]
-        let entries = (try? FileManager.default.contentsOfDirectory(at: parent, includingPropertiesForKeys: keys)) ?? []
-        return entries.filter { entry in
-            guard let values = try? entry.resourceValues(forKeys: Set(keys)) else { return false }
+        // Drains the bridged URL objects per listing instead of holding them for the whole walk.
+        autoreleasepool {
+            let entries = (try? FileManager.default.contentsOfDirectory(at: parent, includingPropertiesForKeys: listingKeys)) ?? []
+            return realDirectories(entries)
+        }
+    }
+
+    /// Only the entries whose names parse as versions, so a huge directory costs one `readdir`, not a stat per entry.
+    private static func versionedDirectories(in parent: URL, names: [String]) -> [URL] {
+        autoreleasepool {
+            realDirectories(names.filter { VersionedName($0) != nil }.map { parent.appending(path: $0) })
+        }
+    }
+
+    private static let listingKeys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .isPackageKey]
+
+    private static func realDirectories(_ entries: [URL]) -> [URL] {
+        entries.filter { entry in
+            guard let values = try? entry.resourceValues(forKeys: Set(listingKeys)) else { return false }
             return values.isDirectory == true && values.isSymbolicLink != true && values.isPackage != true
         }
         .sorted { $0.path < $1.path }
@@ -65,7 +82,10 @@ public struct VersionSiblingsRule: ScanRule {
         groups: inout [[(url: URL, name: VersionedName)]]
     ) {
         guard depth <= Self.maxDepth, budget > 0, !Task.isCancelled else { return }
-        let children = Self.directories(in: directory).filter { !ScanPolicy.isUnderVersionSiblingExcludedTree($0) }
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        let isWide = names.count > Self.fanOutLimit
+        let listed = isWide ? Self.versionedDirectories(in: directory, names: names) : Self.directories(in: directory)
+        let children = listed.filter { !ScanPolicy.isUnderVersionSiblingExcludedTree($0) }
         budget -= children.count
         var versioned: [String: [(url: URL, name: VersionedName)]] = [:]
         for child in children {
@@ -75,6 +95,7 @@ public struct VersionSiblingsRule: ScanRule {
         }
         let found = versioned.values.filter { $0.count >= ScanPolicy.versionSiblingMinimumGroupSize }
         groups += found
+        guard !isWide else { return }
         let members = Set(found.flatMap { $0.map(\.url.path) })
         for child in children where !members.contains(child.path) {
             collectGroups(in: child, depth: depth + 1, budget: &budget, groups: &groups)

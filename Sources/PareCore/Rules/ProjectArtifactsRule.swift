@@ -77,6 +77,7 @@ public struct ProjectArtifactsRule: ScanRule {
         // Fold in manually configured scan paths (Phase 5 store), deduplicated by path.
         var seen = Set<String>()
         let roots = Self.droppingCoveredRoots((discovered + pathStore.paths.map { URL(fileURLWithPath: $0) })
+            .filter { !ScanPolicy.isHomeOrAncestor($0, home: environment.homeDirectory) }
             .filter { seen.insert(ScanPolicy.canonicalPathURL($0).path).inserted })
 
         let minAge = ScanPolicy.defaultMinimumAgeSeconds(for: category)
@@ -152,6 +153,7 @@ public struct ProjectArtifactsRule: ScanRule {
         return relative.allSatisfy { name in
             let lower = name.lowercased()
             return !name.hasPrefix(".")
+                && !ScanPolicy.isBundleComponent(name)
                 && !ScanPolicy.isProjectDependencyDirectory(lower)
                 && !ScanPolicy.projectLocalArtifactDirectoryNames.contains(lower)
         }
@@ -201,6 +203,10 @@ public struct ProjectArtifactsRule: ScanRule {
             // Never treat dependency trees as free space (node_modules, .venv, …).
             // Skip entirely — not reclaimable and no need to walk inside.
             if ScanPolicy.isProjectDependencyDirectory(lower) {
+                continue
+            }
+            // Shipped app code (e.g. an Electron app's bundled `package.json`) is never a project.
+            if ScanPolicy.isBundleComponent(name) {
                 continue
             }
 

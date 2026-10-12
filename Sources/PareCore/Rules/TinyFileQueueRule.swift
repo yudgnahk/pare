@@ -71,9 +71,11 @@ public struct TinyFileQueueRule: ScanRule {
             guard budget > 0, !Task.isCancelled else { break }
             var pending = [(url: root, depth: 0)]
             while let next = pending.popLast(), budget > 0, !Task.isCancelled {
-                guard let listing = Self.list(next.url, budget: &budget) else { break }
+                // Drains the bridged URL objects per folder instead of holding them for the whole rule.
+                guard let listing = autoreleasepool(invoking: { Self.list(next.url, budget: &budget) }) else { break }
                 if listing.entryCount >= thresholds.minimumFileCount,
-                   let stats = measure(next.url), let finding = finding(for: next.url, stats: stats, app: root.lastPathComponent) {
+                   let stats = autoreleasepool(invoking: { measure(next.url) }),
+                   let finding = finding(for: next.url, stats: stats, app: root.lastPathComponent) {
                     findings.append(finding)
                 }
                 if next.depth < Self.maxDepth {
