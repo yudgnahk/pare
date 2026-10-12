@@ -98,10 +98,10 @@ final class ScanWorkGuardTests: XCTestCase {
 
     func testWideDirectoryIsCheckedForGroupsButNotDescended() async throws {
         let home = try makeHome()
-        let wide = home.appending(path: ".tool/sessions")
+        let wide = home.appending(path: ".tool/records")
         try FileManager.default.createDirectory(at: wide, withIntermediateDirectories: true)
         for index in 0...VersionSiblingsRule.fanOutLimit {
-            try Data().write(to: wide.appending(path: "session-\(index).json"))
+            try Data().write(to: wide.appending(path: "record-\(index).json"))
         }
         for version in ["1.0.0", "1.1.0", "1.2.0"] {
             try makeVersion(wide.appending(path: version))
