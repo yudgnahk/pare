@@ -71,7 +71,7 @@ public enum RuleCatalog {
             GoCachesRule(),
             PnpmOldStoreRule(),
             ProjectArtifactsRule(),
-            ProjectDependenciesRule(),
+            // ProjectDependenciesRule stays unregistered until its reclaim policy is decided (#68 B1–B4).
         ] + baseline
     }
 
