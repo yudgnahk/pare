@@ -51,12 +51,23 @@ public struct VersionedName: Hashable, Sendable {
     public let version: SemanticVersion
 
     public init?(_ name: String) {
-        guard let range = name.range(of: Self.tokenPattern, options: .regularExpression),
+        // The token needs two literal dots; most directory names have fewer and skip the regex engine.
+        guard Self.hasTwoDots(name),
+              let range = name.range(of: Self.tokenPattern, options: .regularExpression),
               let version = SemanticVersion(String(name[range])) else { return nil }
         self.prefix = String(name[..<range.lowerBound])
         self.token = String(name[range])
         self.suffix = String(name[range.upperBound...])
         self.version = version
+    }
+
+    static func hasTwoDots(_ name: String) -> Bool {
+        var dots = 0
+        for byte in name.utf8 where byte == UInt8(ascii: ".") {
+            dots += 1
+            if dots == 2 { return true }
+        }
+        return false
     }
 
     /// Names in one sibling group differ only in their version token.

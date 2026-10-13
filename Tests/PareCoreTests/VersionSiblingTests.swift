@@ -60,6 +60,20 @@ final class VersionSiblingTests: XCTestCase {
         }
     }
 
+    func testTwoDotPrefilterAgreesWithTheTokenPattern() {
+        let names = [
+            "", "plain", "1.2", "1.2.3", "a1.2.3b", "1..2", "..", "1.2.x", "v18.2.0", "x.y.z",
+            "1.2.3-beta.1", "\u{663}.\u{664}.\u{665}", "\u{FF11}\u{FF0E}\u{FF12}\u{FF0E}\u{FF13}",
+            "1\u{3002}2\u{3002}3", "1.\u{301}2.3", "1.2.\u{301}3", "1\u{2024}2\u{2024}3", "node-v20.11.1-darwin-arm64",
+        ]
+        for name in names {
+            let range = name.range(of: VersionedName.tokenPattern, options: .regularExpression)
+            let expected = range.flatMap { SemanticVersion(String(name[$0])) } != nil
+            XCTAssertEqual(VersionedName(name) != nil, expected, name)
+            if range != nil { XCTAssertTrue(VersionedName.hasTwoDots(name), name) }
+        }
+    }
+
     // MARK: - Rule
 
     func testKeepsNewestTwoAndOffersOlderVersions() async throws {
