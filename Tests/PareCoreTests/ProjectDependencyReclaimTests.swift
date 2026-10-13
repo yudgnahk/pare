@@ -109,6 +109,18 @@ final class ProjectDependencyReclaimTests: XCTestCase {
         XCTAssertNotNil(ScanPolicy.projectActivityDate(projectRoot: project))
         XCTAssertNil(ScanPolicy.projectActivityDate(projectRoot: project, entryBudget: 5), "entry budget")
         XCTAssertNil(ScanPolicy.projectActivityDate(projectRoot: project, timeBudget: 0), "time budget")
+        XCTAssertNil(ScanPolicy.projectActivityDate(projectRoot: project, deadline: .distantPast), "overall deadline")
+        XCTAssertNotNil(ScanPolicy.projectActivityDate(projectRoot: project, deadline: .distantFuture), "control")
+    }
+
+    func testActivityNotReadBeforeTheOverallDeadlineIsNeverIdle() throws {
+        let project = try makeProject("late", lockfile: "package-lock.json", inactiveDays: 30)
+        let deps = project.appending(path: "node_modules")
+        let paths = [root.path]
+
+        XCTAssertTrue(ScanPolicy.isReclaimableProjectDependency(deps, registeredRootPaths: paths, tier: .critical, now: now))
+        XCTAssertFalse(ScanPolicy.isReclaimableProjectDependency(
+            deps, registeredRootPaths: paths, tier: .critical, now: now, activityDeadline: .distantPast))
     }
 
     func testActivityUsesGitIndexAndLog() throws {
@@ -318,6 +330,27 @@ final class ProjectDependencyReclaimTests: XCTestCase {
         XCTAssertTrue(touched.succeeded.isEmpty, "a project touched since the scan is skipped")
     }
 
+    func testEngineFailsClosedOnceTheBatchActivityBudgetIsSpent() async throws {
+        let project = try makeProject("batch", lockfile: "package-lock.json", inactiveDays: 5, payloadBytes: 2_000_000)
+        let deps = project.appending(path: "node_modules")
+        let finding = ScanFinding(category: .projectArtifacts, riskLevel: .review, reason: "test", path: deps.path,
+                                  sizeBytes: 2_000_000, lastUsed: nil, confidence: 0.8)
+        // Every clock read jumps past the batch cap, as if each activity walk had taken that long.
+        let start = now
+        let reads = ClockReads()
+        let slow: @Sendable () -> Date = {
+            start.addingTimeInterval(Double(reads.next()) * (ScanPolicy.projectActivityBatchTimeBudget + 1))
+        }
+
+        let result = try await engine(tier: .critical, clock: slow).clean(findings: [finding], profileName: "test", dryRun: true)
+
+        XCTAssertTrue(result.succeeded.isEmpty, "\(result.succeeded.map(\.originalPath))")
+        XCTAssertEqual(result.skipped.map(\.path), [deps.path])
+        guard case .some(.unsafePath) = result.skipped.first?.error else {
+            return XCTFail("expected the dependency gate to refuse it, got \(result.skipped.map(\.reason))")
+        }
+    }
+
     /// Trap: a `/temp/` path is low-impact and a dependency finding may carry any category; neither skips the gate.
     func testDependencyGateIsMandatoryUnderAllowListedPaths() async throws {
         let busy = try makeProject("temp/busy", lockfile: "package-lock.json", inactiveDays: 1)
@@ -430,14 +463,15 @@ final class ProjectDependencyReclaimTests: XCTestCase {
     private func engine(
         tier: DiskPressureTier,
         openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen),
-        gitInspector: any GitArtifactInspecting = StubGitInspector(status: .notInRepository)
+        gitInspector: any GitArtifactInspecting = StubGitInspector(status: .notInRepository),
+        clock: (@Sendable () -> Date)? = nil
     ) -> CleanupEngine {
         let rootPath: String = root.path
         return CleanupEngineFixture.make(
             store: CleanupTransactionStore(directory: root.appending(path: "store-\(UUID().uuidString)")),
             projectRootsProvider: { [rootPath] },
             exclusionsProvider: { .empty },
-            now: { [now] in now },
+            now: clock ?? { [now] in now },
             gitInspector: gitInspector,
             openFiles: openFiles,
             freeSpace: FixedVolumeFreeSpace.tier(tier)
@@ -490,4 +524,12 @@ final class ProjectDependencyReclaimTests: XCTestCase {
         try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-days * day)],
                                               ofItemAtPath: url.path)
     }
+}
+
+/// Counts clock reads so a test clock can advance on each one.
+private final class ClockReads: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func next() -> Int { lock.withLock { count += 1; return count } }
 }
