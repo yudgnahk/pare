@@ -359,9 +359,7 @@ extension ScanPolicy {
         "/library/application support/com.operasoftware.opera/default/local storage",
     ]
 
-    /// Project **dependency trees** (libs/deps at project root).
-    /// These are *not* free space — removing them breaks installs until reinstall.
-    /// Pare must **not** count them as reclaimable. Prefer global caches (`~/.npm`, cargo, etc.).
+    /// Project dependency folders: only `ProjectDependenciesRule` may offer them (idle project + lockfile, `.review`).
     public static let projectDependencyDirectoryNames: Set<String> = [
         "node_modules",
         "venv",
