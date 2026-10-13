@@ -23,8 +23,11 @@ enum FindingDeduplicator {
                 finding: item.finding
             )
         }
-        let sorted = mergeSamePath(entries).sorted { $0.key.lexicographicallyPrecedes($1.key) }
-        return collapseDescendants(liftingDetectOnlyAncestors(sorted))
+        // Diagnostics explain live system state and are never cleaned, so they must not raise or replace a cleanable finding.
+        let diagnostics = entries.filter { $0.finding.category == .diagnostics }
+        let sorted = mergeSamePath(entries.filter { $0.finding.category != .diagnostics })
+            .sorted { $0.key.lexicographicallyPrecedes($1.key) }
+        return (collapseDescendants(liftingDetectOnlyAncestors(sorted)) + diagnostics)
             .sorted { $0.inputOrder < $1.inputOrder }
             .map(\.finding)
     }
