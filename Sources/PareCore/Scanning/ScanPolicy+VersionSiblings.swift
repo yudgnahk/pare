@@ -2,6 +2,26 @@ import Foundation
 
 // MARK: - Version siblings (old app versions kept side by side)
 
+/// Why a version sibling stays at cleanup time.
+public enum VersionSiblingRefusal: Sendable, Equatable {
+    /// Not a version sibling Pare offers at all; reported as a plain policy refusal.
+    case outsidePolicy
+    case processListUnavailable
+    case fewerNewerVersions
+    case pinnedByAlias
+    case runningFrom
+
+    public var reason: String {
+        switch self {
+        case .outsidePolicy: return "not an old version Pare offers"
+        case .processListUnavailable: return "running programs could not be listed"
+        case .fewerNewerVersions: return "fewer than \(ScanPolicy.versionSiblingKeepCount) newer versions"
+        case .pinnedByAlias: return "an alias pins this version group"
+        case .runningFrom: return "a running program uses this version"
+        }
+    }
+}
+
 extension ScanPolicy {
 
     /// Fewer side-by-side versions than this is normal (current + one rollback).
@@ -36,15 +56,32 @@ extension ScanPolicy {
 
     /// Cleanup-time gate: still at least two newer siblings, no alias pins the group, and no running process
     /// executes from it. Fail-closed: no process snapshot means not reclaimable.
-    public static func isReclaimableVersionSibling(_ url: URL, runningExecutables: [String]?) -> Bool {
-        // isNeverCleanPath once #46 lands.
-        guard let runningExecutables, isVersionSiblingLocation(url), isVersionSiblingMember(url),
+    public static func isReclaimableVersionSibling(
+        _ url: URL,
+        runningExecutables: [String]?,
+        customRoots: [URL] = GoCacheLocations.shared.resolvedRoots
+    ) -> Bool {
+        versionSiblingRefusal(url, runningExecutables: runningExecutables, customRoots: customRoots) == nil
+    }
+
+    /// Why `url` must stay at cleanup time, or nil when `isReclaimableVersionSibling` would pass it.
+    public static func versionSiblingRefusal(
+        _ url: URL,
+        runningExecutables: [String]?,
+        customRoots: [URL] = GoCacheLocations.shared.resolvedRoots
+    ) -> VersionSiblingRefusal? {
+        guard isVersionSiblingLocation(url), isVersionSiblingMember(url),
+              !isNeverCleanPath(url, customRoots: customRoots),
               !containsSensitiveDataMarker(url), !isSearchIndexSensitivePath(url),
-              let own = VersionedName(url.lastPathComponent) else { return false }
+              let own = VersionedName(url.lastPathComponent) else { return .outsidePolicy }
+        guard let runningExecutables else { return .processListUnavailable }
         let siblings = versionSiblings(of: url)
-        let newer = siblings.filter { own.version < $0.name.version }
-        return newer.count >= versionSiblingKeepCount && !isPinnedVersionSiblingGroup(siblings.map(\.url))
-            && !isExecutedFrom(url, runningExecutables: runningExecutables)
+        guard siblings.filter({ own.version < $0.name.version }).count >= versionSiblingKeepCount else {
+            return .fewerNewerVersions
+        }
+        guard !isPinnedVersionSiblingGroup(siblings.map(\.url)) else { return .pinnedByAlias }
+        guard !isExecutedFrom(url, runningExecutables: runningExecutables) else { return .runningFrom }
+        return nil
     }
 
     /// Inside the rule's own roots and nowhere protected: a dot directory directly in a home folder (one
