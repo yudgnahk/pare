@@ -6,7 +6,7 @@ public enum CacheActivity: String, Sendable, Equatable {
 }
 
 public enum CacheActivityClassifier {
-    /// Defaults pending a product decision on the hot/cold cut-offs.
+    /// Hot/cold cut-offs settled at 3 and 30 days (maintainer, 2026-10-13).
     public static let defaultHotDays = 3
     public static let defaultColdDays = 30
 

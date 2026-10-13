@@ -134,7 +134,8 @@ public actor ProjectRootDiscovery {
         isStale = false
         let search = await spotlightSearch()
         lastDiscoveryTimedOut = search.timedOut
-        let roots = Self.deduplicate(search.urls)
+        let userExcluded = Set(knownRoots.filter { !$0.value }.keys)
+        let roots = Self.deduplicate(search.urls, userExcluded: userExcluded)
 
         for root in roots {
             if knownRoots[root.path] == nil {
@@ -143,6 +144,7 @@ public actor ProjectRootDiscovery {
         }
         // Prune roots that no longer exist on disk.
         knownRoots = knownRoots.filter { FileManager.default.fileExists(atPath: $0.key) }
+        dropNestedConfirmedRoots()
 
         // Advanced even after a timeout, so a machine without Spotlight is not re-queried every scan.
         lastDiscoveredAt = now()
@@ -174,42 +176,40 @@ public actor ProjectRootDiscovery {
 
     // MARK: - Deduplication (internal but exposed for tests)
 
-    /// Converts Spotlight hits to project roots, filters excluded path components,
-    /// and collapses submodule / monorepo nesting.
-    static func deduplicate(_ hits: [URL]) -> [URL] {
-        // 1. Resolve each hit to its project root.
-        let rootPaths = Set(hits.map { projectRoot(forSignalHit: $0).path })
+    /// Converts Spotlight hits to project roots, filters excluded path components, and keeps only
+    /// outermost roots at any depth. A root in `userExcluded` is returned but never swallows the roots inside it.
+    static func deduplicate(_ hits: [URL], userExcluded: Set<String> = []) -> [URL] {
+        let paths = Set(hits.map { projectRoot(forSignalHit: $0).path }).filter { !isExcludedRoot($0) }
+        return outermost(paths, nonParents: userExcluded).map { URL(fileURLWithPath: $0) }
+    }
 
-        // 2. Filter paths containing excluded path components (list lives in ScanPolicy — R1.4).
-        let filtered = rootPaths.filter { path in
-            !ScanPolicy.isExcludedFromProjectDiscovery(URL(fileURLWithPath: path))
+    /// `paths` minus every path inside another one (component-wise, so `/a/proj-2` is not inside `/a/proj`).
+    private static func outermost(_ paths: Set<String>, nonParents: Set<String>) -> [String] {
+        let keyed = paths.map { (path: $0, components: foldedComponents($0)) }.sorted {
+            $0.components.count != $1.components.count ? $0.components.count < $1.components.count : $0.path < $1.path
         }
-
-        // 3. Sort by depth ascending (shallowest first).
-        var sorted = filtered.sorted { a, b in
-            a.components(separatedBy: "/").count < b.components(separatedBy: "/").count
-        }
-        sorted = Array(Set(sorted)).sorted {
-            $0.components(separatedBy: "/").count < $1.components(separatedBy: "/").count
-                || ($0.components(separatedBy: "/").count == $1.components(separatedBy: "/").count && $0 < $1)
-        }
-
-        // 4. Submodule deduplication: discard any root nested within another root
-        //    by ≤ 3 path components (treat deeper nesting as independent projects).
-        var result: [String] = []
-        for candidate in sorted {
-            let candidateDepth = candidate.components(separatedBy: "/").count
-            let isCollapsible = result.contains { parent in
-                guard candidate.hasPrefix(parent + "/") else { return false }
-                let parentDepth = parent.components(separatedBy: "/").count
-                return candidateDepth - parentDepth <= 3
+        var kept: [String] = []
+        var parents: [[String]] = []
+        for entry in keyed {
+            let isNested = parents.contains {
+                ScanPolicy.isEqualToOrDescendant(candidateComponents: entry.components, rootComponents: $0)
             }
-            if !isCollapsible {
-                result.append(candidate)
-            }
+            if isNested { continue }
+            kept.append(entry.path)
+            if !nonParents.contains(entry.path) { parents.append(entry.components) }
         }
+        return kept
+    }
 
-        return result.map { URL(fileURLWithPath: $0) }
+    private static func foldedComponents(_ path: String) -> [String] {
+        URL(fileURLWithPath: path).standardizedFileURL.pathComponents.map { $0.lowercased() }
+    }
+
+    /// Roots persisted before nesting collapsed at any depth; excluded entries and manual roots are untouched.
+    private func dropNestedConfirmedRoots() {
+        let confirmed = Set(knownRoots.filter { $0.value }.keys)
+        let outermost = Set(Self.outermost(confirmed, nonParents: []))
+        for path in confirmed.subtracting(outermost) { knownRoots[path] = nil }
     }
 
     /// The hit's folder, or the folder holding an enclosing `.xcodeproj`/`.xcworkspace`

@@ -284,18 +284,14 @@ final class ProjectRootDiscoveryTests: XCTestCase {
         XCTAssertFalse(paths.contains("/Users/user/code/subdir"), "Inner root at depth 2 should be collapsed")
     }
 
-    func testKeepsDeeplyNestedIndependentProject() {
-        // Root + a deeply nested project (4+ levels deep) — should keep both.
-        // Avoid excluded path components (/vendor/, /node_modules/, etc.).
+    func testCollapsesDeeplyNestedProject() {
+        // A root more than 3 levels inside another is still part of the outer project (maintainer, 2026-10-13).
         let outer = URL(fileURLWithPath: "/Users/user/code/.git")
         let deep  = URL(fileURLWithPath: "/Users/user/code/services/external/lib/deep_project/.git")
 
-        let result = ProjectRootDiscovery.deduplicate([outer, deep])
-        let paths = result.map(\.path)
+        let paths = ProjectRootDiscovery.deduplicate([outer, deep]).map(\.path)
 
-        XCTAssertTrue(paths.contains("/Users/user/code"), "Outer root should be present")
-        XCTAssertTrue(paths.contains("/Users/user/code/services/external/lib/deep_project"),
-                      "Deeply nested root (>3 levels) should be kept as independent project")
+        XCTAssertEqual(paths, ["/Users/user/code"])
     }
 
     func testFiltersLibraryPath() {
