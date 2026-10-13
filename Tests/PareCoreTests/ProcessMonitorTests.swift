@@ -33,11 +33,14 @@ final class ProcessMonitorTests: XCTestCase {
     private func records(cpu: UInt64) -> [ProcessRecord] {
         [
             ProcessRecord(id: ProcessID(pid: 10, startMicros: 1), parentPID: 1, kernelName: "Paseo Helper",
-                          executablePath: "/Applications/Paseo.app/Contents/MacOS/Paseo Helper", footprintBytes: 100 << 20, cpuTimeNanos: 0),
+                          executablePath: "/Applications/Paseo.app/Contents/MacOS/Paseo Helper", footprintBytes: 100 << 20,
+                          residentBytes: 70 << 20, cpuTimeNanos: 0),
             ProcessRecord(id: ProcessID(pid: 20, startMicros: 1), parentPID: 10, kernelName: "claude",
-                          executablePath: "/opt/homebrew/bin/claude", footprintBytes: 250 << 20, cpuTimeNanos: cpu),
+                          executablePath: "/opt/homebrew/bin/claude", footprintBytes: 250 << 20,
+                          residentBytes: 60 << 20, cpuTimeNanos: cpu),
             ProcessRecord(id: ProcessID(pid: 30, startMicros: 1), parentPID: 20, kernelName: "node",
-                          executablePath: "/usr/local/bin/node", footprintBytes: 40 << 20, cpuTimeNanos: 0)
+                          executablePath: "/usr/local/bin/node", footprintBytes: 40 << 20,
+                          residentBytes: 15 << 20, cpuTimeNanos: 0)
         ]
     }
 
@@ -68,14 +71,18 @@ final class ProcessMonitorTests: XCTestCase {
         XCTAssertEqual(claude.paseoAgent?.lastStatus, "running")
         XCTAssertEqual(claude.children.first?.name, "gitnexus mcp")
         XCTAssertEqual(daemon.branchFootprintBytes, 390 << 20)
+        XCTAssertEqual(daemon.branchResidentBytes, 145 << 20)
+        XCTAssertEqual(tree.totalResidentBytes, 145 << 20)
     }
 
     func testModelNeverContainsRawArguments() async throws {
         let tree = try await makeMonitor(provider: fakeProvider()).refresh()
 
+        let kinds = ProcessKindSummary.totals(tree.roots)
         var dumped = ""
         dump(tree, to: &dumped)
-        let rendered = dumped + String(reflecting: tree)
+        dump(kinds, to: &dumped)
+        let rendered = dumped + String(reflecting: tree) + String(reflecting: kinds)
         for fragment in [secretToken, "--mcp-config", "127.0.0.1:6767", "callerAgentId", agentID.uuidString.lowercased(), "internal instructions"] {
             XCTAssertFalse(rendered.localizedCaseInsensitiveContains(fragment), "model leaks \(fragment)")
         }

@@ -11,8 +11,10 @@ final class ProcessMonitorViewModelTests: XCTestCase {
             name: "p\(pid)",
             executableName: "p\(pid)",
             footprintBytes: 1,
+            residentBytes: 1,
             cpuPercent: nil,
             branchFootprintBytes: 1,
+            branchResidentBytes: 1,
             branchCPUPercent: nil,
             descendantCount: children.count,
             paseoAgent: nil,
@@ -66,6 +68,17 @@ final class ProcessMonitorViewModelTests: XCTestCase {
         for agent in agents {
             XCTAssertTrue(agent.cwd?.hasPrefix(SnapshotFixtures.root + "/") == true, agent.cwd ?? "nil")
         }
+        XCTAssertLessThan(tree.totalResidentBytes, tree.totalFootprintBytes)
+    }
+
+    func testPinnedTreePublishesRepeatedKinds() {
+        let model = ProcessMonitorViewModel(monitor: ProcessMonitor(provider: EmptyProvider(), paseo: nil))
+
+        model.applySnapshotTree(SnapshotFixtures.processTree, expanded: [])
+
+        XCTAssertEqual(Set(model.kinds.map(\.name)), ["Claude Code", "gitnexus mcp", "code-review-graph serve"])
+        XCTAssertEqual(model.kinds.first?.name, "Claude Code")
+        XCTAssertTrue(model.kinds.allSatisfy { $0.processCount == 3 })
     }
 }
 
