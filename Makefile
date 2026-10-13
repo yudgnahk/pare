@@ -16,7 +16,7 @@ ifeq ($(origin SDKROOT),undefined)
   endif
 endif
 
-.PHONY: help build test run start run-app ensure-icon run-baseline run-developer run-designer run-video-builder icon release clean
+.PHONY: help build test run start run-app ensure-icon run-baseline run-developer run-designer run-video-builder icon release release-adhoc clean
 
 help:
 	@printf "Targets:\n"
@@ -31,6 +31,7 @@ help:
 	@printf "  make run-video-builder    Run video-builder scan\n"
 	@printf "  make icon                 Generate AppIcon.icns from scripts/icon.svg (macOS 13+ only)\n"
 	@printf "  make release              Build signed + notarized DMG (requires env vars — see scripts/release.sh)\n"
+	@printf "  make release-adhoc        Build ad-hoc signed zip + DMG, no Apple account (see docs/distribution-adhoc.md)\n"
 	@printf "  make clean                Remove .build artifacts\n"
 	@printf "\nExamples:\n"
 	@printf "  make start\n"
@@ -94,6 +95,9 @@ icon:
 
 release:
 	bash scripts/release.sh
+
+release-adhoc:
+	bash scripts/release-adhoc.sh
 
 clean:
 	rm -rf .build dist
