@@ -52,6 +52,16 @@ final class InUseGateTests: XCTestCase {
         }
     }
 
+    func testEscapedNonASCIIPathsMatchTheirRealSpelling() {
+        // lsof without a UTF-8 locale (app launched from Finder) prints `Dự án` as `D\xe1\xbb\xb1 \xc3\xa1n`.
+        let output = "p88\ncnode\nf21\n" + #"n/Users/k/D\xe1\xbb\xb1 \xc3\xa1n/web/server.js"# + "\n"
+        let snapshot = OpenFileSnapshot(lsofFieldOutput: output)
+
+        XCTAssertEqual(snapshot.holder(atOrUnder: "/Users/k/Dự án/web"), "node (pid 88)")
+        XCTAssertEqual(snapshot.holder(atOrUnder: "/Users/k/Dự án/web/server.js"), "node (pid 88)")
+        XCTAssertNil(snapshot.holder(atOrUnder: "/Users/k/Dự án/other"))
+    }
+
     // MARK: - Fail open / fail closed
 
     func testUnavailableSnapshotFailsClosedOnlyForRiskyCaches() {
@@ -113,6 +123,23 @@ final class InUseGateTests: XCTestCase {
         }
         XCTAssertEqual(path, cache.path)
         XCTAssertEqual(holder, "ExampleApp (pid 77)")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cache.path))
+        XCTAssertEqual(fixture.trashedCount, 0)
+    }
+
+    func testEscapedListingStillBlocksANonASCIICache() async throws {
+        let fixture = try Fixture()
+        let cache = try fixture.makeCache("com.example.Dự án")
+        let escaped = cache.path.utf8.map { $0 > 0x7F ? String(format: "\\x%02x", $0) : String(UnicodeScalar($0)) }.joined()
+        let engine = fixture.engine(snapshot: OpenFileSnapshot(lsofFieldOutput: "p78\ncnode\nf4\nn\(escaped)/payload.bin\n"))
+
+        let result = try await engine.clean(findings: [fixture.finding(cache)], profileName: "test")
+
+        XCTAssertTrue(result.succeeded.isEmpty, "\(result.succeeded.map(\.originalPath))")
+        guard case .some(.inUse(_, let holder)) = result.skipped.first?.error else {
+            return XCTFail("expected .inUse, got \(result.skipped)")
+        }
+        XCTAssertEqual(holder, "node (pid 78)")
         XCTAssertTrue(FileManager.default.fileExists(atPath: cache.path))
         XCTAssertEqual(fixture.trashedCount, 0)
     }

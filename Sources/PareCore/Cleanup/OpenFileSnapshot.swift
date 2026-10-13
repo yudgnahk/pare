@@ -23,7 +23,7 @@ public struct OpenFileSnapshot: Sendable {
             case "n" where value.hasPrefix("/"):
                 let holder = "\(command.isEmpty ? "process" : command) (pid \(pid))"
                 // Ancestors of an indexed key are already indexed, so stop at the first hit.
-                for key in Self.selfAndAncestors(ScanPolicy.canonicalPathKey(value)) {
+                for key in Self.selfAndAncestors(ScanPolicy.canonicalPathKey(LsofFieldName.unescaped(value))) {
                     guard holders[key] == nil else { break }
                     holders[key] = holder
                 }
