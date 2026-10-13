@@ -82,6 +82,19 @@ final class BrewCleanupTests: XCTestCase {
         XCTAssertEqual(log.lines.count, 1)
     }
 
+    func testPreviewAndRunBothDisableAutoremove() async throws {
+        let stub = StubProcessRunner(result: ProcessResult(standardOutput: Self.preview, standardError: "", exitCode: 0))
+        let action = BrewCleanupAction(runner: BrewRunner(brewPath: "/fake/bin/brew", processRunner: stub))
+
+        _ = try await action.run(confirmed: true) { _ in }
+
+        XCTAssertEqual(stub.environments.count, 2)
+        for env in stub.environments {
+            XCTAssertEqual(env?["HOMEBREW_NO_AUTOREMOVE"], "1", "autoremove would uninstall formulae the preview never shows")
+            XCTAssertEqual(env?["HOMEBREW_NO_AUTO_UPDATE"], "1")
+        }
+    }
+
     func testNothingToCleanOrFailedPreviewNeverRunsCleanup() async {
         let empty = StubProcessRunner(result: ProcessResult(standardOutput: "", standardError: "", exitCode: 0))
         let failing = StubProcessRunner(result: ProcessResult(standardOutput: "", standardError: "Error: boom", exitCode: 1))

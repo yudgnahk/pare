@@ -103,6 +103,8 @@ public struct BrewRunner: Sendable {
     private func makeEnvironment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         env["HOMEBREW_NO_AUTO_UPDATE"] = "1"
+        // Otherwise cleanup/uninstall also remove "unneeded" formulae that no preview or dialog lists.
+        env["HOMEBREW_NO_AUTOREMOVE"] = "1"
         env["HOME"] = FileManager.default.homeDirectoryForCurrentUser.path
         return env
     }
