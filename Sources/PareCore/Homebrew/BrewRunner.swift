@@ -66,7 +66,7 @@ public struct BrewRunner: Sendable {
     /// Yields both stdout and stderr lines interleaved.
     public func stream(_ args: [String]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 guard let brewPath else {
                     continuation.finish(throwing: BrewError.notInstalled)
                     return
@@ -95,6 +95,8 @@ public struct BrewRunner: Sendable {
                     continuation.finish(throwing: error)
                 }
             }
+            // Cancelling the consumer cancels the inner stream, which terminates brew.
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

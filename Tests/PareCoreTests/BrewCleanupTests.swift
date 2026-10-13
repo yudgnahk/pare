@@ -110,6 +110,74 @@ final class BrewCleanupTests: XCTestCase {
         }
     }
 
+    // MARK: - Timeout and cancel
+
+    func testHungPreviewTimesOut() async {
+        let hanging = HangingProcessRunner(previewOutput: nil)
+        let action = BrewCleanupAction(runner: BrewRunner(brewPath: "/fake/bin/brew", processRunner: hanging),
+                                       previewTimeoutSeconds: 0.2)
+
+        do {
+            _ = try await action.preview()
+            XCTFail("a hung preview must time out")
+        } catch {
+            guard case .timedOut = error as? BrewCleanupError else { return XCTFail("expected .timedOut, got \(error)") }
+        }
+    }
+
+    func testHungCleanupTimesOutAndStopsBrew() async throws {
+        let hanging = HangingProcessRunner(previewOutput: Self.preview)
+        let action = BrewCleanupAction(runner: BrewRunner(brewPath: "/fake/bin/brew", processRunner: hanging),
+                                       cleanupTimeoutSeconds: 0.2)
+
+        do {
+            _ = try await action.run(confirmed: true) { _ in }
+            XCTFail("a hung cleanup must time out")
+        } catch {
+            guard case .timedOut = error as? BrewCleanupError else { return XCTFail("expected .timedOut, got \(error)") }
+        }
+        try await waitUntil { hanging.streamTerminated }
+        XCTAssertTrue(hanging.streamTerminated, "the process stream must be torn down so brew is terminated")
+    }
+
+    func testCancelledCleanupThrowsInsteadOfFinishing() async throws {
+        let hanging = HangingProcessRunner(previewOutput: Self.preview)
+        let action = BrewCleanupAction(runner: BrewRunner(brewPath: "/fake/bin/brew", processRunner: hanging))
+        let task = Task { try await action.run(confirmed: true) { _ in } }
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            XCTFail("a cancelled cleanup must not report success")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+        try await waitUntil { hanging.streamTerminated }
+        XCTAssertTrue(hanging.streamTerminated)
+    }
+
+    func testSystemRunnerTerminatesACancelledChild() async throws {
+        let started = Date()
+        let task = Task {
+            try await SystemProcessRunner().run(executablePath: "/bin/sleep", arguments: ["30"], environment: nil)
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        task.cancel()
+        let result = try await task.value
+
+        XCTAssertNotEqual(result.exitCode, 0, "terminated, not finished")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 10)
+    }
+
+    private func waitUntil(_ condition: () -> Bool) async throws {
+        for _ in 0..<40 where !condition() {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
     func testMissingBrewFailsThePreview() async {
         let action = BrewCleanupAction(runner: BrewRunner(brewPath: nil, processRunner: StubProcessRunner()))
 
@@ -127,4 +195,42 @@ private final class LineCollector: @unchecked Sendable {
     var lines: [String] { lock.withLock { stored } }
 
     func append(_ line: String) { lock.withLock { stored.append(line) } }
+}
+
+/// Stands in for a brew stuck on its lock: `run` returns `previewOutput` (or hangs until cancelled when nil),
+/// and the cleanup stream never ends on its own.
+private final class HangingProcessRunner: ProcessRunning, @unchecked Sendable {
+    private let lock = NSLock()
+    private var terminated = false
+    private var open: [AsyncThrowingStream<ProcessOutputLine, Error>.Continuation] = []
+    private let previewOutput: String?
+
+    var streamTerminated: Bool { lock.withLock { terminated } }
+
+    init(previewOutput: String?) {
+        self.previewOutput = previewOutput
+    }
+
+    func run(executablePath: String, arguments: [String], environment: [String: String]?) async throws -> ProcessResult {
+        guard let previewOutput else {
+            try await Task.sleep(nanoseconds: 60_000_000_000)
+            return ProcessResult(standardOutput: "", standardError: "", exitCode: 0)
+        }
+        return ProcessResult(standardOutput: previewOutput, standardError: "", exitCode: 0)
+    }
+
+    func streamLines(
+        executablePath: String,
+        arguments: [String],
+        environment: [String: String]?
+    ) -> AsyncThrowingStream<ProcessOutputLine, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(.stdout("==> Waiting for another brew process to finish"))
+            continuation.onTermination = { [weak self] _ in
+                guard let self else { return }
+                self.lock.withLock { self.terminated = true }
+            }
+            lock.withLock { open.append(continuation) }
+        }
+    }
 }
