@@ -28,6 +28,9 @@ then:
   the selection, so they leave hot rows out too and their sheets say how many. A hot row is ticked only
   by its own checkbox (a folder row whose members are all hot is that row). Unticking a category or
   tool group also unticks hot rows inside it.
+- **Group checkboxes show unticked hot rows.** A category, tool group or folder with an unticked hot row
+  shows partial, even when every other row is ticked; it shows fully ticked only once its hot rows are.
+  Clicking a partial group ticks its non-hot rows, or unticks the whole group when they already are.
 - **Totals follow.** Selected count/bytes on the summary card and `CleanActionBar` subtract hot members of
   selected folders; the clean expands folders without them.
 - **Clean Selected warns.** With hot rows ticked, the sheet says "N items were written to in the last

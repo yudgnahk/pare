@@ -118,24 +118,14 @@ struct ScanSelectionModel {
 
     func folderSelectionState(_ row: CategoryFolderRow) -> CategorySelectState {
         guard row.isSelectable else { return .none }
-        let hot = hotPathsByFolderId[row.id] ?? []
-        let hotSelected = hot.intersection(selectedPaths).count
-        if isFullyHot(row.id) {
-            if hotSelected == 0 { return .none }
-            return hotSelected == hot.count ? .all : .partial
-        }
-        if selectedFolderIds.contains(row.id) { return hotSelected == hot.count ? .all : .partial }
-        return hotSelected > 0 ? .partial : .none
+        return folderState(row.id)
     }
 
-    /// Tri-state over an arbitrary folder-id set (tool group or category); all-hot folders do not count.
+    /// Tri-state over an arbitrary folder-id set (tool group or category); an unticked hot row keeps it below `.all`.
     func selectionState(of folderIds: Set<String>) -> CategorySelectState {
-        let folderIds = bulkFolderIds(folderIds)
-        guard !folderIds.isEmpty else { return .none }
-        let hit = folderIds.intersection(selectedFolderIds).count
-        if hit == 0 { return .none }
-        if hit == folderIds.count { return .all }
-        return .partial
+        let states = Set(folderIds.map(folderState))
+        if states.isEmpty || states == [.none] { return .none }
+        return states == [.all] ? .all : .partial
     }
 
     func safeFolderIds(in category: ScanCategory) -> Set<String> {
@@ -183,10 +173,9 @@ struct ScanSelectionModel {
         recomputeMetrics()
     }
 
-    /// Toggle a whole folder-id set: all-selected → subtract, otherwise → union; never ticks a hot path.
+    /// Toggle a whole folder-id set: every non-hot folder ticked → subtract (hot too), otherwise → union; never ticks a hot path.
     mutating func toggleFolderIds(_ folderIds: Set<String>) {
         let bulk = bulkFolderIds(folderIds)
-        guard !bulk.isEmpty else { return }
         if bulk.isSubset(of: selectedFolderIds) {
             selectedFolderIds.subtract(bulk)
             for id in folderIds { selectedPaths.subtract(hotPathsByFolderId[id] ?? []) }
@@ -234,6 +223,17 @@ struct ScanSelectionModel {
     private func isTouched(_ path: String) -> Bool {
         if touchedPaths.contains(path) { return true }
         return folderIdByPath[path].map(touchedFolderIds.contains) ?? false
+    }
+
+    private func folderState(_ folderId: String) -> CategorySelectState {
+        let hot = hotPathsByFolderId[folderId] ?? []
+        let hotSelected = hot.intersection(selectedPaths).count
+        if isFullyHot(folderId) {
+            if hotSelected == 0 { return .none }
+            return hotSelected == hot.count ? .all : .partial
+        }
+        if selectedFolderIds.contains(folderId) { return hotSelected == hot.count ? .all : .partial }
+        return hotSelected > 0 ? .partial : .none
     }
 
     private func isFullyHot(_ folderId: String) -> Bool {

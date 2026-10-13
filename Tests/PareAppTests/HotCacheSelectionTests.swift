@@ -135,7 +135,7 @@ final class HotCacheSelectionTests: XCTestCase {
         XCTAssertFalse(model.isSelected(path: solo))
         XCTAssertFalse(model.isSelected(path: mixedOne))
         XCTAssertTrue(model.isSelected(path: mixedTwo))
-        XCTAssertEqual(model.selectionState(of: aggregate.safeFolderIds), .all)
+        XCTAssertEqual(model.selectionState(of: aggregate.safeFolderIds), .partial)
 
         model.clear()
         model.toggleFolderIds(model.safeFolderIds(in: .userCaches))
@@ -180,6 +180,77 @@ final class HotCacheSelectionTests: XCTestCase {
 
         XCTAssertFalse(model.isSelected(path: mixedOne))
         XCTAssertEqual(model.selectedCount, 0)
+    }
+
+    // MARK: - Group checkbox state
+
+    func testGroupWithUntickedHotRowIsPartialUntilThatRowIsTicked() {
+        let cases: [(name: String, hot: String)] = [("all-hot folder", solo), ("hot member of a mixed folder", mixedOne)]
+        for testCase in cases {
+            var (model, _) = makeModel()
+            let group = model.safeFolderIds(in: .userCaches)
+            model.applyHotPaths([testCase.hot])
+            XCTAssertEqual(model.selectionState(of: group), .partial, testCase.name)
+
+            model.togglePath(testCase.hot)
+
+            XCTAssertEqual(model.selectionState(of: group), .all, testCase.name)
+        }
+    }
+
+    func testClickingAGroupPartialOnlyFromHotUnticksTheWholeGroup() {
+        var (model, _) = makeModel()
+        let group = model.safeFolderIds(in: .userCaches)
+        model.applyHotPaths([solo])
+
+        model.toggleFolderIds(group)
+        XCTAssertEqual(model.selectionState(of: group), .none)
+        XCTAssertEqual(model.selectedCount, 0)
+
+        model.toggleFolderIds(group)
+        XCTAssertFalse(model.isSelected(path: solo))
+        XCTAssertEqual(model.selectionState(of: group), .partial)
+    }
+
+    func testClickingAnAllHotGroupUnticksItsTickedHotRows() throws {
+        var (model, aggregate) = makeModel()
+        let group: Set<String> = [try row(solo, in: aggregate).id]
+        model.applyHotPaths([solo])
+        model.togglePath(solo)
+        XCTAssertEqual(model.selectionState(of: group), .all)
+
+        model.toggleFolderIds(group)
+
+        XCTAssertFalse(model.isSelected(path: solo))
+        XCTAssertEqual(model.selectionState(of: group), .none)
+    }
+
+    func testClickingAGroupWithAnUntickedNonHotRowTicksNonHotRows() throws {
+        var (model, aggregate) = makeModel()
+        let group = model.safeFolderIds(in: .userCaches)
+        model.applyHotPaths([solo])
+        model.toggleFolder(try row(other, in: aggregate))
+
+        model.toggleFolderIds(group)
+
+        XCTAssertTrue(model.isSelected(path: other))
+        XCTAssertFalse(model.isSelected(path: solo))
+        XCTAssertEqual(model.selectedBytes, 35)
+    }
+
+    func testGroupStateWithoutHotLabelsIsUnchanged() throws {
+        var (model, aggregate) = makeModel()
+        let group = model.safeFolderIds(in: .userCaches)
+        XCTAssertEqual(model.selectionState(of: group), .all)
+
+        model.toggleFolder(try row(other, in: aggregate))
+        XCTAssertEqual(model.selectionState(of: group), .partial)
+
+        model.toggleFolderIds(group)
+        XCTAssertEqual(model.selectionState(of: group), .all)
+
+        model.toggleFolderIds(group)
+        XCTAssertEqual(model.selectionState(of: group), .none)
     }
 
     func testNewScanForgetsHotRows() {
