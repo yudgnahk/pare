@@ -211,6 +211,31 @@ final class ScanWorkGuardTests: XCTestCase {
         XCTAssertEqual(second.riskLevel, .advanced)
     }
 
+    func testGoRuleReusesBuildCacheSizeUntilAnEntryIsAddedOrTrimmed() async throws {
+        let home = tmp.appending(path: "home")
+        let bucket = home.appending(path: "Library/Caches/go-build/ab")
+        try FileManager.default.createDirectory(at: bucket, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 8192).write(to: bucket.appending(path: "ab01-a"))
+        let store = GoModuleCacheSizeStore(storeURL: tmp.appending(path: "store/sizes.json"))
+        let rule = GoCachesRule(locations: GoCacheLocations(query: { nil }), moduleSizes: store)
+        func scan() async throws -> ScanFinding {
+            let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: home))
+            return try XCTUnwrap(findings?.first)
+        }
+
+        let measured = try await scan()
+        let remembered = try await scan()
+        try Data(repeating: 1, count: 1_048_576).write(to: bucket.appending(path: "ab02-a"))
+        let grown = try await scan()
+        try FileManager.default.removeItem(at: bucket.appending(path: "ab02-a"))
+        let trimmed = try await scan()
+
+        XCTAssertEqual(remembered.sizeBytes, measured.sizeBytes)
+        XCTAssertEqual(remembered.annotations, [.workingSet(selfTrimDays: GoCachesRule.buildCacheSelfTrimDays)])
+        XCTAssertGreaterThan(grown.sizeBytes, measured.sizeBytes, "a new entry touches its bucket, so the cache is re-measured")
+        XCTAssertEqual(trimmed.sizeBytes, measured.sizeBytes, "a trimmed entry touches its bucket too")
+    }
+
     // MARK: - Helpers
 
     @discardableResult

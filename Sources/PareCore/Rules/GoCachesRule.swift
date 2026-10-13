@@ -44,7 +44,7 @@ public struct GoCachesRule: ScanRule {
             let annotation = FindingAnnotation.workingSet(
                 selfTrimDays: target.isModuleCache ? nil : Self.buildCacheSelfTrimDays
             )
-            if target.isModuleCache, let remembered = rememberedModuleFinding(at: root, annotation: annotation) {
+            if let remembered = rememberedFinding(at: root, annotation: annotation) {
                 findings.append(remembered)
                 continue
             }
@@ -56,7 +56,7 @@ public struct GoCachesRule: ScanRule {
                 confidence: confidence,
                 sizeIndex: environment.sizeIndex
             )
-            if target.isModuleCache, let finding = measured.first, finding.isSizeComplete {
+            if let finding = measured.first, finding.isSizeComplete {
                 moduleSizes.remember(finding.sizeBytes, for: root)
             }
             findings += measured.map { $0.annotated(with: annotation) }
@@ -64,8 +64,8 @@ public struct GoCachesRule: ScanRule {
         return findings
     }
 
-    /// The module cache's last complete size, when `GoModuleCacheSizeStore` still trusts it.
-    private func rememberedModuleFinding(at root: URL, annotation: FindingAnnotation) -> ScanFinding? {
+    /// The cache's last complete size, when `GoModuleCacheSizeStore` still trusts it.
+    private func rememberedFinding(at root: URL, annotation: FindingAnnotation) -> ScanFinding? {
         guard FileManager.default.fileExists(atPath: root.path),
               let bytes = moduleSizes.size(for: root), bytes > 0 else { return nil }
         return ScanFinding(
