@@ -3,7 +3,8 @@ import XCTest
 import PareCore
 @testable import PareApp
 
-/// Temp-only cleanup sandbox: fixtures, undo store and "Trash" all live under one `/private/tmp` root.
+/// Temp-only cleanup sandbox: fixtures, undo store and "Trash" all live under one `/private/tmp` root;
+/// the in-use gate sees nothing open and nothing running.
 struct HermeticCleanupFixture {
     let root: URL
     /// Contains `/Library/Caches/` so `ScanPolicy.isLowImpactPath` accepts it, like `CleanupEngineTests`.
@@ -37,13 +38,27 @@ struct HermeticCleanupFixture {
                 let destination = trash.appending(path: "\(UUID().uuidString)-\(url.lastPathComponent)")
                 try FileManager.default.moveItem(at: url, to: destination)
                 return destination
-            }
+            },
+            openFiles: NothingOpenProvider(),
+            runningApps: NothingRunningProvider()
         )
     }
 
     func remove() {
         try? FileManager.default.removeItem(at: root)
     }
+}
+
+/// In-use gate stubs so app tests never spawn `lsof` or read `NSWorkspace`.
+private struct NothingOpenProvider: OpenFileSnapshotProviding {
+    // A well-formed listing, as the real provider returns; it yields nil for output without a `p` record.
+    func snapshot() async -> OpenFileSnapshot? {
+        OpenFileSnapshot(lsofFieldOutput: "p1\ncfixture\nn/nonexistent/pare-fixture\n")
+    }
+}
+
+private struct NothingRunningProvider: RunningAppsProviding {
+    func runningApps() -> [RunningApp] { [] }
 }
 
 extension XCTestCase {

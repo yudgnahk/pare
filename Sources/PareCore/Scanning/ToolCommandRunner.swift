@@ -56,12 +56,29 @@ public struct ToolCommandRunner: Sendable {
     /// Runs the executable with a bounded timeout and returns trimmed stdout on
     /// exit status 0. Any failure (launch error, non-zero exit, timeout) → nil.
     public func capture(executable: URL, arguments: [String]) async -> String? {
+        guard let result = await run(executable: executable, arguments: arguments),
+              result.exitCode == 0 else { return nil }
+        return String(data: result.stdout, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Runs the executable with a bounded timeout and returns its exit code and raw stdout.
+    /// `environment` is layered over the inherited one. Nil only on launch failure or timeout.
+    public func run(
+        executable: URL,
+        arguments: [String],
+        environment: [String: String] = [:]
+    ) async -> (exitCode: Int32, stdout: Data)? {
         let timeout = timeoutSeconds
         return await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = executable
             process.arguments = arguments
             process.standardInput = FileHandle.nullDevice
+            if !environment.isEmpty {
+                process.environment = ProcessInfo.processInfo.environment
+                    .merging(environment) { _, override in override }
+            }
 
             let stdoutPipe = Pipe()
             process.standardOutput = stdoutPipe
@@ -77,13 +94,11 @@ public struct ToolCommandRunner: Sendable {
 
             process.terminationHandler = { proc in
                 drainGroup.wait()
-                guard proc.terminationStatus == 0, !timedOut.value else {
+                guard !timedOut.value else {
                     continuation.resume(returning: nil)
                     return
                 }
-                let output = String(data: buffer.data, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                continuation.resume(returning: output)
+                continuation.resume(returning: (proc.terminationStatus, buffer.data))
             }
 
             do {

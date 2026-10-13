@@ -75,6 +75,12 @@ struct HomebrewManagerView: View {
                 onConfirm: { viewModel.confirmLeaveHomebrew() }
             )
         }
+        .sheet(isPresented: $viewModel.showCleanupSheet) {
+            HomebrewCleanupSheet(model: HomebrewCleanupModel()) {
+                viewModel.showCleanupSheet = false
+                viewModel.load()
+            }
+        }
         .sheet(item: $viewModel.pendingConfirmation) { pending in
             HomebrewConfirmationSheet(
                 pending: pending,
@@ -120,6 +126,12 @@ struct HomebrewManagerView: View {
                     systemImage: "arrow.up.circle",
                     style: .compact
                 ) { viewModel.requestUpgradeAll() }
+            }
+            if viewModel.loadState == .loaded {
+                SecondaryActionButton(title: "Old Versions & Downloads", systemImage: "archivebox") {
+                    viewModel.showCleanupSheet = true
+                }
+                .help("Preview what brew cleanup would remove")
             }
             IconActionButton(systemImage: "arrow.clockwise", help: "Refresh") { viewModel.load() }
         }

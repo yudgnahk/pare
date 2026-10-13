@@ -148,6 +148,8 @@ final class HomebrewManagerViewModel: ObservableObject {
     @Published var operationSummary: String?
     /// Non-nil when a background formulae refresh failed (R0.9 — no silent failures).
     @Published var reloadError: String?
+    /// Shows the `brew cleanup` preview sheet (old versions and downloads).
+    @Published var showCleanupSheet = false
 
     // MARK: - Computed
 
@@ -345,10 +347,7 @@ final class HomebrewManagerViewModel: ObservableObject {
                 let result = try await leaver.leave(
                     cask: cask,
                     forceQuitRunning: forceQuit
-                ) { [weak self] line in
-                    // Bind before the inner Task: capturing the weak `self` var
-                    // directly is a strict-concurrency error on older toolchains.
-                    guard let self else { return }
+                ) { [self] line in
                     Task { @MainActor in
                         self.appendLog(line)
                     }

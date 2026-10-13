@@ -11,6 +11,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case advancedRiskBlocked(String)
     /// Docker VM disk / volume data — never delete as a filesystem path.
     case dockerNeverDelete(String)
+    /// A tool-managed working set (Go build/module cache) or protected app user data — never trash it.
+    case workingSetProtected(String)
     /// The path is excluded by the user's exclusion list.
     case excludedByUser(String)
     /// Search-index-sensitive path — cleaning would force Spotlight/media reindexing.
@@ -23,10 +25,16 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case fileNotFound(String)
     /// The path goes through a symbolic link, which could redirect the Trash move to another item.
     case symbolicLinkBlocked(String)
+    /// A folder that holds a report-only finding or a never-clean location, which would go to the Trash with it.
+    case holdsProtectedContent(String)
+    /// A `build`/`dist`/`target` folder git does not report as ignored and untracked.
+    case notGitIgnored(String)
     /// The Trash move failed with an underlying system error.
     case trashFailed(String, Error)
     /// Undo failed — the associated value describes what went wrong.
     case restoreFailed(String)
+    /// Another process has a file open at or under the path.
+    case inUse(String, holder: String)
 
     public var errorDescription: String? {
         switch self {
@@ -38,6 +46,11 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "ADVANCED-risk file blocked from direct deletion: \(path). Use the app's native cleanup flow instead."
         case .dockerNeverDelete(let path):
             return "Docker VM disk/volume data blocked: \(path). Use docker system prune (never --volumes)."
+        case .workingSetProtected(let path):
+            if ScanPolicy.isProtectedUserDataPath(URL(fileURLWithPath: path)) {
+                return "App data (sessions, sign-in or identity state) — Pare never deletes it: \(path)"
+            }
+            return "Go cache in active use — Go trims it itself and Pare never deletes it: \(path)"
         case .excludedByUser(let path):
             return "Excluded by user: \(path)"
         case .searchIndexProtected(let path):
@@ -50,10 +63,16 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "File not found: \(path)"
         case .symbolicLinkBlocked(let path):
             return "Skipped: path goes through a symbolic link: \(path)"
+        case .holdsProtectedContent(let path):
+            return "Skipped: this folder holds items Pare only reports or never deletes: \(path)"
+        case .notGitIgnored(let path):
+            return "Skipped: git does not ignore this folder, or tracks files inside it: \(path)"
         case .trashFailed(let path, let error):
             return "Failed to move to Trash: \(path) — \(error.localizedDescription)"
         case .restoreFailed(let reason):
             return "Cannot restore — \(reason)"
+        case .inUse(let path, let holder):
+            return "Skipped: in use by \(holder): \(path)"
         }
     }
 }
@@ -85,17 +104,26 @@ public struct CleanupResult: Sendable {
     /// Non-nil when the undo transaction could not be (fully) persisted to disk.
     /// Files may already have been moved to Trash — surfaced here instead of throwing.
     public let transactionSaveError: String?
+    /// True when the open-file check could not run for this batch: only running apps' caches, cached
+    /// databases, partial downloads and project dependency folders were held back.
+    public let inUseCheckUnavailable: Bool
+
+    public static let inUseCheckUnavailableNote =
+        "Couldn't check which files are in use — only app caches, databases, partial downloads "
+        + "and project dependency folders were held back."
 
     init(
         succeeded: [CleanupItem],
         skipped: [CleanupSkippedItem],
         transaction: CleanupTransaction?,
-        transactionSaveError: String? = nil
+        transactionSaveError: String? = nil,
+        inUseCheckUnavailable: Bool = false
     ) {
         self.succeeded = succeeded
         self.skipped = skipped
         self.transaction = transaction
         self.transactionSaveError = transactionSaveError
+        self.inUseCheckUnavailable = inUseCheckUnavailable
     }
 
     public var totalBytesFreed: Int64 {
@@ -129,6 +157,21 @@ public actor CleanupEngine {
     private let now: @Sendable () -> Date
     /// Moves one item to the Trash and returns where it landed; injectable so tests never touch the real Trash.
     private let trashItem: @Sendable (URL) throws -> URL?
+    /// Re-checks git ignore evidence for `build`/`dist`/`target` at cleanup time.
+    private let gitInspector: any GitArtifactInspecting
+    /// Custom Go cache locations (`go env`) that are never cleaned, alongside the default spellings.
+    private let goCacheLocations: GoCacheLocations
+    /// Open-file snapshot and running apps for the in-use gate; injectable so tests never run lsof.
+    private let openFiles: any OpenFileSnapshotProviding
+    private let runningApps: any RunningAppsProviding
+    /// Measures volume free space around real runs so the UI can show what the disk actually gained.
+    private let freeSpace: any VolumeFreeSpaceProviding
+    /// Running executables for the version-sibling gate; taken at most once per run.
+    private let runningExecutables: any RunningExecutablesProviding
+    /// Codex staging folders are only cleanable while Codex and ChatGPT are not running. Injectable.
+    private let isCodexRunning: @Sendable () async -> Bool
+    /// The active pnpm store (`…/store/v<N>`), re-resolved at cleanup; nil fails closed. Injectable.
+    private let pnpmActiveStore: @Sendable () async -> URL?
 
     /// Persist the undo record every N successful trash moves so a crash mid-cleanup
     /// loses at most this many items from the record.
@@ -139,7 +182,15 @@ public actor CleanupEngine {
         projectRootsProvider: (@Sendable () async -> [String])? = nil,
         exclusionsProvider: (@Sendable () -> ExclusionList)? = nil,
         now: @escaping @Sendable () -> Date = { Date() },
-        trashItem: (@Sendable (URL) throws -> URL?)? = nil
+        trashItem: (@Sendable (URL) throws -> URL?)? = nil,
+        gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector(),
+        goCacheLocations: GoCacheLocations = .shared,
+        openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
+        runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider(),
+        freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace(),
+        runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider(),
+        isCodexRunning: (@Sendable () async -> Bool)? = nil,
+        pnpmActiveStore: (@Sendable () async -> URL?)? = nil
     ) {
         self.store = store
         self.projectRootsProvider = projectRootsProvider ?? {
@@ -151,6 +202,36 @@ public actor CleanupEngine {
         }
         self.now = now
         self.trashItem = trashItem ?? Self.moveToSystemTrash
+        self.pnpmActiveStore = pnpmActiveStore ?? {
+            await PnpmStoreLocator.activeStore(home: FileManager.default.homeDirectoryForCurrentUser)
+        }
+        self.isCodexRunning = isCodexRunning ?? CodexActivity.system
+        self.runningExecutables = runningExecutables
+        self.gitInspector = gitInspector
+        self.goCacheLocations = goCacheLocations
+        self.openFiles = openFiles
+        self.runningApps = runningApps
+        self.freeSpace = freeSpace
+    }
+
+    /// Both readings in one metric (Finder's "important usage" when both have it), so the delta is meaningful.
+    static func comparableFreeBytes(
+        before: VolumeFreeSpace?,
+        after: VolumeFreeSpace?
+    ) -> (before: Int64?, after: Int64?) {
+        if let first = before?.importantUsageBytes {
+            return (first, after?.importantUsageBytes)
+        }
+        return (before?.availableBytes, after?.availableBytes)
+    }
+
+    /// The finding's parent (or nearest existing ancestor), which still exists after the item is trashed.
+    private static func nearestExistingDirectory(of path: String) -> URL {
+        var url = URL(fileURLWithPath: path).deletingLastPathComponent()
+        while !FileManager.default.fileExists(atPath: url.path), url.path != "/" {
+            url = url.deletingLastPathComponent()
+        }
+        return url
     }
 
     private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
@@ -169,7 +250,9 @@ public actor CleanupEngine {
         dryRun: Bool = false
     ) async throws -> CleanupResult {
         let safeFindings = findings.filter { $0.riskLevel == .safe }
-        return try await clean(findings: safeFindings, profileName: profileName, dryRun: dryRun)
+        return try await clean(
+            findings: safeFindings, reportOnlyHolders: Self.reportOnlyHolderKeys(findings), profileName: profileName, dryRun: dryRun
+        )
     }
 
     // MARK: - Deep Clean (safe + review-risk)
@@ -189,7 +272,9 @@ public actor CleanupEngine {
             return CleanupResult(succeeded: [], skipped: [], transaction: nil)
         }
         let candidates = findings.filter { $0.riskLevel == .safe || $0.riskLevel == .review }
-        return try await clean(findings: candidates, profileName: profileName, dryRun: dryRun)
+        return try await clean(
+            findings: candidates, reportOnlyHolders: Self.reportOnlyHolderKeys(findings), profileName: profileName, dryRun: dryRun
+        )
     }
 
     // MARK: - Full Clean
@@ -204,6 +289,31 @@ public actor CleanupEngine {
         profileName: String,
         dryRun: Bool = false
     ) async throws -> CleanupResult {
+        try await clean(
+            findings: findings, reportOnlyHolders: Self.reportOnlyHolderKeys(findings), profileName: profileName, dryRun: dryRun
+        )
+    }
+
+    /// Canonical path keys of every `.advanced` finding and each of its ancestors, for one set lookup per item.
+    static func reportOnlyHolderKeys(_ findings: [ScanFinding]) -> Set<String> {
+        var keys = Set<String>()
+        for finding in findings where finding.riskLevel == .advanced {
+            var url = ScanPolicy.canonicalPathURL(URL(fileURLWithPath: finding.path))
+            // A key already present means its ancestors are too.
+            while url.path != "/", keys.insert(url.path.lowercased()).inserted {
+                url = url.deletingLastPathComponent()
+            }
+        }
+        return keys
+    }
+
+    /// A folder whose key is in `reportOnlyHolders` holds a `.advanced` finding of the same scan and is never trashed.
+    private func clean(
+        findings: [ScanFinding],
+        reportOnlyHolders: Set<String>,
+        profileName: String,
+        dryRun: Bool
+    ) async throws -> CleanupResult {
         var succeeded: [CleanupItem] = []
         var skipped: [CleanupSkippedItem] = []
 
@@ -211,6 +321,22 @@ public actor CleanupEngine {
         // and exclusions must be honored at cleanup time (not only at scan time).
         let projectRootPaths = await projectRootsProvider()
         let exclusions = exclusionsProvider()
+        // The .gitignore can change, or files be force-added, between scan and clean.
+        let gitStatuses = await gitInspector.statuses(
+            for: findings.map { URL(fileURLWithPath: $0.path) }.filter {
+                ScanPolicy.requiresGitIgnoreEvidence($0) || ScanPolicy.isProjectDependencyDirectory($0.lastPathComponent)
+            }
+        )
+        let goCacheRoots = await goCacheLocations.resolveIfNeeded().all
+        let inUse = InUseBatchCheck(openFiles: openFiles, runningApps: runningApps, now: now)
+        // Checked once per batch, and only when it contains Codex staging paths.
+        let codexIdle = findings.contains { ScanPolicy.codexStagingRoot(containing: $0.path) != nil }
+            ? !(await isCodexRunning())
+            : false
+        // Resolved once per batch, and only when it contains pnpm store version folders.
+        let activePnpmStore = findings.contains { ScanPolicy.isPnpmGuardedPath(URL(fileURLWithPath: $0.path)) }
+            ? await pnpmActiveStore()
+            : nil
 
         // Durable-undo guarantee: for real runs, the transaction record is written
         // BEFORE anything is trashed and re-written incrementally during the loop.
@@ -219,14 +345,21 @@ public actor CleanupEngine {
         let transactionID = UUID()
         let transactionTimestamp = Date()
         var transactionSaveError: String?
+        let volumeURL = dryRun ? nil : findings.first.map { Self.nearestExistingDirectory(of: $0.path) }
+        let readingBefore = volumeURL.flatMap { freeSpace.freeSpace(forVolumeContaining: $0) }
+        var readingAfter: VolumeFreeSpace?
+        var executablesSnapshot: [String]??
 
         func makeTransaction(_ items: [CleanupItem]) -> CleanupTransaction {
-            CleanupTransaction(
+            let bytes = Self.comparableFreeBytes(before: readingBefore, after: readingAfter)
+            return CleanupTransaction(
                 id: transactionID,
                 timestamp: transactionTimestamp,
                 profileName: profileName,
                 isDryRun: dryRun,
-                items: items
+                items: items,
+                freeBytesBefore: bytes.before,
+                freeBytesAfter: bytes.after
             )
         }
 
@@ -262,6 +395,12 @@ public actor CleanupEngine {
                 continue
             }
 
+            // Before every allow-list: project-artifact evidence would otherwise admit `go/pkg/mod/…/build`.
+            if ScanPolicy.isNeverCleanPath(url, customRoots: goCacheRoots) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .workingSetProtected(finding.path)))
+                continue
+            }
+
             // Spotlight / Core Spotlight / Help / media analysis — deleting these
             // forces a costly reindex. Never trash even if a rule mis-reports them.
             if ScanPolicy.isSearchIndexSensitivePath(url) {
@@ -269,19 +408,63 @@ public actor CleanupEngine {
                 continue
             }
 
-            // ADVANCED findings must never be deleted directly.
-            if finding.riskLevel == .advanced {
+            // ADVANCED findings must never be deleted directly; diagnostics never, whatever their label.
+            if finding.riskLevel == .advanced || finding.category == .diagnostics {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .advancedRiskBlocked(finding.path)))
                 continue
             }
 
-            // Re-verify the path is still considered safe by policy. Fail-closed variants:
-            // wrong-platform matches only inside the scanned trees; project artifacts only
-            // with project-root evidence or under a registered project scan root.
-            guard ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
-                    || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url)
-                    || ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
-                skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+            // Trashing a folder takes everything inside it, including content Pare must never delete.
+            if ScanPolicy.holdsNeverCleanLocation(url, customRoots: goCacheRoots)
+                || reportOnlyHolders.contains(ScanPolicy.canonicalPathKey(finding.path)) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .holdsProtectedContent(finding.path)))
+                continue
+            }
+
+            // Set when the dependency gate decides: project activity then replaces the folder's own age.
+            var isProjectDependency = false
+
+            if ScanPolicy.hasUpgradeBackupSignal(url.lastPathComponent) {
+                // Backup-named paths pass only through the upgrade-backup gate, never the generic allow-lists.
+                if !ScanPolicy.isReclaimableUpgradeBackup(url, now: now()) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                    continue
+                }
+            } else if ScanPolicy.isVersionSiblingMember(url) {
+                // Version siblings pass only their own re-verification, never a broader allow-list.
+                if executablesSnapshot == nil {
+                    executablesSnapshot = .some(await runningExecutables.runningExecutablePaths())
+                }
+                if !ScanPolicy.isReclaimableVersionSibling(url, runningExecutables: executablesSnapshot ?? nil) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                    continue
+                }
+            } else if ScanPolicy.isPnpmGuardedPath(url) {
+                // Anything in a pnpm store or pnpm home passes only the old-store or wrong-platform check,
+                // never the broad pnpm persona marker.
+                if !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore),
+                   !ScanPolicy.isCleanableWrongPlatformPath(url) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                    continue
+                }
+            } else if ScanPolicy.isProjectDependencyDirectory(url.lastPathComponent) {
+                // Dependency folders pass only their own gate, even under a low-impact or persona path.
+                isProjectDependency = true
+                if !ScanPolicy.isReclaimableProjectDependency(
+                    url, registeredRootPaths: projectRootPaths, tier: dependencyTier(for: url), now: now()) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                    continue
+                }
+                if !ScanPolicy.gitEvidenceAllows(dependency: url, status: gitStatuses[url.path]) {
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: .notGitIgnored(finding.path)))
+                    continue
+                }
+            } else if codexIdle, ScanPolicy.isReclaimableCodexStagingEntry(url, now: now()) {
+                // Extra allow route: Codex staging leftovers, only while Codex and ChatGPT are not running.
+            } else if let rejection = policyRejection(
+                for: finding, url: url, projectRootPaths: projectRootPaths, gitStatuses: gitStatuses
+            ) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: rejection))
                 continue
             }
 
@@ -299,7 +482,7 @@ public actor CleanupEngine {
             // Wrong-platform binaries/dirs are exempted: a Windows installer in ~/Downloads
             // or a win32/ native tree is inert on macOS from day zero — age is irrelevant.
             // Reconstructible package caches use a short floor (active download safety).
-            if !ScanPolicy.isCleanableWrongPlatformPath(url),
+            if !isProjectDependency, !ScanPolicy.isCleanableWrongPlatformPath(url),
                let minAge = ScanPolicy.minimumAgeSeconds(forCleanupPath: url, category: finding.category) {
                 if ScanPolicy.isReconstructibleCachePath(url) {
                     // Reconstructible caches have no multi-day age gate (minAge may be 0).
@@ -311,7 +494,7 @@ public actor CleanupEngine {
                     // Fail-closed: unreadable attributes / missing dates block cleanup —
                     // never assume the age gate is satisfied when age is unknowable.
                     let res = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey, .isDirectoryKey])
-                    guard let date = res.flatMap(ScanPolicy.effectiveAgeDate(from:)) else {
+                    guard let date = res.flatMap({ ScanPolicy.projectArtifactAgeDate(for: url, values: $0) }) else {
                         skipped.append(CleanupSkippedItem(path: finding.path, error: .attributesUnreadable(finding.path)))
                         continue
                     }
@@ -320,6 +503,14 @@ public actor CleanupEngine {
                         continue
                     }
                 }
+            }
+
+            // Last gate before trashing, so the batch's single snapshot is only taken when needed.
+            // A dependency folder is in use when anything inside its project is, e.g. a dev server's cwd.
+            let inUsePath = isProjectDependency ? url.deletingLastPathComponent().path : finding.path
+            if let holder = await inUse.holder(forPath: inUsePath, failClosedWithoutSnapshot: isProjectDependency) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .inUse(finding.path, holder: holder)))
+                continue
             }
 
             if dryRun {
@@ -359,6 +550,7 @@ public actor CleanupEngine {
             }
         }
 
+        readingAfter = volumeURL.flatMap { freeSpace.freeSpace(forVolumeContaining: $0) }
         let transaction = makeTransaction(succeeded)
 
         var resultTransaction: CleanupTransaction? = transaction
@@ -385,7 +577,8 @@ public actor CleanupEngine {
             succeeded: succeeded,
             skipped: skipped,
             transaction: resultTransaction,
-            transactionSaveError: transactionSaveError
+            transactionSaveError: transactionSaveError,
+            inUseCheckUnavailable: await inUse.snapshotWasUnavailable
         )
     }
 
@@ -470,11 +663,40 @@ public actor CleanupEngine {
         + ScanPolicy.mobileSyncBackupPathMarkers
         + ScanPolicy.productivitySafePathMarkers
         + ScanPolicy.productivityReviewPathMarkers
-        + ScanPolicy.launchAgentPathMarkers
+    // `launchAgentPathMarkers` is deliberately absent: LaunchAgent plists are never cleanable.
 
     /// A path passes persona policy if it matches any of the known persona marker sets.
     /// Docker advanced / VM disk markers are intentionally **not** included — those paths
     /// are hard-blocked via `isDockerNeverDeletePath` and must never become cleanable.
+    /// Re-verifies the path is still safe by policy. Fail-closed variants: wrong-platform matches only
+    /// inside the scanned trees; project artifacts need project-root evidence plus, for gated names, git evidence.
+    private func policyRejection(
+        for finding: ScanFinding,
+        url: URL,
+        projectRootPaths: [String],
+        gitStatuses: [String: GitArtifactStatus]
+    ) -> CleanupError? {
+        let projectArtifactRejection: CleanupError? = {
+            guard ScanPolicy.isReclaimableProjectArtifact(url, registeredRootPaths: projectRootPaths) else {
+                return .unsafePath(finding.path)
+            }
+            return ScanPolicy.gitEvidenceAllows(artifact: url, status: gitStatuses[url.path])
+                ? nil : .notGitIgnored(finding.path)
+        }()
+        // Mandatory for project artifacts: `/tmp/` is low-impact and would otherwise bypass git evidence.
+        if finding.category == .projectArtifacts { return projectArtifactRejection }
+        if ScanPolicy.isLowImpactPath(url) || isPersonaPath(url)
+            || ScanPolicy.isCleanableWrongPlatformPath(url) || ScanPolicy.isInstallerFile(url) {
+            return nil
+        }
+        return projectArtifactRejection
+    }
+
+    /// Re-read per folder from its own volume, through the same seam the verified-reclaim readings use.
+    private func dependencyTier(for url: URL) -> DiskPressureTier {
+        DiskPressure.tier(for: freeSpace.freeSpace(forVolumeContaining: url.deletingLastPathComponent()))
+    }
+
     private func isPersonaPath(_ url: URL) -> Bool {
         if ScanPolicy.isDockerNeverDeletePath(url) { return false }
         return ScanPolicy.matchesPersonaPath(url, allowedMarkers: Self.allPersonaMarkers)

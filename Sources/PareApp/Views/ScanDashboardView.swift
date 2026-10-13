@@ -225,7 +225,8 @@ struct ScanDashboardView: View {
                 skippedCount: skippedCount,
                 canUndo: viewModel.canUndo,
                 onUndo: { viewModel.undoLastCleanup() },
-                skipExplanation: viewModel.cleanup.symlinkSkipExplanation,
+                skipExplanation: viewModel.cleanup.resultExplanation,
+                reclaim: viewModel.cleanup.lastReclaim,
                 onDismiss: { viewModel.dismissCleanupResult() }
             )
             .transition(.scale(scale: 0.96).combined(with: .opacity))
@@ -350,7 +351,7 @@ struct ScanDashboardView: View {
                         CategoryFolderRowView(
                             row: row,
                             category: summary.category,
-                            sizeText: viewModel.formattedBytes(row.totalBytes),
+                            sizeText: viewModel.formattedFolderSize(row),
                             selectionState: viewModel.folderSelectionState(row),
                             canReveal: viewModel.canReveal(path: row.folderPath),
                             onToggle: { viewModel.toggleFolder(row) },
@@ -402,7 +403,7 @@ struct ScanDashboardView: View {
                         CategoryFolderRowView(
                             row: row,
                             category: group.category,
-                            sizeText: viewModel.formattedBytes(row.totalBytes),
+                            sizeText: viewModel.formattedFolderSize(row),
                             selectionState: viewModel.folderSelectionState(row),
                             canReveal: viewModel.canReveal(path: row.folderPath),
                             onToggle: { viewModel.toggleFolder(row) },
@@ -545,7 +546,7 @@ struct ScanDashboardView: View {
             path: finding.path,
             displayName: largestItemDisplayName(finding),
             subtitle: largestItemSubtitle(finding),
-            sizeText: viewModel.formattedBytes(finding.sizeBytes),
+            sizeText: viewModel.formattedFindingSize(finding),
             riskLevel: finding.riskLevel,
             isSelected: viewModel.isSelected(path: finding.path),
             isSelectable: finding.riskLevel != .advanced,
@@ -554,7 +555,8 @@ struct ScanDashboardView: View {
             onToggle: { viewModel.toggleSelection(path: finding.path) },
             onReveal: { viewModel.revealInFinder(path: finding.path) },
             onExclude: { viewModel.exclude(path: finding.path) },
-            isFolder: isLikelyFolderFinding(finding)
+            isFolder: isLikelyFolderFinding(finding),
+            activityText: viewModel.cacheActivityText(path: finding.path)
         )
     }
 

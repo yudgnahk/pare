@@ -112,4 +112,4 @@ Closing more App A CLI parity is **low ROI** unless a row above is still `Open`/
 - Trust UX (permissions, empty-scan coaching)  
 - Leftover depth / category exclude only if uninstall feedback demands it  
 
-See [ranked backlog](../reviews/2026-07-20-competitive-gaps.md).
+Open items live in [the roadmap](../roadmap.md).
