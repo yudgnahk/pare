@@ -51,12 +51,12 @@ extension ScanPolicy {
         "com.apple.helpd",
     ]
 
-    /// Rule-ownership policy: top-level `~/Library/Caches` folder names (lowercased)
-    /// that are owned by other scan rules and must not be double-reported by
-    /// `UserCachesRule`. Includes never-clean search-index stores.
     /// Top-level `Library/Caches` name prefixes `UserCachesRule` never reports (browser and Google app state).
     public static let userCacheProtectedFolderPrefixes: [String] = ["com.google.", "org.mozilla."]
 
+    /// Rule-ownership policy: top-level `~/Library/Caches` folder names (lowercased)
+    /// that are owned by other scan rules and must not be double-reported by
+    /// `UserCachesRule`. Includes never-clean search-index stores.
     public static let userCachesExcludedTopLevelFolderNames: Set<String> = Set([
         "google",                       // Chrome — BrowserCachesRule
         "com.apple.safari",             // BrowserCachesRule
