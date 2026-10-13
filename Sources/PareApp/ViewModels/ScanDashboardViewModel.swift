@@ -44,7 +44,7 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var growthSinceLastScan: String?
     /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
     @Published private(set) var scanWarnings: [String] = []
-    /// Display-only cache activity by finding path; filled after results appear, never affects selection.
+    /// Cache activity by finding path, filled after results appear; hot rows the user has not clicked get unticked.
     @Published private(set) var cacheActivity: [String: CacheActivityLabel] = [:]
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
@@ -279,15 +279,14 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Expand folder ids → findings only when cleaning (not during scroll/UI).
     private func selectedFindingsForClean() -> [ScanFinding] {
-        var pathSet = Set<String>()
-        pathSet.reserveCapacity(min(selectedCandidatesCount, 65_536))
-        for id in selection.selectedFolderIds {
-            if let paths = pathsByFolderId[id] {
-                pathSet.formUnion(paths)
-            }
-        }
-        pathSet.formUnion(selection.selectedPaths)
-        return pathSet.compactMap { findingsByPath[$0] }.filter { $0.riskLevel != .advanced }
+        selection.selectedFindingPaths(pathsByFolderId: pathsByFolderId)
+            .compactMap { findingsByPath[$0] }
+            .filter { $0.riskLevel != .advanced }
+    }
+
+    /// Quick and Deep Clean ignore the selection but still leave hot rows to their own checkbox.
+    private var bulkCleanFindings: [ScanFinding] {
+        latestFindings.filter { !selection.hotPaths.contains($0.path) }
     }
 
     // MARK: - Category browser (folder-only) + largest items
@@ -475,10 +474,20 @@ final class ScanDashboardViewModel: ObservableObject {
         let activityJob = Task.detached(priority: .utility) { CacheActivityLabeler.labels(for: shown) }
 
         let activity = await activityJob.value
-        if generation == scanGeneration, !Task.isCancelled { cacheActivity = activity }
+        if !Task.isCancelled { applyCacheActivity(activity, generation: generation) }
         let growth = await growthJob.value
         if generation == scanGeneration, !Task.isCancelled { growthSinceLastScan = growth }
     }
+
+    /// Labels from an older scan are dropped so they cannot change a newer scan's selection.
+    func applyCacheActivity(_ labels: [String: CacheActivityLabel], generation: Int) {
+        guard generation == scanGeneration else { return }
+        cacheActivity = labels
+        selection.applyHotPaths(Set(labels.filter { $0.value.activity == .hot }.keys))
+        candidateStats = CandidateStats.compute(from: bulkCleanFindings)
+    }
+
+    var currentScanGeneration: Int { scanGeneration }
 
     func cacheActivityText(path: String) -> String? {
         cacheActivity[path]?.text(now: Date())
@@ -695,7 +704,7 @@ final class ScanDashboardViewModel: ObservableObject {
         let findings: [ScanFinding]
         switch kind {
         case .quick, .deep:
-            findings = latestFindings
+            findings = bulkCleanFindings
         case .selected:
             // Expand folder ids → paths only here (background-friendly), not during UI scroll.
             findings = selectedFindingsForClean()
@@ -766,7 +775,7 @@ final class ScanDashboardViewModel: ObservableObject {
             findingsByPath: findingsByPath,
             resetToSafeSelection: false
         )
-        candidateStats = CandidateStats.compute(from: latestFindings)
+        candidateStats = CandidateStats.compute(from: bulkCleanFindings)
         perToolRollups = FolderRollup.makeToolRollups(from: latestFindings)
     }
 
@@ -805,10 +814,15 @@ final class ScanDashboardViewModel: ObservableObject {
 
 extension ScanDashboardViewModel {
     /// Loads a canned report through the real results pipeline so snapshots show production layout.
-    func applySnapshotResults(_ report: ScanReport, duration: TimeInterval = 14.2) {
+    func applySnapshotResults(
+        _ report: ScanReport,
+        cacheActivity: [String: CacheActivityLabel] = [:],
+        duration: TimeInterval = 14.2
+    ) {
         let prepared = Self.prepareScanResults(from: report)
         let finishedAt = Date()
         applyPreparedScanResults(prepared, startedAt: finishedAt.addingTimeInterval(-duration), finishedAt: finishedAt)
+        if !cacheActivity.isEmpty { applyCacheActivity(cacheActivity, generation: scanGeneration) }
     }
 
     /// Freezes the hero in its finalize state (all rules done, results being prepared).

@@ -25,7 +25,7 @@ public enum CacheActivityClassifier {
     }
 }
 
-/// Display-only activity for one finding; never changes risk or preselection.
+/// Write activity for one finding; never changes risk. The app unticks hot rows the user has not clicked.
 public struct CacheActivityLabel: Sendable, Equatable {
     public let activity: CacheActivity
     public let newestEntryDate: Date?
