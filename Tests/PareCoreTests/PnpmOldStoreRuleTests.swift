@@ -76,6 +76,7 @@ final class PnpmOldStoreRuleTests: XCTestCase {
         let elsewhere = home.appending(path: ".local/share/pnpm/store")
         try FileManager.default.createDirectory(at: elsewhere.appending(path: "v1"), withIntermediateDirectories: true)
         try Data(repeating: 0x42, count: 4096).write(to: elsewhere.appending(path: "v1/index.json"))
+        try backdate(elsewhere.appending(path: "v1"))
 
         let findings = await rule(active: elsewhere.appending(path: "v2")).customScan(environment: ScanEnvironment(homeDirectory: home)) ?? []
 
@@ -98,6 +99,23 @@ final class PnpmOldStoreRuleTests: XCTestCase {
                        "a newer version than the active one is not old")
         XCTAssertFalse(ScanPolicy.isReclaimableOldPnpmStore(
             home.appending(path: ".local/share/pnpm/store/v1"), activeStore: active), "different store root")
+    }
+
+    func testRecentlyWrittenOldStoreIsKept() throws {
+        let active = store.appending(path: "v11")
+        let old = store.appending(path: "v10")
+        XCTAssertTrue(ScanPolicy.isReclaimableOldPnpmStore(old, activeStore: active), "control")
+
+        for shardParent in ["files", "index"] {
+            let shard = old.appending(path: "\(shardParent)/ab")
+            try FileManager.default.createDirectory(at: shard, withIntermediateDirectories: true)
+            try backdate(old)
+            try backdate(old.appending(path: shardParent))
+            XCTAssertFalse(ScanPolicy.isReclaimableOldPnpmStore(old, activeStore: active),
+                           "a pnpm pinned through corepack wrote to \(shardParent)/ yesterday")
+            try backdate(shard)
+            XCTAssertTrue(ScanPolicy.isReclaimableOldPnpmStore(old, activeStore: active), "\(shardParent): idle again")
+        }
     }
 
     func testCleanupRefusesActiveAndUnverifiableStoresDespiteTheBroadPnpmMarker() async throws {
@@ -129,6 +147,11 @@ final class PnpmOldStoreRuleTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func backdate(_ url: URL) throws {
+        let old = Date().addingTimeInterval(-30 * 24 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: old, .creationDate: old], ofItemAtPath: url.path)
+    }
 
     private func rule(active: URL?) -> PnpmOldStoreRule {
         PnpmOldStoreRule(activeStore: { _ in active })

@@ -444,7 +444,7 @@ public actor CleanupEngine {
             } else if ScanPolicy.isPnpmGuardedPath(url) {
                 // Anything in a pnpm store or pnpm home passes only the old-store or wrong-platform check,
                 // never the broad pnpm persona marker.
-                if !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore),
+                if !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore, now: now()),
                    !ScanPolicy.isCleanableWrongPlatformPath(url) {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                     continue
