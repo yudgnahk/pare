@@ -6,7 +6,7 @@ Pare can be packaged without a Developer ID certificate. The result is **ad-hoc 
 
 ```bash
 make release-adhoc                   # universal arm64 + x86_64
-ARCHS=arm64 make release-adhoc       # Apple Silicon only (half the build time and disk)
+ARCHS=arm64 make release-adhoc       # Apple Silicon only (smaller package; see timings below)
 VERSION=1.0.1 BUILD_NUMBER=7 make release-adhoc
 bash scripts/test-release-adhoc.sh   # packaging logic against a fake swift, no real build
 ```
@@ -31,11 +31,14 @@ Bundle layout notes:
 ```bash
 codesign --verify --deep --strict --verbose=2 dist/adhoc/Pare.app
 codesign -dv dist/adhoc/Pare.app 2>&1 | grep -E "Signature|Identifier"   # Signature=adhoc
-lipo -archs dist/adhoc/Pare.app/Contents/MacOS/PareApp                   # arm64 x86_64
+lipo -archs dist/adhoc/Pare.app/Contents/MacOS/PareApp                   # x86_64 arm64
 (cd dist/adhoc && shasum -a 256 -c SHA256SUMS)
+spctl -a -vv dist/adhoc/Pare.app                                         # Pare.app: rejected
 ```
 
-`spctl --assess` will say **rejected** for an ad-hoc app. That is expected.
+`spctl --assess` says **rejected** (exit 3) for an ad-hoc app. That is expected.
+
+Measured on the 2026-10 release branch (Apple Silicon, Command Line Tools only): arm64-only run 1 min 34 s, universal run 1 min 18 s on a warm `.build`; universal zip 6.9 MB, DMG 7.8 MB. The x86_64 slice is build-verified (`lipo`, `codesign`) but was not executed: the test machine has no Rosetta.
 
 ## Install (for the person receiving it)
 
@@ -46,13 +49,22 @@ lipo -archs dist/adhoc/Pare.app/Contents/MacOS/PareApp                   # arm64
 
 ## Full Disk Access — re-grant after every update
 
-Pare needs **System Settings → Privacy & Security → Full Disk Access** to read protected Library paths. An ad-hoc signature has no stable identity, so macOS ties the grant to the binary's hash: **every new ad-hoc build loses the previous grant.** After each update:
+Pare needs **System Settings → Privacy & Security → Full Disk Access** to read protected Library paths. macOS ties the grant to the app's *designated requirement*. For an ad-hoc signature that requirement is just the code hash:
+
+```
+$ codesign -d -r- Pare.app
+# designated => cdhash H"913f381b…"            (universal build lists one cdhash per slice)
+```
+
+So **any build whose code changed has a new identity and loses the previous grant.** (Rebuilding identical source reproduced the same cdhash in testing, so only a real update triggers this.) After each update:
 
 1. Open Full Disk Access, remove the old **Pare** entry (select it, click **−**).
 2. Click **+**, add `/Applications/Pare.app`, and make sure the toggle is on.
 3. Quit and reopen Pare.
 
-Without this, scans of protected folders silently return less data and Pare shows its Full Disk Access coaching banner.
+To clear a stale entry from the terminal instead: `tccutil reset SystemPolicyAllFiles com.yudgnahk.pare`, then grant again as above. This wipes every Full Disk Access grant for that bundle id, including one held by a `make run-app` build (same id, different signature).
+
+Without a fresh grant, scans of protected folders silently return less data and Pare shows its Full Disk Access coaching banner.
 
 ## Upgrading to a proper release later
 

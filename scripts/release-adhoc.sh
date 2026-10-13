@@ -67,12 +67,16 @@ bin_path() {
 }
 
 build_binaries() {
-    local slices=() arch dir
+    local slices=() arch dir slice
     for arch in $ARCHS; do
         build_arch "$arch"
         dir="$(bin_path "$arch")"
         [[ -x "$dir/$EXECUTABLE" ]] || die "Missing $dir/$EXECUTABLE after build."
-        slices+=("$dir/$EXECUTABLE")
+        # Newer toolchains share one bin path across --arch values; copy before the next build overwrites it.
+        slice="$DIST_DIR/$EXECUTABLE-$arch"
+        cp "$dir/$EXECUTABLE" "$slice"
+        [[ "$(lipo -archs "$slice")" == "$arch" ]] || die "Built slice is not $arch (got: $(lipo -archs "$slice"))."
+        slices+=("$slice")
         RESOURCE_SRC="${RESOURCE_SRC:-$dir/$RESOURCE_BUNDLE}"
     done
     [[ -d "$RESOURCE_SRC" ]] || die "Missing $RESOURCE_SRC — PareCore resources (app-catalog.json) would be absent."
@@ -82,6 +86,7 @@ build_binaries() {
     else
         cp "${slices[0]}" "$DIST_DIR/$EXECUTABLE-universal"
     fi
+    rm -f "${slices[@]}"
 }
 
 assemble_bundle() {
