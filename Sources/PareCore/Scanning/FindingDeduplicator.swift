@@ -24,7 +24,7 @@ enum FindingDeduplicator {
             )
         }
         let sorted = mergeSamePath(entries).sorted { $0.key.lexicographicallyPrecedes($1.key) }
-        return collapseDescendants(sorted)
+        return collapseDescendants(liftingDetectOnlyAncestors(sorted))
             .sorted { $0.inputOrder < $1.inputOrder }
             .map(\.finding)
     }
@@ -51,7 +51,27 @@ enum FindingDeduplicator {
         return lhs.ruleIndex < rhs.ruleIndex
     }
 
+    /// A folder holding an `.advanced` finding becomes `.advanced`: trashing it would take the detect-only item along.
+    private static func liftingDetectOnlyAncestors(_ sorted: [Entry]) -> [Entry] {
+        var lifted = sorted
+        var openAncestors: [Int] = []
+        for index in lifted.indices {
+            while let top = openAncestors.last,
+                  !ScanPolicy.isEqualToOrDescendant(candidate: lifted[index].url, root: lifted[top].url) {
+                openAncestors.removeLast()
+            }
+            if lifted[index].finding.riskLevel == .advanced {
+                for ancestor in openAncestors {
+                    lifted[ancestor].finding = raising(lifted[ancestor], to: .advanced, by: lifted[index])
+                }
+            }
+            openAncestors.append(index)
+        }
+        return lifted
+    }
+
     /// Expects component-wise sorted input, so every descendant follows its ancestor directly.
+    /// After `liftingDetectOnlyAncestors`, a cleanable ancestor never holds an `.advanced` entry.
     private static func collapseDescendants(_ sorted: [Entry]) -> [Entry] {
         var kept: [Entry] = []
         var openAncestors: [Int] = []
@@ -64,8 +84,7 @@ enum FindingDeduplicator {
             let cleanableAncestor = openAncestors.first { kept[$0].finding.riskLevel != .advanced }
             if let ancestor = cleanableAncestor {
                 // A cleanable parent must carry its riskiest content so Quick Clean never deletes it unseen.
-                let floor: RiskLevel = entry.finding.riskLevel == .advanced ? .review : entry.finding.riskLevel
-                kept[ancestor].finding = raising(kept[ancestor].finding, to: floor)
+                kept[ancestor].finding = raising(kept[ancestor], to: entry.finding.riskLevel, by: entry)
                 if entry.finding.riskLevel != .advanced { continue }
             }
             kept.append(entry)
@@ -74,12 +93,16 @@ enum FindingDeduplicator {
         return kept
     }
 
-    private static func raising(_ finding: ScanFinding, to floor: RiskLevel) -> ScanFinding {
+    /// Names the contained item in the reason, so the risk stays explained if that item is later dropped.
+    private static func raising(_ entry: Entry, to floor: RiskLevel, by descendant: Entry) -> ScanFinding {
+        let finding = entry.finding
         guard floor.severity > finding.riskLevel.severity else { return finding }
+        let relative = descendant.url.pathComponents.dropFirst(entry.url.pathComponents.count).joined(separator: "/")
+        let note = floor == .advanced ? "Holds a report-only item" : "Holds an item that needs review"
         return ScanFinding(
             category: finding.category,
             riskLevel: floor,
-            reason: finding.reason,
+            reason: "\(finding.reason) \(note): \(relative) — \(descendant.finding.reason)",
             path: finding.path,
             sizeBytes: finding.sizeBytes,
             lastUsed: finding.lastUsed,

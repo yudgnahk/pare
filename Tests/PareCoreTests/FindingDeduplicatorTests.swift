@@ -90,16 +90,37 @@ final class FindingDeduplicatorTests: XCTestCase {
         XCTAssertEqual(result.count, 1)
         XCTAssertEqual(result.first?.path, "/a/profile")
         XCTAssertEqual(result.first?.riskLevel, .review)
-        XCTAssertEqual(result.first?.reason, "ancestor")
+        XCTAssertEqual(result.first?.reason, "ancestor Holds an item that needs review: IndexedDB — descendant")
     }
 
-    func testSafeAncestorWithAdvancedDescendantKeepsBothAndRaisesAncestor() {
+    func testCleanableAncestorWithAdvancedDescendantBecomesReportOnly() {
+        for ancestorRisk in [RiskLevel.safe, .review] {
+            let result = dedupe([
+                (0, finding("/a/caches", risk: ancestorRisk, reason: "cache")),
+                (1, finding("/a/caches/uv", risk: .advanced, reason: "uv")),
+            ])
+            let byPath = Dictionary(uniqueKeysWithValues: result.map { ($0.path, $0.riskLevel) })
+            XCTAssertEqual(byPath, ["/a/caches": .advanced, "/a/caches/uv": .advanced], "\(ancestorRisk)")
+            let ancestor = result.first { $0.path == "/a/caches" }
+            XCTAssertEqual(ancestor?.reason, "cache Holds a report-only item: uv — uv", "\(ancestorRisk)")
+        }
+    }
+
+    func testAdvancedLiftsEveryAncestorAndLeavesCleanableSiblingsOnTheirOwn() {
+        // Sorted order puts the sibling before the advanced item; the lift must not depend on it.
         let result = dedupe([
             (0, finding("/a/caches", risk: .safe)),
-            (1, finding("/a/caches/uv", risk: .advanced)),
+            (1, finding("/a/caches/app", risk: .review)),
+            (2, finding("/a/caches/app/blob", risk: .advanced)),
+            (3, finding("/a/caches/aaa", risk: .safe)),
         ])
         let byPath = Dictionary(uniqueKeysWithValues: result.map { ($0.path, $0.riskLevel) })
-        XCTAssertEqual(byPath, ["/a/caches": .review, "/a/caches/uv": .advanced])
+        XCTAssertEqual(byPath, [
+            "/a/caches": .advanced,
+            "/a/caches/app": .advanced,
+            "/a/caches/app/blob": .advanced,
+            "/a/caches/aaa": .safe,
+        ])
     }
 
     func testAdvancedAncestorKeepsSafeDescendantUnchanged() {

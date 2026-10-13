@@ -25,6 +25,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case fileNotFound(String)
     /// The path goes through a symbolic link, which could redirect the Trash move to another item.
     case symbolicLinkBlocked(String)
+    /// A folder that holds a report-only finding or a never-clean location, which would go to the Trash with it.
+    case holdsProtectedContent(String)
     /// A `build`/`dist`/`target` folder git does not report as ignored and untracked.
     case notGitIgnored(String)
     /// The Trash move failed with an underlying system error.
@@ -61,6 +63,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "File not found: \(path)"
         case .symbolicLinkBlocked(let path):
             return "Skipped: path goes through a symbolic link: \(path)"
+        case .holdsProtectedContent(let path):
+            return "Skipped: this folder holds items Pare only reports or never deletes: \(path)"
         case .notGitIgnored(let path):
             return "Skipped: git does not ignore this folder, or tracks files inside it: \(path)"
         case .trashFailed(let path, let error):
@@ -246,7 +250,9 @@ public actor CleanupEngine {
         dryRun: Bool = false
     ) async throws -> CleanupResult {
         let safeFindings = findings.filter { $0.riskLevel == .safe }
-        return try await clean(findings: safeFindings, profileName: profileName, dryRun: dryRun)
+        return try await clean(
+            findings: safeFindings, reportOnlyHolders: Self.reportOnlyHolderKeys(findings), profileName: profileName, dryRun: dryRun
+        )
     }
 
     // MARK: - Deep Clean (safe + review-risk)
@@ -266,7 +272,9 @@ public actor CleanupEngine {
             return CleanupResult(succeeded: [], skipped: [], transaction: nil)
         }
         let candidates = findings.filter { $0.riskLevel == .safe || $0.riskLevel == .review }
-        return try await clean(findings: candidates, profileName: profileName, dryRun: dryRun)
+        return try await clean(
+            findings: candidates, reportOnlyHolders: Self.reportOnlyHolderKeys(findings), profileName: profileName, dryRun: dryRun
+        )
     }
 
     // MARK: - Full Clean
@@ -280,6 +288,31 @@ public actor CleanupEngine {
         findings: [ScanFinding],
         profileName: String,
         dryRun: Bool = false
+    ) async throws -> CleanupResult {
+        try await clean(
+            findings: findings, reportOnlyHolders: Self.reportOnlyHolderKeys(findings), profileName: profileName, dryRun: dryRun
+        )
+    }
+
+    /// Canonical path keys of every `.advanced` finding and each of its ancestors, for one set lookup per item.
+    static func reportOnlyHolderKeys(_ findings: [ScanFinding]) -> Set<String> {
+        var keys = Set<String>()
+        for finding in findings where finding.riskLevel == .advanced {
+            var url = ScanPolicy.canonicalPathURL(URL(fileURLWithPath: finding.path))
+            // A key already present means its ancestors are too.
+            while url.path != "/", keys.insert(url.path.lowercased()).inserted {
+                url = url.deletingLastPathComponent()
+            }
+        }
+        return keys
+    }
+
+    /// A folder whose key is in `reportOnlyHolders` holds a `.advanced` finding of the same scan and is never trashed.
+    private func clean(
+        findings: [ScanFinding],
+        reportOnlyHolders: Set<String>,
+        profileName: String,
+        dryRun: Bool
     ) async throws -> CleanupResult {
         var succeeded: [CleanupItem] = []
         var skipped: [CleanupSkippedItem] = []
@@ -378,6 +411,13 @@ public actor CleanupEngine {
             // ADVANCED findings must never be deleted directly; diagnostics never, whatever their label.
             if finding.riskLevel == .advanced || finding.category == .diagnostics {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .advancedRiskBlocked(finding.path)))
+                continue
+            }
+
+            // Trashing a folder takes everything inside it, including content Pare must never delete.
+            if ScanPolicy.holdsNeverCleanLocation(url, customRoots: goCacheRoots)
+                || reportOnlyHolders.contains(ScanPolicy.canonicalPathKey(finding.path)) {
+                skipped.append(CleanupSkippedItem(path: finding.path, error: .holdsProtectedContent(finding.path)))
                 continue
             }
 

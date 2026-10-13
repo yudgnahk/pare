@@ -51,12 +51,12 @@ extension ScanPolicy {
         "com.apple.helpd",
     ]
 
-    /// Rule-ownership policy: top-level `~/Library/Caches` folder names (lowercased)
-    /// that are owned by other scan rules and must not be double-reported by
-    /// `UserCachesRule`. Includes never-clean search-index stores.
     /// Top-level `Library/Caches` name prefixes `UserCachesRule` never reports (browser and Google app state).
     public static let userCacheProtectedFolderPrefixes: [String] = ["com.google.", "org.mozilla."]
 
+    /// Rule-ownership policy: top-level `~/Library/Caches` folder names (lowercased)
+    /// that are owned by other scan rules and must not be double-reported by
+    /// `UserCachesRule`. Includes never-clean search-index stores.
     public static let userCachesExcludedTopLevelFolderNames: Set<String> = Set([
         "google",                       // Chrome — BrowserCachesRule
         "com.apple.safari",             // BrowserCachesRule
@@ -145,7 +145,12 @@ extension ScanPolicy {
         "/.volta/", "/.fnm/", "/.bun/", "/.deno/", "/.npm/", "/.gradle/", "/.m2/", "/.cache/",
         "/.local/share/mise/", "/.local/share/pnpm/", "/.vscode/extensions/", "/.vscode-insiders/extensions/",
         "/.cursor/extensions/", "/.windsurf/extensions/", "/.vscode-server/", "/Pods/", "/.build/checkouts/",
+        "/anaconda3/", "/miniconda3/", "/miniforge3/", "/mambaforge/", "/micromamba/", "/.conda/",
+        "/opt/homebrew/", "/usr/local/Homebrew/", "/usr/local/Cellar/",
     ]
+
+    /// Home-relative SDK folders (git clones full of `pubspec.yaml`); names too generic to exclude anywhere else.
+    public static let projectDiscoveryExcludedHomeFolders = ["flutter", "fvm", "development/flutter"]
 
     /// Bundle extensions (lowercased) whose contents are shipped app code, never a user project root.
     public static let projectDiscoveryExcludedBundleExtensions: Set<String> = ["app", "framework"]

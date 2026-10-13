@@ -76,6 +76,26 @@ final class HiddenProjectArtifactsTests: XCTestCase {
         ))
     }
 
+    func testRegisteredRootMatchesByComponentAndCanonicalSpelling() {
+        let insensitive = !ScanPolicy.volumeSupportsCaseSensitiveNames(atPath: "/")
+        let cases: [(path: String, root: String, reclaimable: Bool)] = [
+            ("/Users/u/Projects/app/.next", "/Users/u/Projects/app", true),
+            ("/Users/u/Projects/app/.next", "/Users/u/Projects/app/", true),
+            ("/private/tmp/app/.next", "/tmp/app", true),
+            ("/Users/u/projects/APP/.next", "/Users/u/Projects/app", insensitive),
+            ("/Users/u/Projects/app-old/.next", "/Users/u/Projects/app", false),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(
+                ScanPolicy.isReclaimableProjectArtifact(
+                    URL(fileURLWithPath: testCase.path), registeredRootPaths: [testCase.root], fileExists: { _ in false }
+                ),
+                testCase.reclaimable,
+                "\(testCase.path) under \(testCase.root)"
+            )
+        }
+    }
+
     func testFolderRollupGroupsAtBuildSegment() {
         XCTAssertEqual(
             FolderRollup.rollupFolderPath(for: "/Users/u/Projects/app/.build/arm64-apple-macosx/debug/App.o"),

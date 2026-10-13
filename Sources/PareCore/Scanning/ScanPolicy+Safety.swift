@@ -55,7 +55,6 @@ extension ScanPolicy {
             || path.hasPrefix(home + "/library/mobile documents/")
     }
 
-    /// `true` when the directory name is a dependency tree that must never be reclaimable.
     /// True for a top-level `Library/Caches` entry `UserCachesRule` must skip, folder or file.
     public static func isUserCacheFolderProtected(name: String) -> Bool {
         let lower = name.lowercased()
@@ -63,6 +62,7 @@ extension ScanPolicy {
             || userCacheProtectedFolderPrefixes.contains { lower.hasPrefix($0) }
     }
 
+    /// `true` when the directory name is a dependency tree that must never be reclaimable.
     public static func isProjectDependencyDirectory(_ name: String) -> Bool {
         projectDependencyDirectoryNames.contains(name.lowercased())
     }
@@ -110,11 +110,12 @@ extension ScanPolicy {
         // Before the registered-root shortcut: a root does not prove `.build` belongs to a Swift package.
         guard hasRequiredSiblingMarker(url, fileExists: fileExists) else { return false }
 
-        let path = url.path
+        // Component matching: `/tmp` roots meet `/private/tmp` paths, and case folds only where the volume does.
+        let caseSensitive = !registeredRootPaths.isEmpty && volumeSupportsCaseSensitiveNames(atPath: url.path)
         let underRegisteredRoot = registeredRootPaths.contains { root in
-            guard !root.isEmpty else { return false }
-            let normalized = root.hasSuffix("/") ? String(root.dropLast()) : root
-            return path == normalized || path.hasPrefix(normalized + "/")
+            !root.isEmpty && isCanonicallyEqualToOrDescendant(
+                candidate: url, root: URL(fileURLWithPath: root), caseSensitive: caseSensitive
+            )
         }
         if underRegisteredRoot { return true }
 
@@ -133,8 +134,8 @@ extension ScanPolicy {
         return false
     }
 
-    /// True when the path is home or above it, sits inside an app/framework bundle, or contains any
-    /// `projectDiscoveryExcludedPathComponents` run as whole, case-sensitive components.
+    /// True when the path is home or above it, sits inside an app/framework bundle or a home SDK folder, or contains
+    /// any `projectDiscoveryExcludedPathComponents` run as whole, case-sensitive components.
     public static func isExcludedFromProjectDiscovery(
         _ url: URL,
         home: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -142,6 +143,9 @@ extension ScanPolicy {
         let components = url.standardizedFileURL.pathComponents
         if isHomeOrAncestor(url, home: home) { return true }
         if components.contains(where: isBundleComponent) { return true }
+        if projectDiscoveryExcludedHomeFolders.contains(where: {
+            isEqualToOrDescendant(candidate: url, root: home.appending(path: $0))
+        }) { return true }
         return projectDiscoveryExcludedComponentRuns.contains { run in
             guard components.count >= run.count else { return false }
             return (0...(components.count - run.count)).contains { start in

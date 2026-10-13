@@ -22,6 +22,9 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
     /// Far below macOS ARG_MAX (1 MiB, shared with the environment).
     public static let defaultMaxArgumentBytesPerCall = 128 * 1024
 
+    /// Budget for one `statuses(for:)` call; a git call already running may overrun it by its own 3 s timeout.
+    public static let defaultTotalDeadlineSeconds: TimeInterval = 20
+
     /// Read-only, non-interactive git: no index lock refresh, no credential prompts.
     static let environment = [
         "GIT_OPTIONAL_LOCKS": "0",
@@ -42,35 +45,50 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
     private let locateGit: @Sendable () async -> URL?
     private let run: Run
     private let maxArgumentBytesPerCall: Int
+    private let totalDeadline: TimeInterval
+    private let now: @Sendable () -> Date
 
     public init(
         locateGit: @escaping @Sendable () async -> URL? = { await GitLocator().locate() },
         run: Run? = nil,
-        maxArgumentBytesPerCall: Int = SystemGitArtifactInspector.defaultMaxArgumentBytesPerCall
+        maxArgumentBytesPerCall: Int = SystemGitArtifactInspector.defaultMaxArgumentBytesPerCall,
+        totalDeadline: TimeInterval = SystemGitArtifactInspector.defaultTotalDeadlineSeconds,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         let runner = ToolCommandRunner()
         self.locateGit = locateGit
         self.run = run ?? { await runner.run(executable: $0, arguments: $1, environment: $2) }
         self.maxArgumentBytesPerCall = maxArgumentBytesPerCall
+        self.totalDeadline = totalDeadline
+        self.now = now
     }
 
+    /// Directories git could not reach before the total deadline report `.failed`, so they stay uncleanable.
     public func statuses(for directories: [URL]) async -> [String: GitArtifactStatus] {
         guard !directories.isEmpty else { return [:] }
+        let deadline = now().addingTimeInterval(totalDeadline)
         guard let git = await locateGit() else {
             return Self.uniform(directories.map(\.path), .gitUnavailable)
         }
 
         var result: [String: GitArtifactStatus] = [:]
         var lookups: [String: RepositoryLookup] = [:]
+        var knownTops: Set<String> = []
         var candidatesByRepository: [String: [Candidate]] = [:]
         for directory in directories {
             let parent = directory.deletingLastPathComponent().path
             let lookup: RepositoryLookup
             if let cached = lookups[parent] {
                 lookup = cached
+            } else if let top = Self.enclosingKnownTop(of: parent, knownTops: knownTops) {
+                lookup = .repository(top: top, prefix: parent == top ? "" : String(parent.dropFirst(top.count + 1)) + "/")
+                lookups[parent] = lookup
+            } else if now() >= deadline {
+                lookup = .failed
             } else {
                 lookup = await lookUpRepository(containing: parent, git: git)
                 lookups[parent] = lookup
+                if case .repository(let top, _) = lookup { knownTops.insert(top) }
             }
             switch lookup {
             case .repository(let top, let prefix):
@@ -84,7 +102,7 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
         }
 
         for (top, candidates) in candidatesByRepository {
-            let repositoryStatuses = await inspect(candidates, inRepository: top, git: git)
+            let repositoryStatuses = await inspect(candidates, inRepository: top, git: git, deadline: deadline)
             result.merge(repositoryStatuses) { _, new in new }
         }
         return result
@@ -107,17 +125,18 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
     private func inspect(
         _ candidates: [Candidate],
         inRepository top: String,
-        git: URL
+        git: URL,
+        deadline: Date
     ) async -> [String: GitArtifactStatus] {
         let relatives = candidates.map(\.relative)
         // check-ignore only allows -z with --stdin and rejects literal pathspecs; a quoted path never matches → fails closed.
         guard let ignored = await collectPaths(
                   git: git, top: top, command: ["check-ignore", "--"], relatives: relatives,
-                  acceptedExitCodes: [0, 1], separator: "\n"
+                  acceptedExitCodes: [0, 1], separator: "\n", deadline: deadline
               ),
               let tracked = await collectPaths(
                   git: git, top: top, command: ["--literal-pathspecs", "ls-files", "-z", "--cached", "--"], relatives: relatives,
-                  acceptedExitCodes: [0], separator: "\0"
+                  acceptedExitCodes: [0], separator: "\0", deadline: deadline
               )
         else { return Self.uniform(candidates.map(\.key), .failed) }
 
@@ -141,10 +160,12 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
         command: [String],
         relatives: [String],
         acceptedExitCodes: Set<Int32>,
-        separator: Character
+        separator: Character,
+        deadline: Date
     ) async -> [String]? {
         var paths: [String] = []
         for chunk in Self.chunks(relatives, maxBytes: maxArgumentBytesPerCall) {
+            guard now() < deadline else { return nil }
             let arguments = Self.baseArguments(directory: top) + command + chunk
             guard let output = await run(git, arguments, Self.environment),
                   acceptedExitCodes.contains(output.exitCode) else { return nil }
@@ -156,6 +177,19 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
     }
 
     // MARK: - Helpers
+
+    /// A repository already found holds `parent` when no `.git` (nested repo, submodule, worktree) sits between them.
+    /// Spellings that differ from git's toplevel (`/var` vs `/private/var`) never match and fall back to `rev-parse`.
+    private static func enclosingKnownTop(of parent: String, knownTops: Set<String>) -> String? {
+        var url = URL(fileURLWithPath: parent)
+        guard !knownTops.isEmpty, !url.pathComponents.contains(where: { $0.lowercased() == ".git" }) else { return nil }
+        while url.path != "/" {
+            if knownTops.contains(url.path) { return url.path }
+            if FileManager.default.fileExists(atPath: url.path + "/.git") { return nil }
+            url = url.deletingLastPathComponent()
+        }
+        return nil
+    }
 
     private static func baseArguments(directory: String) -> [String] {
         ["-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-C", directory]
