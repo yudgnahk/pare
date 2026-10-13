@@ -9,6 +9,7 @@ All notable changes to Pare are documented here.
 Release candidate `release/2026-10`: pull requests #37–#74 (#38–#69 via `integration/2026-10-07`, merged in #73). Not yet on `master`.
 
 ### Release candidate fixes (2026-10-13)
+- Project discovery keeps only the outermost project folder at any depth, and tidies roots already saved; excluding a root no longer hides the projects inside it.
 - Smart Scan: warm full scan ~35 s → ~15 s and peak memory ~700 MB → ~140 MB on a debug build; project discovery skips `$HOME`, app bundles, SDKs and toolchain trees; the Go module cache size is remembered for 24 h (#71). Results appear without the post-scan stall (#37).
 - A folder holding a report-only finding or a never-clean location is never trashed as a whole (#72).
 - The git ignore check has a 20 s total deadline and fails closed (#72); tiny-file queues have a 20 s deadline (#74).

@@ -34,7 +34,10 @@ home, bare `~/Library`) and validates tool output (one absolute line, no NUL, bo
 - Paths through `Library`, `System`, `Applications`, `node_modules`, `vendor`, venvs, Trash,
   `site-packages`, `go/pkg/mod`, `.pub-cache`, Cargo registry and git, `fvm/versions` and runner
   toolchains (`_work/_tool`) are dropped.
-- Nested roots collapse into the outermost one, unless more than 3 components deeper.
+- Nested roots collapse into the outermost one at any depth (component-wise: `/a/proj-2` is not inside `/a/proj`).
+  Roots already in `project-roots.json` are collapsed the same way on the next discovery. A root the user
+  excluded never swallows the roots inside it, and manual roots neither swallow nor are removed: the rule's
+  walk already skips a discovered root it reaches within depth 8, and a deeper one stays scanned.
 - **Decision (maintainer, 2026-10-13):** keep `package.json` as a signal, but keep only outermost
   project folders: drop every hit inside `node_modules` and every root inside another discovered
   root, at any depth. Switching to lockfiles was rejected because it misses lockfile-less projects.
