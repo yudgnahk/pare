@@ -18,6 +18,7 @@ import Foundation
 ///   - Hidden directories that are NOT known artifact names are skipped.
 ///   - Apply a 7-day age gate for all artifact types.
 ///   - `dist/` and `build/` are flagged `.review`; everything else is `.safe`.
+///   - `build`/`dist`/`target` are only reported when git ignores them and tracks nothing inside.
 public struct ProjectArtifactsRule: ScanRule {
     public let id = "project-artifacts-v2"
     public let title = "Project Local Build Caches"
@@ -26,65 +27,172 @@ public struct ProjectArtifactsRule: ScanRule {
     public let riskLevel: RiskLevel = .safe
     public let confidence: Double = 0.93
 
+    /// Wall-clock cap on walking project roots; past it the rule returns what it has found so far.
+    public static let defaultTimeBudget: TimeInterval = 60
+    static let walkMaxDepth = 8
+
     private let discovery: ProjectRootDiscovery
     private let pathStore: ProjectScanPathStore
+    private let gitInspector: any GitArtifactInspecting
+    private let timeBudget: TimeInterval
+    private let now: @Sendable () -> Date
 
-    public init(discovery: ProjectRootDiscovery = .shared, pathStore: ProjectScanPathStore = .shared) {
+    /// A git-gated artifact (`build`/`dist`/`target`) found during the walk, sized only after git allows it.
+    private struct Candidate {
+        let url: URL
+        let lowercasedName: String
+        let lastUsed: Date?
+        let rootIndex: Int
+    }
+
+    public init(
+        discovery: ProjectRootDiscovery = .shared,
+        pathStore: ProjectScanPathStore = .shared,
+        gitInspector: any GitArtifactInspecting = SystemGitArtifactInspector(),
+        timeBudget: TimeInterval = ProjectArtifactsRule.defaultTimeBudget,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.discovery = discovery
         self.pathStore = pathStore
+        self.gitInspector = gitInspector
+        self.timeBudget = timeBudget
+        self.now = now
     }
 
     public func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool { false }
 
     public func customScan(environment: ScanEnvironment) async -> [ScanFinding]? {
-        await discovery.discoverIfNeeded()
+        await scan(environment: environment).findings
+    }
+
+    public func customScanResult(environment: ScanEnvironment) async throws -> ScanRuleResult? {
+        await scan(environment: environment)
+    }
+
+    private func scan(environment: ScanEnvironment) async -> ScanRuleResult {
+        let discoveryRan = await discovery.discoverIfNeeded()
+        let discoveryTimedOut = discoveryRan ? await discovery.lastDiscoveryTimedOut : false
         let discovered = await discovery.confirmedRoots()
         // Fold in manually configured scan paths (Phase 5 store), deduplicated by path.
         var seen = Set<String>()
-        let roots = (discovered + pathStore.paths.map { URL(fileURLWithPath: $0) })
-            .filter { seen.insert($0.standardizedFileURL.path).inserted }
-        guard !roots.isEmpty else { return [] }
+        let roots = Self.droppingCoveredRoots((discovered + pathStore.paths.map { URL(fileURLWithPath: $0) })
+            .filter { !ScanPolicy.isHomeOrAncestor($0, home: environment.homeDirectory) }
+            .filter { seen.insert(ScanPolicy.canonicalPathURL($0).path).inserted })
 
         let minAge = ScanPolicy.defaultMinimumAgeSeconds(for: category)
+        let budget = WalkBudget(deadline: now().addingTimeInterval(timeBudget), now: now)
         var findings: [ScanFinding] = []
+        var gated: [Candidate] = []
+        var completedRoots = Set<Int>()
 
-        for root in roots {
+        for (index, root) in roots.enumerated() {
             if Task.isCancelled { break }
-            await walk(
+            let completed = await walk(
                 directory: root,
                 depth: 0,
-                maxDepth: 8,
+                maxDepth: Self.walkMaxDepth,
                 minAge: minAge,
                 sizeIndex: environment.sizeIndex,
-                findings: &findings
+                budget: budget,
+                rootIndex: index,
+                findings: &findings,
+                gated: &gated
             )
+            guard completed else { break }
+            completedRoots.insert(index)
         }
 
-        return findings
+        // One git query per scan for every gated candidate; sized afterwards under the same budget.
+        let statuses = await gitInspector.statuses(for: gated.map(\.url))
+        let allowed = gated.filter { ScanPolicy.gitEvidenceAllows(artifact: $0.url, status: statuses[$0.url.path]) }
+        for (offset, candidate) in allowed.enumerated() {
+            guard !Task.isCancelled, !budget.isExhausted else {
+                completedRoots.subtract(allowed[offset...].map(\.rootIndex))
+                break
+            }
+            if let finding = makeFinding(url: candidate.url, lowercasedName: candidate.lowercasedName,
+                                         lastUsed: candidate.lastUsed, sizeIndex: environment.sizeIndex) {
+                findings.append(finding)
+            }
+        }
+
+        var notices: [String] = []
+        if discoveryTimedOut {
+            notices.append("Project discovery timed out; some projects may be missing.")
+        }
+        // A walk only stops early on cancellation or the budget; cancelled scans are discarded anyway.
+        if completedRoots.count < roots.count, !Task.isCancelled {
+            notices.append(
+                "Stopped after \(Int(timeBudget)) s, \(completedRoots.count) of \(roots.count) project folders fully scanned."
+            )
+        }
+        return ScanRuleResult(
+            findings: findings,
+            incompleteMessage: notices.isEmpty ? nil : notices.joined(separator: " ")
+        )
+    }
+
+    /// Drops roots the walk of another root already reaches, so nested projects are not walked twice.
+    static func droppingCoveredRoots(_ roots: [URL]) -> [URL] {
+        // Canonical spelling, so a `/var/…` root nested in a `/private/var/…` root is not walked twice.
+        let canonical = roots.map { ScanPolicy.canonicalPathURL($0) }
+        return zip(roots, canonical)
+            .filter { _, candidate in !canonical.contains { isReachable(candidate, fromRoot: $0) } }
+            .map(\.0)
+    }
+
+    private static func isReachable(_ candidate: URL, fromRoot root: URL) -> Bool {
+        let rootComponents = root.standardizedFileURL.pathComponents
+        let candidateComponents = candidate.standardizedFileURL.pathComponents
+        guard candidateComponents.count > rootComponents.count,
+              ScanPolicy.isEqualToOrDescendant(candidate: candidate, root: root) else { return false }
+        let relative = candidateComponents.dropFirst(rootComponents.count)
+        // The walk lists a directory k levels down only when k < max depth, through visible non-artifact dirs.
+        guard relative.count < walkMaxDepth else { return false }
+        return relative.allSatisfy { name in
+            let lower = name.lowercased()
+            return !name.hasPrefix(".")
+                && !ScanPolicy.isBundleComponent(name)
+                && !ScanPolicy.isProjectDependencyDirectory(lower)
+                && !ScanPolicy.projectLocalArtifactDirectoryNames.contains(lower)
+        }
     }
 
     // MARK: Private
 
+    private struct WalkBudget {
+        let deadline: Date
+        let now: @Sendable () -> Date
+
+        var isExhausted: Bool { now() >= deadline }
+    }
+
+    /// Returns false when the walk stopped early (time budget or cancellation).
+    @discardableResult
     private func walk(
         directory: URL,
         depth: Int,
         maxDepth: Int,
         minAge: TimeInterval?,
         sizeIndex: DirectorySizeIndex,
-        findings: inout [ScanFinding]
-    ) async {
-        guard depth < maxDepth, !Task.isCancelled else { return }
+        budget: WalkBudget,
+        rootIndex: Int,
+        findings: inout [ScanFinding],
+        gated: inout [Candidate]
+    ) async -> Bool {
+        guard depth < maxDepth else { return true }
+        guard !Task.isCancelled, !budget.isExhausted else { return false }
 
         let fm = FileManager.default
         guard let contents = try? fm.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey],
             options: []
-        ) else { return }
+        ) else { return true }
 
         for item in contents {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return false }
             guard let values = try? item.resourceValues(
                 forKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey]
             ), values.isDirectory == true else { continue }
@@ -97,44 +205,70 @@ public struct ProjectArtifactsRule: ScanRule {
             if ScanPolicy.isProjectDependencyDirectory(lower) {
                 continue
             }
+            // Shipped app code (e.g. an Electron app's bundled `package.json`) is never a project.
+            if ScanPolicy.isBundleComponent(name) {
+                continue
+            }
 
             if ScanPolicy.projectLocalArtifactDirectoryNames.contains(lower) {
-                // Age gate
+                guard ScanPolicy.hasRequiredSiblingMarker(item) else { continue }
                 if let minAge {
-                    let effectiveDate = ScanPolicy.effectiveAgeDate(from: values)
-                    if let date = effectiveDate, Date().timeIntervalSince(date) < minAge { continue }
+                    guard let date = ScanPolicy.projectArtifactAgeDate(for: item, values: values),
+                          Date().timeIntervalSince(date) >= minAge else { continue }
                 }
 
-                let size = sizeIndex.directorySize(url: item)
-                guard size > 0 else { continue }
-
-                let reviewNames: Set<String> = ["dist", "build"]
-                let risk: RiskLevel = reviewNames.contains(lower) ? .review : .safe
-                let reason = risk == .review
-                    ? "Build output directory — may contain committed release artifacts"
-                    : reason
-
-                findings.append(ScanFinding(
-                    category: category,
-                    riskLevel: risk,
-                    reason: reason,
-                    path: item.path,
-                    sizeBytes: size,
-                    lastUsed: values.contentModificationDate,
-                    confidence: confidence
-                ))
+                if ScanPolicy.requiresGitIgnoreEvidence(item) {
+                    gated.append(Candidate(
+                        url: item, lowercasedName: lower, lastUsed: values.contentModificationDate, rootIndex: rootIndex
+                    ))
+                    continue
+                }
+                guard !budget.isExhausted else { return false }
+                if let finding = makeFinding(url: item, lowercasedName: lower,
+                                             lastUsed: values.contentModificationDate, sizeIndex: sizeIndex) {
+                    findings.append(finding)
+                }
                 // Do not recurse into matched artifact directories.
             } else if !name.hasPrefix(".") {
                 // Recurse into visible directories; skip hidden dirs that aren't artifacts.
-                await walk(
+                let completed = await walk(
                     directory: item,
                     depth: depth + 1,
                     maxDepth: maxDepth,
                     minAge: minAge,
                     sizeIndex: sizeIndex,
-                    findings: &findings
+                    budget: budget,
+                    rootIndex: rootIndex,
+                    findings: &findings,
+                    gated: &gated
                 )
+                guard completed else { return false }
             }
         }
+        return true
+    }
+
+    private func makeFinding(url: URL, lowercasedName: String, lastUsed: Date?, sizeIndex: DirectorySizeIndex) -> ScanFinding? {
+        guard !Task.isCancelled else { return nil }
+        // A deadline-cut size is still reported, flagged as a lower bound.
+        let sized = sizeIndex.directorySizeResult(url: url)
+        guard sized.bytes > 0 || !sized.isComplete else { return nil }
+
+        let reviewNames: Set<String> = ["dist", "build"]
+        let risk: RiskLevel = reviewNames.contains(lowercasedName) ? .review : .safe
+        let reason = risk == .review
+            ? "Build output directory — may contain committed release artifacts"
+            : reason
+
+        return ScanFinding(
+            category: category,
+            riskLevel: risk,
+            reason: reason,
+            path: url.path,
+            sizeBytes: sized.bytes,
+            lastUsed: lastUsed,
+            confidence: confidence,
+            isSizeComplete: sized.isComplete
+        )
     }
 }

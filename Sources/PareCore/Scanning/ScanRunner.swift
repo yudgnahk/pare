@@ -5,17 +5,21 @@ public struct ScanRunner: Sendable {
     private let traversal: any FileTraversing
     private let exclusionList: ExclusionList
     private let cache: ScanMetadataCache?
+    /// Nil by default so tests never read the real cleanup history; the app and CLI pass one in.
+    private let regrowth: RegrowthDetector?
 
     public init(
         environment: ScanEnvironment = .current(),
         traversal: any FileTraversing = FileSystemTraversal(),
         exclusionList: ExclusionList = .empty,
-        cache: ScanMetadataCache? = nil
+        cache: ScanMetadataCache? = nil,
+        regrowth: RegrowthDetector? = nil
     ) {
         self.environment = environment
         self.traversal = traversal
         self.exclusionList = exclusionList
         self.cache = cache
+        self.regrowth = regrowth
     }
 
     /// Progress callback: (completedRules, totalRules, lastRuleTitle).
@@ -38,9 +42,9 @@ public struct ScanRunner: Sendable {
             effectiveTraversal = traversal
         }
 
-        var findings: [ScanFinding] = []
-        var grouped: [ScanCategory: (Int64, Int)] = [:]
+        var tagged: [(ruleIndex: Int, finding: ScanFinding)] = []
         var ruleFailures: [ScanRuleFailure] = []
+        var incompleteRules: [ScanIncompleteRule] = []
         var unreadable: Set<String> = []
         let total = rules.count
         // Fresh per-scan size index: rules sizing overlapping trees share one
@@ -54,13 +58,12 @@ public struct ScanRunner: Sendable {
                 environment: runEnvironment,
                 traversal: effectiveTraversal
             )
-            findings.append(contentsOf: outcome.findings)
-            for (category, value) in outcome.grouped {
-                let current = grouped[category] ?? (0, 0)
-                grouped[category] = (current.0 + value.0, current.1 + value.1)
-            }
+            tagged.append(contentsOf: outcome.findings.map { (ruleIndex: index, finding: $0) })
             if let failure = outcome.failure {
                 ruleFailures.append(failure)
+            }
+            if let incomplete = outcome.incomplete {
+                incompleteRules.append(incomplete)
             }
             unreadable.formUnion(outcome.unreadablePaths)
             onProgress?(index + 1, total, rule.title)
@@ -69,6 +72,12 @@ public struct ScanRunner: Sendable {
         // Persist the mtime index once per scan (stores only mark it dirty).
         await cache?.flush()
 
+        // Rules overlap (same folder, or a folder and files inside it); totals must count each path once.
+        let findings = FindingDeduplicator.deduplicate(tagged)
+        var grouped: [ScanCategory: (Int64, Int)] = [:]
+        for finding in findings {
+            accumulateReclaimable(finding, into: &grouped)
+        }
         let summaries = grouped
             .map { category, value in
                 ScanCategorySummary(
@@ -79,19 +88,23 @@ public struct ScanRunner: Sendable {
             }
             .sorted { $0.reclaimableBytes > $1.reclaimableBytes }
 
+        // Post-pass on the deduped findings: only risk and reason change, so the summaries above stay valid.
+        let finalFindings = regrowth?.apply(to: findings) ?? findings
+
         return ScanReport(
-            findings: findings,
+            findings: finalFindings,
             summaries: summaries,
             ruleFailures: ruleFailures,
-            unreadableLocations: unreadable.sorted()
+            unreadableLocations: unreadable.sorted(),
+            incompleteRules: incompleteRules
         )
     }
 
     private struct RuleOutcome {
         var findings: [ScanFinding] = []
-        var grouped: [ScanCategory: (Int64, Int)] = [:]
         var unreadablePaths: Set<String> = []
         var failure: ScanRuleFailure? = nil
+        var incomplete: ScanIncompleteRule? = nil
     }
 
     private func runRule(
@@ -102,10 +115,10 @@ public struct ScanRunner: Sendable {
         var outcome = RuleOutcome()
 
         do {
-            if let customFindings = try await rule.customScanThrowing(environment: environment) {
-                for finding in customFindings where !exclusionList.isExcluded(finding.path) {
-                    outcome.findings.append(finding)
-                    accumulateReclaimable(finding, into: &outcome.grouped)
+            if let result = try await rule.customScanResult(environment: environment) {
+                outcome.findings = result.findings.filter { !exclusionList.isExcluded($0.path) }
+                outcome.incomplete = result.incompleteMessage.map {
+                    ScanIncompleteRule(ruleID: rule.id, ruleTitle: rule.title, message: $0)
                 }
                 return outcome
             }
@@ -139,7 +152,6 @@ public struct ScanRunner: Sendable {
                 confidence: rule.confidence
             )
             outcome.findings.append(finding)
-            accumulateReclaimable(finding, into: &outcome.grouped)
         }
 
         return outcome

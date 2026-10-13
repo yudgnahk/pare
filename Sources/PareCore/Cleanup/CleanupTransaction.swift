@@ -41,6 +41,15 @@ public struct CleanupTransaction: Codable, Sendable, Identifiable {
     public let isDryRun: Bool
     /// All items included in this transaction.
     public let items: [CleanupItem]
+    /// Volume free space just before and after the trash moves; nil for dry runs and older records.
+    public let freeBytesBefore: Int64?
+    public let freeBytesAfter: Int64?
+
+    /// What the disk actually gained, which can differ from `totalBytesFreed` (clones, Trash on the same volume).
+    public var measuredBytesFreed: Int64? {
+        guard !isDryRun, let freeBytesBefore, let freeBytesAfter else { return nil }
+        return freeBytesAfter - freeBytesBefore
+    }
 
     public var totalBytesFreed: Int64 {
         isDryRun ? 0 : items.reduce(0) { $0 + $1.sizeBytes }
@@ -55,13 +64,17 @@ public struct CleanupTransaction: Codable, Sendable, Identifiable {
         timestamp: Date = Date(),
         profileName: String,
         isDryRun: Bool,
-        items: [CleanupItem]
+        items: [CleanupItem],
+        freeBytesBefore: Int64? = nil,
+        freeBytesAfter: Int64? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
         self.profileName = profileName
         self.isDryRun = isDryRun
         self.items = items
+        self.freeBytesBefore = freeBytesBefore
+        self.freeBytesAfter = freeBytesAfter
     }
 }
 

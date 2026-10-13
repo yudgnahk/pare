@@ -261,7 +261,7 @@ final class DeepCleanTests: XCTestCase {
         let (_, safeFile) = try makeTempFile(name: "dc-safe.bin", riskLevel: .safe)
         let (_, reviewFile) = try makeTempFile(name: "dc-review.bin", riskLevel: .review)
         let (_, advancedFile) = try makeTempFile(name: "dc-advanced.bin", riskLevel: .advanced)
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
 
         let result = try await engine.deepClean(
             findings: [safeFile, reviewFile, advancedFile],
@@ -280,7 +280,7 @@ final class DeepCleanTests: XCTestCase {
 
     func testDeepCleanWithoutConfirmationReturnsEmpty() async throws {
         let (_, safeFile) = try makeTempFile(name: "dc-unconfirmed.bin", riskLevel: .safe)
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
 
         let result = try await engine.deepClean(
             findings: [safeFile],
@@ -296,7 +296,7 @@ final class DeepCleanTests: XCTestCase {
 
     func testDeepCleanMovesReviewFileToTrash() async throws {
         let (_, reviewFile) = try makeTempFile(name: "dc-real-review.bin", riskLevel: .review)
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
 
         let result = try await engine.deepClean(
             findings: [reviewFile],
@@ -596,11 +596,12 @@ final class PathSafetyTests: XCTestCase {
     func testReconstructibleCachePathMarkers() {
         XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/.npm/_npx/abc")))
-        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+        // Go caches are a never-clean working set, not reconstructible caches.
+        XCTAssertFalse(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/Library/Caches/go-build")))
         XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/.cargo/registry/cache")))
-        XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
+        XCTAssertFalse(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/go/pkg/mod/cache")))
         XCTAssertTrue(ScanPolicy.isReconstructibleCachePath(
             URL(fileURLWithPath: "/Users/t/Library/Caches/Yarn")))
