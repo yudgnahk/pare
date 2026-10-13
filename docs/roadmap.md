@@ -49,8 +49,7 @@ Spec and reasons: `docs/features/project-dependency-reclaim.md`. 12.1 (SwiftPM `
 slice 1 (#69) are done. Duplicate Chrome `IndexedDB` in the CLI was fixed by #39.
 
 - [ ] Broken venvs (dangling `bin/python`): report regardless of activity when a lockfile or manifest exists
-- [ ] Manifest-only projects with a version-drift warning (open decision C)
-- [ ] "Save package list" export for venvs with no manifest (open decision C)
+- [ ] Manifest-only projects with a version-drift warning, only if users ask
 - [ ] Result card: at critical pressure, space returns only after emptying the Trash
 - [ ] Check git at scan time too: a tracked `node_modules` is listed today, then refused at cleanup
 
@@ -73,7 +72,7 @@ slice 1 (#69) are done. Duplicate Chrome `IndexedDB` in the CLI was fixed by #39
 
 ## Product backlog
 
-- [ ] Cache activity drives selection: skip hot, preselect cold `.safe` (open decision A)
+- [ ] Cache activity drives selection: hot rows start unchecked but selectable, the confirmation sheet says they will be re-downloaded, no "include all hot" (settled 2026-10-13, `docs/features/cache-activity.md`)
 - [ ] "Safe Care": scan, select `.safe` only, confirm, clean, optional light maintenance, in at most 3 clicks; never `.review` or `.advanced`
 - [ ] App Manager: hide system apps by default, multi-select with bulk uninstall and update, confirm every update (a single cask update runs `brew upgrade --cask --greedy` without asking today)
 - [ ] Maintenance: confirm Docker prune actions before running (they delete permanently), and fix the card layout. Needs a screenshot of the actual layout defect first.
@@ -123,7 +122,7 @@ Measured facts that shaped the rules. Keep them in mind before changing a gate.
 - **Reconstructible caches carry no multi-day gate** because the big ones are hot anyway: Chrome Cache about 600 MB, Service Worker 455 MB, `~/.npm/_npx` 1.18 GB, OpenCode cache 864 MB (2026-07).
 - **Folder age:** `atime` is unreliable on APFS, and a dependency folder's mtime is its install date.
 - **Speed:** one `git ls-files` per candidate blew the scan budget, so git evidence is one query per scan. Parallel rules with nested `withTaskGroup` plus actors returned empty results.
-- **Project discovery:** the root store once held 495 roots, 356 under `go/pkg/mod`. Spotlight finds no `.git` folders at all.
+- **Project discovery:** the root store once held 495 roots, 356 under `go/pkg/mod`. Spotlight finds no `.git` folders at all. 1,875 of 2,080 `package.json` hits sat inside `node_modules` (2026-10-07).
 - **Deliberately not artifacts:** `.swiftpm` (committed schemes), `.terraform` (backend state, needs credentials to rebuild).
 
 ## Won't build

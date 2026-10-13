@@ -40,6 +40,9 @@ gate that refuses wins. Order matters: an early refusal must never be undone by 
   `com.google.*` / `org.mozilla.*` out of `UserCachesRule`. Promoting them to never-clean would break
   `ProductivityCachesRule`'s deliberate `com.google.drivefs.finderext` cleanup. The real hazards
   (`GIPPseudonymousID`, `CCTClearcutLogger`, rewritten at about 50 MB/s) are never-clean.
+- **Disk Analyzer stays inside the findings, and Trash-only** (maintainer, 2026-10-13). "Add to Review"
+  accepts only paths a Smart Scan finding covers; a user-chosen file outside every finding would need
+  its own `ScanPolicy` gate and a security review. There is no permanent delete.
 - **Native commands delete directly.** `CleanupEngine` always uses the Trash. Maintenance and Homebrew
   actions (`docker system prune -f`, `docker builder prune`, `brew cleanup`) run the tool's own
   command behind a fresh preview and a confirmation, with no Undo.

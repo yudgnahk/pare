@@ -29,6 +29,8 @@ because removing one breaks the project until a reinstall, so they return only b
   `actions-runner/externals/node20/lib/node_modules`) carry their own dependency folders.
 - **Git evidence at cleanup.** A tracked or unignored folder may be vendored on purpose, so only
   ignored-and-untracked or not-in-a-repo folders are trashed.
+- **Pare never writes into a user's project.** A venv with no manifest or lockfile is not
+  reported (fail closed); there is no "Save package list" export (maintainer, 2026-10-13).
 - **In-use check on the whole project.** A dev server's cwd sits in the project, not in the
   dependency folder. With no open-file snapshot the folder is held back.
 
@@ -41,4 +43,4 @@ because removing one breaks the project until a reinstall, so they return only b
 ## Not built yet
 
 See the Phase 12 open items in `docs/roadmap.md`: broken venvs, manifest-only projects with a drift
-warning, a "Save package list" export, and an empty-the-Trash reminder at critical pressure.
+warning (only if users ask), and an empty-the-Trash reminder at critical pressure.

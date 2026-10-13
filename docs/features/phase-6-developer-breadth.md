@@ -35,6 +35,10 @@ home, bare `~/Library`) and validates tool output (one absolute line, no NUL, bo
   `site-packages`, `go/pkg/mod`, `.pub-cache`, Cargo registry and git, `fvm/versions` and runner
   toolchains (`_work/_tool`) are dropped.
 - Nested roots collapse into the outermost one, unless more than 3 components deeper.
+- **Decision (maintainer, 2026-10-13):** keep `package.json` as a signal, but keep only outermost
+  project folders: drop every hit inside `node_modules` and every root inside another discovered
+  root, at any depth. Switching to lockfiles was rejected because it misses lockfile-less projects.
+  On 2026-10-07, 1,875 of 2,080 `package.json` hits were inside `node_modules` (`mdfind` 0.5 s).
 - Roots persist in `~/Library/Application Support/Pare/project-roots.json`, refresh every 24 h or on
   Rescan, and can be unchecked or added by hand in the Project Roots card.
 
