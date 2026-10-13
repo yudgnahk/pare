@@ -78,6 +78,26 @@ final class DirectorySizeDeadlineTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(complete.first).isSizeComplete)
     }
 
+    func testFindingCopyKeepsEveryUnchangedField() {
+        let used = Date(timeIntervalSinceReferenceDate: 1000)
+        let original = ScanFinding(
+            category: .developerPackageCaches, riskLevel: .safe, reason: "r", path: "/a", sizeBytes: 7,
+            lastUsed: used, confidence: 0.5, annotations: [.workingSet(selfTrimDays: 5)], isSizeComplete: false
+        )
+
+        let copy = original.copy(riskLevel: .review, annotations: original.annotations + [.workingSet(selfTrimDays: nil)])
+
+        XCTAssertEqual(copy.riskLevel, .review)
+        XCTAssertEqual(copy.annotations, [.workingSet(selfTrimDays: 5), .workingSet(selfTrimDays: nil)])
+        XCTAssertFalse(copy.isSizeComplete)
+        XCTAssertEqual(copy.category, original.category)
+        XCTAssertEqual(copy.reason, original.reason)
+        XCTAssertEqual(copy.path, original.path)
+        XCTAssertEqual(copy.sizeBytes, original.sizeBytes)
+        XCTAssertEqual(copy.lastUsed, used)
+        XCTAssertEqual(copy.confidence, original.confidence)
+    }
+
     // MARK: - Presentation
 
     func testFindingSizeText() {

@@ -51,17 +51,10 @@ public struct RegrowthDetector: Sendable {
     private func demoted(_ finding: ScanFinding, sinceLastClean interval: TimeInterval) -> ScanFinding {
         let days = max(1, Int((interval / 86_400).rounded(.up)))
         let size = ByteCountFormatter.string(fromByteCount: finding.sizeBytes, countStyle: .file)
-        return ScanFinding(
-            category: finding.category,
+        return finding.copy(
             riskLevel: .review,
             reason: finding.reason + " — came back to \(size) within \(days) day\(days == 1 ? "" : "s") "
-                + "of the last clean; likely an active working set",
-            path: finding.path,
-            sizeBytes: finding.sizeBytes,
-            lastUsed: finding.lastUsed,
-            confidence: finding.confidence,
-            annotations: finding.annotations,
-            isSizeComplete: finding.isSizeComplete
+                + "of the last clean; likely an active working set"
         )
     }
 }

@@ -99,16 +99,6 @@ enum FindingDeduplicator {
         guard floor.severity > finding.riskLevel.severity else { return finding }
         let relative = descendant.url.pathComponents.dropFirst(entry.url.pathComponents.count).joined(separator: "/")
         let note = floor == .advanced ? "Holds a report-only item" : "Holds an item that needs review"
-        return ScanFinding(
-            category: finding.category,
-            riskLevel: floor,
-            reason: "\(finding.reason) \(note): \(relative) — \(descendant.finding.reason)",
-            path: finding.path,
-            sizeBytes: finding.sizeBytes,
-            lastUsed: finding.lastUsed,
-            confidence: finding.confidence,
-            annotations: finding.annotations,
-            isSizeComplete: finding.isSizeComplete
-        )
+        return finding.copy(riskLevel: floor, reason: "\(finding.reason) \(note): \(relative) — \(descendant.finding.reason)")
     }
 }
