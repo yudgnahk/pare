@@ -59,8 +59,10 @@ extension ScanPolicy {
     public static func isShrunkVersionSiblingGroup(_ url: URL) -> Bool {
         guard VersionedName(url.lastPathComponent) != nil, !isUnderVersionSiblingExcludedTree(url),
               isVersionSiblingLocation(url) else { return false }
-        let count = versionSiblings(of: url).count
-        return count >= 1 && count < versionSiblingMinimumGroupSize
+        let siblings = versionSiblings(of: url)
+        // The listing names the parent's other folders too; a folder that is gone must stay "not found".
+        guard siblings.contains(where: { $0.url.lastPathComponent == url.lastPathComponent }) else { return false }
+        return siblings.count < versionSiblingMinimumGroupSize
     }
 
     /// Cleanup-time gate: still at least two newer siblings, no alias pins the group, and no running process
