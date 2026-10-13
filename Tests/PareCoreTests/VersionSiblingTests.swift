@@ -310,6 +310,21 @@ final class VersionSiblingTests: XCTestCase {
         XCTAssertEqual(VersionSiblingRefusal.fewerNewerVersions.reason, "fewer than 2 newer versions")
     }
 
+    func testShrunkGroupIsRecognisedOnlyBelowTheMinimum() throws {
+        let versions = home.appending(path: ".tool/versions")
+        let oldest = try makeVersion(versions, "1.0.0")
+        try makeVersion(versions, "1.1.0")
+        let newest = try makeVersion(versions, "1.2.0")
+        XCTAssertFalse(ScanPolicy.isShrunkVersionSiblingGroup(newest), "a full group goes through the gate itself")
+
+        try FileManager.default.removeItem(at: oldest)
+        XCTAssertTrue(ScanPolicy.isShrunkVersionSiblingGroup(newest))
+        XCTAssertFalse(ScanPolicy.isShrunkVersionSiblingGroup(oldest), "a folder that is gone is not a sibling")
+
+        let nvm = try makeVersion(home.appending(path: ".nvm/versions/node"), "v18.0.0")
+        XCTAssertFalse(ScanPolicy.isShrunkVersionSiblingGroup(nvm), "excluded trees are never version siblings")
+    }
+
     func testNeverCleanVersionSiblingsAreNeverReclaimable() throws {
         let tool = home.appending(path: ".gotool")
         let oldest = try makeVersion(tool.appending(path: "versions"), "1.0.0")

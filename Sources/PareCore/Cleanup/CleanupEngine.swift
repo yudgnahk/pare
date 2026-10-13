@@ -477,7 +477,14 @@ public actor CleanupEngine {
             } else if let rejection = policyRejection(
                 for: finding, url: url, projectRootPaths: projectRootPaths, gitStatuses: gitStatuses
             ) {
-                skipped.append(CleanupSkippedItem(path: finding.path, error: rejection))
+                // Refused either way; a version folder whose group shrank says why instead of "unsafe".
+                let error: CleanupError
+                if case .unsafePath = rejection, ScanPolicy.isShrunkVersionSiblingGroup(url) {
+                    error = .versionKept(finding.path, reason: VersionSiblingRefusal.fewerNewerVersions.reason)
+                } else {
+                    error = rejection
+                }
+                skipped.append(CleanupSkippedItem(path: finding.path, error: error))
                 continue
             }
 

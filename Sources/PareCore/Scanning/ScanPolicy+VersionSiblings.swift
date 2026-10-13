@@ -54,6 +54,15 @@ extension ScanPolicy {
         return versionSiblings(of: url).count >= versionSiblingMinimumGroupSize
     }
 
+    /// A versioned folder in a version-sibling location whose group fell below the minimum (e.g. an older
+    /// sibling went earlier in the same batch), so it can no longer have two newer versions.
+    public static func isShrunkVersionSiblingGroup(_ url: URL) -> Bool {
+        guard VersionedName(url.lastPathComponent) != nil, !isUnderVersionSiblingExcludedTree(url),
+              isVersionSiblingLocation(url) else { return false }
+        let count = versionSiblings(of: url).count
+        return count >= 1 && count < versionSiblingMinimumGroupSize
+    }
+
     /// Cleanup-time gate: still at least two newer siblings, no alias pins the group, and no running process
     /// executes from it. Fail-closed: no process snapshot means not reclaimable.
     public static func isReclaimableVersionSibling(
