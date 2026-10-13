@@ -34,15 +34,17 @@ extension ScanPolicy {
         return versionSiblings(of: url).count >= versionSiblingMinimumGroupSize
     }
 
-    /// Cleanup-time gate: still at least two newer siblings, and no running process executes from it.
-    /// Fail-closed: no process snapshot means not reclaimable.
+    /// Cleanup-time gate: still at least two newer siblings, no alias pins the group, and no running process
+    /// executes from it. Fail-closed: no process snapshot means not reclaimable.
     public static func isReclaimableVersionSibling(_ url: URL, runningExecutables: [String]?) -> Bool {
         // isNeverCleanPath once #46 lands.
         guard let runningExecutables, isVersionSiblingLocation(url), isVersionSiblingMember(url),
               !containsSensitiveDataMarker(url), !isSearchIndexSensitivePath(url),
               let own = VersionedName(url.lastPathComponent) else { return false }
-        let newer = versionSiblings(of: url).filter { own.version < $0.name.version }
-        return newer.count >= versionSiblingKeepCount && !isExecutedFrom(url, runningExecutables: runningExecutables)
+        let siblings = versionSiblings(of: url)
+        let newer = siblings.filter { own.version < $0.name.version }
+        return newer.count >= versionSiblingKeepCount && !isPinnedVersionSiblingGroup(siblings.map(\.url))
+            && !isExecutedFrom(url, runningExecutables: runningExecutables)
     }
 
     /// Inside the rule's own roots and nowhere protected: a dot directory directly in a home folder (one
@@ -65,12 +67,16 @@ extension ScanPolicy {
         }
     }
 
-    /// True when a running executable lives at or under `directory`, compared in canonical, case-folded spelling.
+    /// True when a running executable lives at or under `directory`, compared in canonical, case-folded spelling
+    /// with symlinks resolved on both sides (fnm runs node through a `fnm_multishells/…` link).
     public static func isExecutedFrom(_ directory: URL, runningExecutables: [String]) -> Bool {
-        let base = canonicalPathURL(directory).path.lowercased()
+        let bases = Set([directory, directory.resolvingSymlinksInPath()].map { canonicalPathURL($0).path.lowercased() })
         return runningExecutables.contains { path in
-            let executable = canonicalPathURL(URL(fileURLWithPath: path)).path.lowercased()
-            return executable == base || executable.hasPrefix(base + "/")
+            let url = URL(fileURLWithPath: path)
+            return [url, url.resolvingSymlinksInPath()].contains { candidate in
+                let executable = canonicalPathURL(candidate).path.lowercased()
+                return bases.contains { executable == $0 || executable.hasPrefix($0 + "/") }
+            }
         }
     }
 }

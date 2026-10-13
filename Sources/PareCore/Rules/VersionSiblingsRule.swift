@@ -109,7 +109,8 @@ public struct VersionSiblingsRule: ScanRule {
     ) -> [ScanFinding] {
         let newestFirst = group.sorted { $1.name.version < $0.name.version }
         let kept = Array(newestFirst.prefix(ScanPolicy.versionSiblingKeepCount))
-        guard kept.count == ScanPolicy.versionSiblingKeepCount else { return [] }
+        guard kept.count == ScanPolicy.versionSiblingKeepCount,
+              !ScanPolicy.isPinnedVersionSiblingGroup(group.map(\.url)) else { return [] }
         let label = Self.displayVersion(for: group)
         let appName = Self.appName(for: group[0].url)
         return newestFirst.dropFirst(kept.count).compactMap { (candidate: (url: URL, name: VersionedName)) -> ScanFinding? in
