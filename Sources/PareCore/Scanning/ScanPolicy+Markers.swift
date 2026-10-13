@@ -145,7 +145,12 @@ extension ScanPolicy {
         "/.volta/", "/.fnm/", "/.bun/", "/.deno/", "/.npm/", "/.gradle/", "/.m2/", "/.cache/",
         "/.local/share/mise/", "/.local/share/pnpm/", "/.vscode/extensions/", "/.vscode-insiders/extensions/",
         "/.cursor/extensions/", "/.windsurf/extensions/", "/.vscode-server/", "/Pods/", "/.build/checkouts/",
+        "/anaconda3/", "/miniconda3/", "/miniforge3/", "/mambaforge/", "/micromamba/", "/.conda/",
+        "/opt/homebrew/", "/usr/local/Homebrew/", "/usr/local/Cellar/",
     ]
+
+    /// Home-relative SDK folders (git clones full of `pubspec.yaml`); names too generic to exclude anywhere else.
+    public static let projectDiscoveryExcludedHomeFolders = ["flutter", "fvm", "development/flutter"]
 
     /// Bundle extensions (lowercased) whose contents are shipped app code, never a user project root.
     public static let projectDiscoveryExcludedBundleExtensions: Set<String> = ["app", "framework"]
