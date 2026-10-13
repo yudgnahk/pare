@@ -128,7 +128,7 @@ final class ScanPolicySnapshotTests: XCTestCase {
         "neverCleanUserDataFilePrefixes": "f4a58138e80adc0f:1",
         "projectRootMarkerFileNames": "1f1d73052a061d5b:13",
         "projectDiscoverySignalNames": "5efb8386f4c6c5e9:13",
-        "versionSiblingExcludedDirectoryNames": "bc3e3c458749e00a:50",
+        "versionSiblingExcludedDirectoryNames": "2e8fc808b10ae07b:111",
         "developerReviewExclusionMarkers": "3a6c7b4459b1d383:6",
         "windowsExecutableExtensions": "650e196d02e9232c:3",
         "linuxExecutableExtensions": "a5e94159c9f04267:3",
