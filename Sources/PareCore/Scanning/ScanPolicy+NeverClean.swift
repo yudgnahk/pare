@@ -37,6 +37,21 @@ extension ScanPolicy {
             || customRoots.contains { isCanonicallyEqualToOrDescendant(candidate: url, root: $0) }
     }
 
+    /// True when trashing `url` would take a never-clean location under `home` (or a custom Go cache) with it.
+    public static func holdsNeverCleanLocation(
+        _ url: URL,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        customRoots: [URL] = GoCacheLocations.shared.resolvedRoots
+    ) -> Bool {
+        let runs = neverCleanComponentSequences + neverCleanUserDataComponentSequences
+            + neverCleanUserDataFilePrefixes.map(\.parent) + [dockerVMDiskComponents]
+        let locations = runs.map { $0.reduce(home) { $0.appending(path: $1) } } + customRoots
+        return locations.contains { isCanonicallyEqualToOrDescendant(candidate: $0, root: url) }
+    }
+
+    /// Docker Desktop's VM disk folder under home, as matched by `isDockerNeverDeletePath`.
+    static let dockerVMDiskComponents = ["library", "containers", "com.docker.docker", "data", "vms"]
+
     /// The non-Go subset of `isNeverCleanPath`: app user data or identity state, never a cache.
     public static func isProtectedUserDataPath(_ url: URL) -> Bool {
         isProtectedUserDataPath(components: url.standardizedFileURL.pathComponents.map { $0.lowercased() })
