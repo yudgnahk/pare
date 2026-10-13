@@ -45,6 +45,9 @@ struct ProcessesView: View {
                     ErrorBanner(message: message + " Showing the last reading.")
                 }
                 summary
+                if !viewModel.kinds.isEmpty {
+                    ProcessKindStrip(kinds: viewModel.kinds)
+                }
                 table
             }
         }
@@ -55,6 +58,9 @@ struct ProcessesView: View {
         return HStack(spacing: AppTheme.Spacing.lg) {
             summaryItem("Processes", value: "\(tree.processCount)")
             summaryItem("Memory", value: ProcessFormat.memory(tree.totalFootprintBytes))
+                .help(ProcessFormat.memoryHelp)
+            summaryItem("Resident", value: ProcessFormat.memory(tree.totalResidentBytes))
+                .help(ProcessFormat.residentHelp)
             summaryItem("CPU", value: ProcessFormat.cpu(tree.totalCPUPercent))
             Spacer(minLength: 0)
             Label("View only · refreshes every few seconds", systemImage: "eye")
@@ -82,6 +88,9 @@ struct ProcessesView: View {
                 TableHeaderRow(spacing: AppTheme.Spacing.md) {
                     Text("Name").frame(maxWidth: .infinity, alignment: .leading)
                     Text("Memory").frame(width: ProcessColumns.memory(scale), alignment: .trailing)
+                        .help(ProcessFormat.memoryHelp)
+                    Text("Resident").frame(width: ProcessColumns.resident(scale), alignment: .trailing)
+                        .help(ProcessFormat.residentHelp)
                     Text("CPU").frame(width: ProcessColumns.cpu(scale), alignment: .trailing)
                 }
                 ScrollView {
@@ -101,10 +110,14 @@ struct ProcessesView: View {
 /// Column widths shared by the header and every row.
 enum ProcessColumns {
     static func memory(_ scale: DisplayScale) -> CGFloat { scale.scaled(96) }
+    static func resident(_ scale: DisplayScale) -> CGFloat { scale.scaled(96) }
     static func cpu(_ scale: DisplayScale) -> CGFloat { scale.scaled(64) }
 }
 
 enum ProcessFormat {
+    static let memoryHelp = "Memory, as Activity Monitor shows it. Includes memory macOS has compressed or moved to swap, so it can be far more than the RAM in use."
+    static let residentHelp = "Resident: what sits in RAM right now, closer to the RAM quitting would free. Shared pages count in every process that maps them."
+
     static func memory(_ bytes: UInt64) -> String {
         ScanReportPresenter.formatBytes(Int64(clamping: bytes))
     }

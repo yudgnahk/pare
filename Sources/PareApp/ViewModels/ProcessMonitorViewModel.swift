@@ -7,6 +7,7 @@ final class ProcessMonitorViewModel: ObservableObject {
     static let refreshIntervalNanos: UInt64 = 2_500_000_000
 
     @Published private(set) var tree: ProcessTree = .empty
+    @Published private(set) var kinds: [ProcessKindTotal] = []
     @Published private(set) var state: LoadState = .idle
     @Published private(set) var expanded: Set<ProcessID> = []
 
@@ -46,12 +47,17 @@ final class ProcessMonitorViewModel: ObservableObject {
         do {
             let tree = try await monitor.refresh()
             guard !Task.isCancelled else { return }
-            self.tree = tree
+            apply(tree)
             state = .loaded
         } catch {
             NSLog("Process sampling failed: \(error.localizedDescription)")
             state = .error("Could not read running processes. Pare will keep trying.")
         }
+    }
+
+    private func apply(_ tree: ProcessTree) {
+        self.tree = tree
+        kinds = ProcessKindSummary.top(in: tree)
     }
 
     func toggle(_ id: ProcessID) {
@@ -68,7 +74,7 @@ final class ProcessMonitorViewModel: ObservableObject {
     /// Snapshot renderer pins a fixture tree so appearing never samples real processes.
     func applySnapshotTree(_ fixture: ProcessTree, expanded ids: Set<ProcessID>) {
         isSnapshotPinned = true
-        tree = fixture
+        apply(fixture)
         expanded = ids
         state = .loaded
     }

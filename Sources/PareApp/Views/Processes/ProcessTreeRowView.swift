@@ -1,7 +1,7 @@
 import SwiftUI
 import PareCore
 
-/// One outline row: disclosure, name (plus Paseo session details), branch memory and CPU.
+/// One outline row: disclosure, name (plus Paseo session details), branch memory, resident memory and CPU.
 struct ProcessTreeRowView: View {
     let row: ProcessRow
     let onToggle: () -> Void
@@ -26,6 +26,11 @@ struct ProcessTreeRowView: View {
                 .monospacedDigit()
                 .foregroundStyle(AppTheme.textPrimary)
                 .frame(width: ProcessColumns.memory(scale), alignment: .trailing)
+            Text(ProcessFormat.memory(node.branchResidentBytes))
+                .font(scale.font(13, weight: .medium, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(AppTheme.textSecondary)
+                .frame(width: ProcessColumns.resident(scale), alignment: .trailing)
             Text(ProcessFormat.cpu(node.branchCPUPercent))
                 .font(scale.font(13, weight: .medium, design: .rounded))
                 .monospacedDigit()
@@ -87,9 +92,9 @@ struct ProcessTreeRowView: View {
     }
 
     private var helpText: String {
-        let own = "This process: \(ProcessFormat.memory(node.footprintBytes)), CPU \(ProcessFormat.cpu(node.cpuPercent))"
+        let own = "This process: \(ProcessFormat.memory(node.footprintBytes)), \(ProcessFormat.memory(node.residentBytes)) resident, CPU \(ProcessFormat.cpu(node.cpuPercent))"
         guard row.hasChildren else { return own }
-        return own + "\nWith its \(node.descendantCount) child processes: \(ProcessFormat.memory(node.branchFootprintBytes)), CPU \(ProcessFormat.cpu(node.branchCPUPercent))"
+        return own + "\nWith its \(node.descendantCount) child processes: \(ProcessFormat.memory(node.branchFootprintBytes)), \(ProcessFormat.memory(node.branchResidentBytes)) resident, CPU \(ProcessFormat.cpu(node.branchCPUPercent))"
     }
 }
 

@@ -25,6 +25,8 @@ public struct ProcessRecord: Sendable, Equatable {
     public let executablePath: String?
     /// `phys_footprint`, the figure Activity Monitor shows as Memory.
     public let footprintBytes: UInt64
+    /// Pages in RAM right now; compressed and swapped-out memory counts in the footprint but not here.
+    public let residentBytes: UInt64
     /// User plus system CPU time, in nanoseconds.
     public let cpuTimeNanos: UInt64
 
@@ -34,6 +36,7 @@ public struct ProcessRecord: Sendable, Equatable {
         kernelName: String,
         executablePath: String?,
         footprintBytes: UInt64,
+        residentBytes: UInt64,
         cpuTimeNanos: UInt64
     ) {
         self.id = id
@@ -41,6 +44,7 @@ public struct ProcessRecord: Sendable, Equatable {
         self.kernelName = kernelName
         self.executablePath = executablePath
         self.footprintBytes = footprintBytes
+        self.residentBytes = residentBytes
         self.cpuTimeNanos = cpuTimeNanos
     }
 }
@@ -95,9 +99,11 @@ public struct ProcessNode: Sendable, Equatable, Identifiable {
     public let name: String
     public let executableName: String
     public let footprintBytes: UInt64
+    public let residentBytes: UInt64
     /// Nil until two samples exist.
     public let cpuPercent: Double?
     public let branchFootprintBytes: UInt64
+    public let branchResidentBytes: UInt64
     public let branchCPUPercent: Double?
     public let descendantCount: Int
     public let paseoAgent: PaseoAgentInfo?
@@ -108,8 +114,10 @@ public struct ProcessNode: Sendable, Equatable, Identifiable {
         name: String,
         executableName: String,
         footprintBytes: UInt64,
+        residentBytes: UInt64,
         cpuPercent: Double?,
         branchFootprintBytes: UInt64,
+        branchResidentBytes: UInt64,
         branchCPUPercent: Double?,
         descendantCount: Int,
         paseoAgent: PaseoAgentInfo?,
@@ -119,8 +127,10 @@ public struct ProcessNode: Sendable, Equatable, Identifiable {
         self.name = name
         self.executableName = executableName
         self.footprintBytes = footprintBytes
+        self.residentBytes = residentBytes
         self.cpuPercent = cpuPercent
         self.branchFootprintBytes = branchFootprintBytes
+        self.branchResidentBytes = branchResidentBytes
         self.branchCPUPercent = branchCPUPercent
         self.descendantCount = descendantCount
         self.paseoAgent = paseoAgent
@@ -133,12 +143,14 @@ public struct ProcessTree: Sendable, Equatable {
     public let roots: [ProcessNode]
     public let processCount: Int
     public let totalFootprintBytes: UInt64
+    public let totalResidentBytes: UInt64
     public let totalCPUPercent: Double?
 
     public init(roots: [ProcessNode]) {
         self.roots = roots
         self.processCount = roots.reduce(0) { $0 + 1 + $1.descendantCount }
         self.totalFootprintBytes = roots.reduce(0) { $0 + $1.branchFootprintBytes }
+        self.totalResidentBytes = roots.reduce(0) { $0 + $1.branchResidentBytes }
         self.totalCPUPercent = ProcessCPUUsage.sum(roots.map(\.branchCPUPercent))
     }
 

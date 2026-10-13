@@ -48,6 +48,7 @@ public struct LibprocProcessSnapshotProvider: ProcessSnapshotProviding {
             kernelName: name.isEmpty ? Self.string(fromTuple: info.pbi_comm) : name,
             executablePath: executablePath(pid),
             footprintBytes: usage.ri_phys_footprint,
+            residentBytes: usage.ri_resident_size,
             cpuTimeNanos: nanos(fromMachTicks: usage.ri_user_time &+ usage.ri_system_time)
         )
     }
