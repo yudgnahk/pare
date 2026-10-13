@@ -184,21 +184,13 @@ public struct ProjectArtifactsRule: ScanRule {
         guard depth < maxDepth else { return true }
         guard !Task.isCancelled, !budget.isExhausted else { return false }
 
-        let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey],
-            options: []
-        ) else { return true }
+        guard let listing = DirectoryListing.contents(of: directory) else { return true }
 
-        for item in contents {
+        for entry in listing.entries where entry.kind == .directory {
             guard !Task.isCancelled else { return false }
-            guard let values = try? item.resourceValues(
-                forKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey]
-            ), values.isDirectory == true else { continue }
-
-            let name = item.lastPathComponent
+            let name = entry.name
             let lower = name.lowercased()
+            let item = listing.url(of: entry)
 
             // Never treat dependency trees as free space (node_modules, .venv, …).
             // Skip entirely — not reclaimable and no need to walk inside.
@@ -211,7 +203,9 @@ public struct ProjectArtifactsRule: ScanRule {
             }
 
             if ScanPolicy.projectLocalArtifactDirectoryNames.contains(lower) {
-                guard ScanPolicy.hasRequiredSiblingMarker(item) else { continue }
+                guard ScanPolicy.hasRequiredSiblingMarker(item),
+                      let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .contentModificationDateKey, .creationDateKey])
+                else { continue }
                 if let minAge {
                     guard let date = ScanPolicy.projectArtifactAgeDate(for: item, values: values),
                           Date().timeIntervalSince(date) >= minAge else { continue }

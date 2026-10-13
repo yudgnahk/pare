@@ -131,6 +131,36 @@ final class VersionSiblingTests: XCTestCase {
         XCTAssertEqual(executables.calls, 0, "no process snapshot when there is nothing to offer")
     }
 
+    func testSymlinkedAndPackageVersionsAreNotMembers() async throws {
+        let versions = home.appending(path: ".tool/versions")
+        try makeVersion(versions, "1.0.0")
+        try makeVersion(versions, "1.1.0")
+        let elsewhere = try makeVersion(root.appending(path: "elsewhere"), "1.2.0")
+        try FileManager.default.createSymbolicLink(at: versions.appending(path: "1.2.0"), withDestinationURL: elsewhere)
+        let bundles = home.appending(path: ".tool/bundles")
+        for version in ["1.0.0", "1.1.0", "1.2.0"] {
+            try makeVersion(bundles, "Tool-\(version).app")
+        }
+
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+
+        XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
+    }
+
+    func testWideDirectoryStillGroupsItsVersionedFolders() async throws {
+        let releases = home.appending(path: ".tool/releases")
+        for version in ["1.0.0", "1.1.0", "1.2.0"] {
+            try makeVersion(releases, version)
+        }
+        for index in 0...VersionSiblingsRule.fanOutLimit {
+            try Data().write(to: releases.appending(path: "session-\(index).json"))
+        }
+
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+
+        XCTAssertEqual(findings.map(\.path), [releases.appending(path: "1.0.0").path])
+    }
+
     func testRuntimeManagerHomesAreIgnored() async throws {
         let trees = [
             "Library/Application Support/fnm/node-versions", ".local/share/fnm/node-versions", ".proto/tools/node",

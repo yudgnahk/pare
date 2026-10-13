@@ -58,28 +58,42 @@ public struct RunawayLogsRule: ScanRule {
     }
 
     private func scan(root: URL, maxDepth: Int, activeSince: Date, budget: inout Int) -> [ScanFinding] {
-        let keys: [URLResourceKey] = [
-            .isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey,
-        ]
-        guard let enumerator = FileManager.default.enumerator(
-            at: root, includingPropertiesForKeys: keys, options: [.skipsPackageDescendants]
-        ) else { return [] }
         var findings: [ScanFinding] = []
-        for case let url as URL in enumerator {
+        walk(root, level: 1, maxDepth: maxDepth, activeSince: activeSince, budget: &budget, findings: &findings)
+        return findings
+    }
+
+    /// Pre-order like the `FileManager` enumerator it replaces, so a spent budget stops at the same entry;
+    /// only log-named files are stat'ed. False once the budget is spent or the scan is cancelled.
+    @discardableResult
+    private func walk(
+        _ directory: URL, level: Int, maxDepth: Int, activeSince: Date, budget: inout Int, findings: inout [ScanFinding]
+    ) -> Bool {
+        guard let listing = DirectoryListing.contents(of: directory) else { return true }
+        for entry in listing.entries {
             budget -= 1
-            guard budget > 0, !Task.isCancelled else { break }
-            guard let values = try? url.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true else { continue }
-            if values.isDirectory == true {
-                if enumerator.level >= maxDepth { enumerator.skipDescendants() }
+            guard budget > 0, !Task.isCancelled else { return false }
+            let url = listing.url(of: entry)
+            switch entry.kind {
+            case .directory:
+                guard level < maxDepth, (try? url.resourceValues(forKeys: [.isPackageKey]))?.isPackage != true else { continue }
+                guard walk(url, level: level + 1, maxDepth: maxDepth, activeSince: activeSince,
+                           budget: &budget, findings: &findings) else { return false }
+            case .regularFile:
+                if let finding = liveLogFinding(url, activeSince: activeSince) { findings.append(finding) }
+            case .symbolicLink, .other:
                 continue
             }
-            guard values.isRegularFile == true,
-                  Self.logExtensions.contains(url.pathExtension.lowercased()),
-                  let size = values.fileSize, Int64(size) >= Self.minimumBytes,
-                  let modified = values.contentModificationDate, modified >= activeSince else { continue }
-            findings.append(finding(for: url, bytes: Int64(size), modified: modified))
         }
-        return findings
+        return true
+    }
+
+    private func liveLogFinding(_ url: URL, activeSince: Date) -> ScanFinding? {
+        guard Self.logExtensions.contains(url.pathExtension.lowercased()),
+              let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+              let size = values.fileSize, Int64(size) >= Self.minimumBytes,
+              let modified = values.contentModificationDate, modified >= activeSince else { return nil }
+        return finding(for: url, bytes: Int64(size), modified: modified)
     }
 
     private func finding(for url: URL, bytes: Int64, modified: Date) -> ScanFinding {

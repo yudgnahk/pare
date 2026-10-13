@@ -132,23 +132,22 @@ public struct TinyFileQueueRule: ScanRule {
         budget: inout Int,
         pastDeadline: () -> Bool = { false }
     ) -> (entryCount: Int, subdirectories: [URL])? {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: url, includingPropertiesForKeys: keys, options: [.skipsSubdirectoryDescendants]
-        ) else { return (0, []) }
         var count = 0
-        var subdirectories: [URL] = []
-        for case let child as URL in enumerator {
-            guard budget > 0 else { return nil }
-            if count % deadlineCheckInterval == 0, count > 0, pastDeadline() { return nil }
+        var subdirectoryNames: [String] = []
+        var stoppedEarly = false
+        let resolved = DirectoryListing.forEach(in: url) { entry in
+            if budget <= 0 || (count % deadlineCheckInterval == 0 && count > 0 && pastDeadline()) {
+                stoppedEarly = true
+                return false
+            }
             budget -= 1
             count += 1
-            let values = try? child.resourceValues(forKeys: Set(keys))
-            if values?.isDirectory == true, values?.isSymbolicLink != true {
-                subdirectories.append(child)
-            }
+            if entry.kind == .directory { subdirectoryNames.append(entry.name) }
+            return true
         }
-        return (count, subdirectories)
+        guard !stoppedEarly else { return nil }
+        guard let resolved else { return (0, []) }
+        return (count, subdirectoryNames.map { resolved.appendingPathComponent($0, isDirectory: true) })
     }
 
     private struct Stats {
