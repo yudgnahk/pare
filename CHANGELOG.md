@@ -6,7 +6,16 @@ All notable changes to Pare are documented here.
 
 ## [Unreleased]
 
-Pull requests #38–#69, merged together on `integration/2026-10-07` and not yet on `master`.
+Release candidate `release/2026-10`: pull requests #37–#74 (#38–#69 via `integration/2026-10-07`, merged in #73). Not yet on `master`.
+
+### Release candidate fixes (2026-10-13)
+- Smart Scan: warm full scan ~35 s → ~15 s and peak memory ~700 MB → ~140 MB on a debug build; project discovery skips `$HOME`, app bundles, SDKs and toolchain trees; the Go module cache size is remembered for 24 h (#71). Results appear without the post-scan stall (#37).
+- A folder holding a report-only finding or a never-clean location is never trashed as a whole (#72).
+- The git ignore check has a 20 s total deadline and fails closed (#72); tiny-file queues have a 20 s deadline (#74).
+- Homebrew commands run with `HOMEBREW_NO_AUTOREMOVE=1`, so cleanup, uninstall and upgrade never remove formulae the preview did not show; brew runs time out and can be stopped (#74).
+- Version managers (fnm, proto, rye, juliaup, swiftly…) and pinned/aliased versions are never offered as old versions (#74).
+- The in-use check decodes lsof's `\xNN` escapes, so non-ASCII paths are recognised as open (#74).
+- `make release-adhoc` builds an ad-hoc signed `Pare.app`, zip, DMG and SHA256SUMS without an Apple Developer account (#70); see `docs/distribution-adhoc.md`.
 
 ### Safety
 - Build, `dist` and `target` folders are reclaimed only when git ignores them and tracks nothing inside, checked again at cleanup time (#41).
@@ -29,7 +38,7 @@ Pull requests #38–#69, merged together on `integration/2026-10-07` and not yet
 - Folder sizing has a deadline; slow folders show "at least" instead of a guess (#58).
 - Abandoned Codex marketplace staging folders can be cleaned while Codex is not running (#59).
 - pnpm store versions the current pnpm no longer uses are offered for review (#61).
-- Dependency folders (`node_modules`, `venv`, `.venv`, `.bundle`) of idle projects are offered for review, with a lockfile, git-ignore evidence and an in-use check on the project (#69).
+- Dependency folders (`node_modules`, `venv`, `.venv`, `.bundle`) of idle projects: rule built with a lockfile, git-ignore evidence and an in-use check (#69), but **not registered** in `RuleCatalog` until its policy is decided (#68, #72).
 
 ### Diagnostics
 - Deleted-but-open files and swap usage are explained, with how to get the space back (#51).
