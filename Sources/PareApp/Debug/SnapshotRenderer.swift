@@ -119,7 +119,10 @@ extension SnapshotRenderer {
                 store.history.applySnapshotTransactions(SnapshotFixtures.historyTransactions())
             },
             Scene(name: "09-settings", destination: .settings) { _ in },
-            Scene(name: "10-homebrew", destination: .homebrew, settleSeconds: 10) { _ in }
+            Scene(name: "10-homebrew", destination: .homebrew, settleSeconds: 10) { _ in },
+            Scene(name: "11-processes", destination: .processes) { store in
+                store.processes.applySnapshotTree(SnapshotFixtures.processTree, expanded: SnapshotFixtures.processSnapshotExpanded)
+            }
         ]
     }
 }

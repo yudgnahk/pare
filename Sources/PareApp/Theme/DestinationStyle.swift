@@ -16,6 +16,8 @@ enum DestinationStyle {
             return ThemeSwatch(light: RGBA(0xB86E00), dark: RGBA(0xC27A12))
         case .disk:
             return ThemeSwatch(light: RGBA(0x5A5FE0), dark: RGBA(0x6A6FE6))
+        case .processes:
+            return ThemeSwatch(light: RGBA(0xB83E62), dark: RGBA(0xC44B70))
         case .maintenance:
             return ThemeSwatch(light: RGBA(0x5E6B78), dark: RGBA(0x6E7C8A))
         case .history:
