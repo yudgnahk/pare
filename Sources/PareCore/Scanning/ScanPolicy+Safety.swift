@@ -6,7 +6,7 @@ extension ScanPolicy {
 
     public static func isSearchIndexSensitivePath(_ url: URL) -> Bool {
         let path = url.path.lowercased()
-        return searchIndexSensitivePathMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, searchIndexSensitivePathMarkers)
     }
 
     /// Large cleans cause heavy incremental Spotlight work (FSEvents), even without
@@ -22,7 +22,7 @@ extension ScanPolicy {
     public static func isReconstructibleCachePath(_ url: URL) -> Bool {
         if isNeverCleanPath(url) || isSearchIndexSensitivePath(url) { return false }
         let path = url.path.lowercased()
-        return reconstructibleCachePathMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, reconstructibleCachePathMarkers)
     }
 
     /// True when the path contains a credential/user-data marker (bookmarks, history,
@@ -30,7 +30,7 @@ extension ScanPolicy {
     /// divergent copy of the marker list (R1.4).
     public static func containsSensitiveDataMarker(_ url: URL) -> Bool {
         let path = url.path.lowercased()
-        return sensitiveDataMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, sensitiveDataMarkers)
     }
 
     /// True when the path is JetBrains plugin/driver data requiring review.
@@ -179,25 +179,25 @@ extension ScanPolicy {
 
         let path = url.path.lowercased()
 
-        let isProtected = protectedPathMarkers.contains { path.contains($0) }
+        let isProtected = containsAnyMarker(path, protectedPathMarkers)
         if isProtected {
-            let allowsProtectedPath = personaProtectedPathOverrides.contains { path.contains($0) }
+            let allowsProtectedPath = containsAnyMarker(path, personaProtectedPathOverrides)
             guard allowsProtectedPath else {
                 return false
             }
         }
 
-        let containsSensitiveDataMarker = sensitiveDataMarkers.contains { path.contains($0) }
+        let containsSensitiveDataMarker = containsAnyMarker(path, sensitiveDataMarkers)
         guard !containsSensitiveDataMarker else {
             return false
         }
 
-        let containsAppStateSensitiveMarker = appStateSensitiveMarkers.contains { path.hasSuffix($0) || path.contains($0) }
+        let containsAppStateSensitiveMarker = containsAnyMarker(path, appStateSensitiveMarkers, orSuffix: true)
         guard !containsAppStateSensitiveMarker else {
             return false
         }
 
-        return allowedMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, allowedMarkers)
     }
 
     public static func isLowImpactPath(_ url: URL) -> Bool {
@@ -208,22 +208,22 @@ extension ScanPolicy {
 
         let path = url.path.lowercased()
 
-        let isProtected = protectedPathMarkers.contains { path.contains($0) }
+        let isProtected = containsAnyMarker(path, protectedPathMarkers)
         guard !isProtected else {
             return false
         }
 
-        let containsSensitiveDataMarker = sensitiveDataMarkers.contains { path.contains($0) }
+        let containsSensitiveDataMarker = containsAnyMarker(path, sensitiveDataMarkers)
         guard !containsSensitiveDataMarker else {
             return false
         }
 
-        let containsAppStateSensitiveMarker = appStateSensitiveMarkers.contains { path.hasSuffix($0) || path.contains($0) }
+        let containsAppStateSensitiveMarker = containsAnyMarker(path, appStateSensitiveMarkers, orSuffix: true)
         guard !containsAppStateSensitiveMarker else {
             return false
         }
 
-        return lowImpactMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, lowImpactMarkers)
     }
 
     /// Returns `true` for apps inside /System/Applications — SIP-protected and cannot be removed.
@@ -250,9 +250,15 @@ extension ScanPolicy {
     /// Component containment that honours the volume's case sensitivity when `caseSensitive` is true.
     public static func isEqualToOrDescendant(candidate: URL, root: URL, caseSensitive: Bool) -> Bool {
         let fold: (String) -> String = caseSensitive ? { $0 } : { $0.lowercased() }
-        let candidateComponents = candidate.standardizedFileURL.pathComponents.map(fold)
-        let rootComponents = root.standardizedFileURL.pathComponents.map(fold)
+        return isEqualToOrDescendant(
+            candidateComponents: candidate.standardizedFileURL.pathComponents.map(fold),
+            rootComponents: root.standardizedFileURL.pathComponents.map(fold)
+        )
+    }
+
+    /// The same test over standardized, already case-folded components, for callers comparing many pairs.
+    static func isEqualToOrDescendant(candidateComponents: [String], rootComponents: [String]) -> Bool {
         guard !rootComponents.isEmpty, candidateComponents.count >= rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
+        return candidateComponents.starts(with: rootComponents)
     }
 }

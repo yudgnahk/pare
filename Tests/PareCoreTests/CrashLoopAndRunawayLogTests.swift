@@ -120,6 +120,37 @@ final class CrashLoopAndRunawayLogTests: XCTestCase {
         XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
     }
 
+    func testRunawayLogWalkKeepsDepthSymlinkAndPackageLimits() async throws {
+        let atDepthLimit = try makeSparseLog("Library/Application Support/A/b/c/limit.log", bytes: 250 * mb)
+        try makeSparseLog("Library/Application Support/A/b/c/d/past.log", bytes: 250 * mb)
+        try makeSparseLog("Library/Application Support/Tool.app/Contents/inside.log", bytes: 250 * mb)
+        let real = try makeSparseLog("elsewhere/real.log", bytes: 250 * mb)
+        let fm = FileManager.default
+        try fm.createDirectory(at: home.appending(path: ".agentd"), withIntermediateDirectories: true)
+        try fm.createSymbolicLink(at: home.appending(path: ".agentd/linked.log"), withDestinationURL: real)
+        try fm.createSymbolicLink(at: home.appending(path: ".agentd/linked-dir"), withDestinationURL: real.deletingLastPathComponent())
+
+        let findings = await RunawayLogsRule(now: { self.now }).customScan(environment: environment()) ?? []
+
+        XCTAssertEqual(findings.map(\.path), [atDepthLimit.path])
+    }
+
+    func testRunawayLogInTempDirectoryUsesResolvedSpelling() async throws {
+        let temp = FileManager.default.temporaryDirectory.appending(path: "pare_runaway_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: temp) }
+        let log = temp.appending(path: "tool/run.log")
+        try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+        XCTAssertTrue(FileManager.default.createFile(atPath: log.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: log)
+        try handle.truncate(atOffset: UInt64(250 * mb))
+        try handle.close()
+        let scan = ScanEnvironment(homeDirectory: home, tempDirectory: temp, systemApplicationDirectories: [])
+
+        let findings = await RunawayLogsRule(now: { self.now }).customScan(environment: scan) ?? []
+
+        XCTAssertEqual(findings.map(\.path), [ScanPolicy.canonicalPathURL(log).path], "spelled as FileManager lists it")
+    }
+
     func testRunawayLogsAreExcludedFromReclaimableTotals() async throws {
         try makeSparseLog("Library/Application Support/Daemon/daemon.log", bytes: 250 * mb)
         let runner = ScanRunner(environment: environment(), traversal: FileSystemTraversal())

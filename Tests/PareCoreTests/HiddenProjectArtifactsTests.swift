@@ -183,6 +183,27 @@ final class HiddenProjectArtifactsTests: XCTestCase {
         XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
     }
 
+    func testOldCacheWithFreshDirectoryMtimeAgesByCreationDate() async throws {
+        let cache = try makeArtifact("app/.cache", marker: nil)
+        try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: cache.path)
+
+        let paths = await scan().map(\.path)
+
+        XCTAssertTrue(paths.contains(cache.path), "a directory ages by the older of its creation and modification dates")
+    }
+
+    func testSymlinkedArtifactDirectoryIsNotReported() async throws {
+        let real = try makeArtifact("elsewhere/.cache", marker: nil)
+        try FileManager.default.createDirectory(at: tmp.appending(path: "app"), withIntermediateDirectories: true)
+        let link = tmp.appending(path: "app/.cache")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+
+        let paths = await scan().map(\.path)
+
+        XCTAssertTrue(paths.contains(real.path))
+        XCTAssertFalse(paths.contains(link.path), "a symlink is never walked or reported")
+    }
+
     // MARK: - Helpers
 
     /// Creates `relative` with one backdated child, backdates the directory, and optionally drops `marker` beside it.

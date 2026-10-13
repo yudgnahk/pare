@@ -60,6 +60,20 @@ final class VersionSiblingTests: XCTestCase {
         }
     }
 
+    func testTwoDotPrefilterAgreesWithTheTokenPattern() {
+        let names = [
+            "", "plain", "1.2", "1.2.3", "a1.2.3b", "1..2", "..", "1.2.x", "v18.2.0", "x.y.z",
+            "1.2.3-beta.1", "\u{663}.\u{664}.\u{665}", "\u{FF11}\u{FF0E}\u{FF12}\u{FF0E}\u{FF13}",
+            "1\u{3002}2\u{3002}3", "1.\u{301}2.3", "1.2.\u{301}3", "1\u{2024}2\u{2024}3", "node-v20.11.1-darwin-arm64",
+        ]
+        for name in names {
+            let range = name.range(of: VersionedName.tokenPattern, options: .regularExpression)
+            let expected = range.flatMap { SemanticVersion(String(name[$0])) } != nil
+            XCTAssertEqual(VersionedName(name) != nil, expected, name)
+            if range != nil { XCTAssertTrue(VersionedName.hasTwoDots(name), name) }
+        }
+    }
+
     // MARK: - Rule
 
     func testKeepsNewestTwoAndOffersOlderVersions() async throws {
@@ -129,6 +143,36 @@ final class VersionSiblingTests: XCTestCase {
 
         XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
         XCTAssertEqual(executables.calls, 0, "no process snapshot when there is nothing to offer")
+    }
+
+    func testSymlinkedAndPackageVersionsAreNotMembers() async throws {
+        let versions = home.appending(path: ".tool/versions")
+        try makeVersion(versions, "1.0.0")
+        try makeVersion(versions, "1.1.0")
+        let elsewhere = try makeVersion(root.appending(path: "elsewhere"), "1.2.0")
+        try FileManager.default.createSymbolicLink(at: versions.appending(path: "1.2.0"), withDestinationURL: elsewhere)
+        let bundles = home.appending(path: ".tool/bundles")
+        for version in ["1.0.0", "1.1.0", "1.2.0"] {
+            try makeVersion(bundles, "Tool-\(version).app")
+        }
+
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+
+        XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
+    }
+
+    func testWideDirectoryStillGroupsItsVersionedFolders() async throws {
+        let releases = home.appending(path: ".tool/releases")
+        for version in ["1.0.0", "1.1.0", "1.2.0"] {
+            try makeVersion(releases, version)
+        }
+        for index in 0...VersionSiblingsRule.fanOutLimit {
+            try Data().write(to: releases.appending(path: "session-\(index).json"))
+        }
+
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+
+        XCTAssertEqual(findings.map(\.path), [releases.appending(path: "1.0.0").path])
     }
 
     func testRuntimeManagerHomesAreIgnored() async throws {

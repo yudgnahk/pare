@@ -127,14 +127,12 @@ public struct ProjectDependenciesRule: ScanRule {
     /// Dependency folders below `directory`, never descending into them, `.git`, or build output.
     private func collectDependencyFolders(in directory: URL, depth: Int, budget: inout WalkBudget, into found: inout [URL]) {
         guard depth < Self.maxDepth, !Task.isCancelled, !budget.isExhausted,
-              let entries = try? FileManager.default.contentsOfDirectory(
-                at: directory, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
-              ) else { return }
-        for entry in entries {
+              let listing = DirectoryListing.contents(of: directory) else { return }
+        for child in listing.entries {
             guard budget.spend(), !Task.isCancelled else { return }
-            guard let values = try? entry.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
-                  values.isDirectory == true, values.isSymbolicLink != true else { continue }
-            let lower = entry.lastPathComponent.lowercased()
+            guard child.kind == .directory else { continue }
+            let entry = listing.url(of: child)
+            let lower = child.name.lowercased()
             if ScanPolicy.isProjectDependencyDirectory(lower) {
                 found.append(entry)
             } else if !lower.hasPrefix("."), !ScanPolicy.projectLocalArtifactDirectoryNames.contains(lower),

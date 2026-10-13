@@ -112,6 +112,26 @@ final class ScanWorkGuardTests: XCTestCase {
         XCTAssertEqual(ProjectArtifactsRule.droppingCoveredRoots([outer, insideBundle]), [outer, insideBundle])
     }
 
+    func testCoveredRootsTable() {
+        let outer = URL(fileURLWithPath: "/Users/u/Projects/p")
+        let cases: [(name: String, nested: String, dropped: Bool)] = [
+            ("direct child", "/Users/u/Projects/p/app", true),
+            ("seven levels down", "/Users/u/Projects/p/1/2/3/4/5/6/7", true),
+            ("eight levels down is past the walk", "/Users/u/Projects/p/1/2/3/4/5/6/7/8", false),
+            ("case differs", "/Users/u/projects/P/app", true),
+            ("under a hidden folder", "/Users/u/Projects/p/.hidden/app", false),
+            ("under a dependency folder", "/Users/u/Projects/p/node_modules/app", false),
+            ("under an artifact folder", "/Users/u/Projects/p/target/app", false),
+            ("sibling sharing a name prefix", "/Users/u/Projects/p2/app", false),
+        ]
+        for testCase in cases {
+            let nested = URL(fileURLWithPath: testCase.nested)
+            let kept = ProjectArtifactsRule.droppingCoveredRoots([outer, nested])
+            XCTAssertEqual(kept, testCase.dropped ? [outer] : [outer, nested], testCase.name)
+        }
+        XCTAssertEqual(ProjectArtifactsRule.droppingCoveredRoots([outer, outer]), [outer, outer], "equal roots never cover each other")
+    }
+
     // MARK: - VersionSiblingsRule
 
     func testWideDirectoryIsCheckedForGroupsButNotDescended() async throws {
@@ -189,6 +209,31 @@ final class ScanWorkGuardTests: XCTestCase {
         XCTAssertEqual(second.sizeBytes, first.sizeBytes)
         XCTAssertEqual(second.annotations, [.workingSet(selfTrimDays: nil)])
         XCTAssertEqual(second.riskLevel, .advanced)
+    }
+
+    func testGoRuleReusesBuildCacheSizeUntilAnEntryIsAddedOrTrimmed() async throws {
+        let home = tmp.appending(path: "home")
+        let bucket = home.appending(path: "Library/Caches/go-build/ab")
+        try FileManager.default.createDirectory(at: bucket, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 8192).write(to: bucket.appending(path: "ab01-a"))
+        let store = GoModuleCacheSizeStore(storeURL: tmp.appending(path: "store/sizes.json"))
+        let rule = GoCachesRule(locations: GoCacheLocations(query: { nil }), moduleSizes: store)
+        func scan() async throws -> ScanFinding {
+            let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: home))
+            return try XCTUnwrap(findings?.first)
+        }
+
+        let measured = try await scan()
+        let remembered = try await scan()
+        try Data(repeating: 1, count: 1_048_576).write(to: bucket.appending(path: "ab02-a"))
+        let grown = try await scan()
+        try FileManager.default.removeItem(at: bucket.appending(path: "ab02-a"))
+        let trimmed = try await scan()
+
+        XCTAssertEqual(remembered.sizeBytes, measured.sizeBytes)
+        XCTAssertEqual(remembered.annotations, [.workingSet(selfTrimDays: GoCachesRule.buildCacheSelfTrimDays)])
+        XCTAssertGreaterThan(grown.sizeBytes, measured.sizeBytes, "a new entry touches its bucket, so the cache is re-measured")
+        XCTAssertEqual(trimmed.sizeBytes, measured.sizeBytes, "a trimmed entry touches its bucket too")
     }
 
     // MARK: - Helpers

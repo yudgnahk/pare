@@ -1,7 +1,7 @@
 import Foundation
 
-/// Last complete size of each Go module cache, reused while its top two levels are unchanged.
-/// Sizing `~/go/pkg/mod` walks hundreds of thousands of entries for a report-only finding.
+/// Last complete size of each Go cache (module and build), reused while its top two levels are unchanged.
+/// Sizing `~/go/pkg/mod` or `go-build` walks tens to hundreds of thousands of entries for a report-only finding.
 public final class GoModuleCacheSizeStore: @unchecked Sendable {
     public static let shared = GoModuleCacheSizeStore()
     /// A stored size is measured again after this long, even when the fingerprint still matches.
@@ -55,7 +55,8 @@ public final class GoModuleCacheSizeStore: @unchecked Sendable {
         }
     }
 
-    /// New modules add or touch directories in the first two levels (`github.com/<org>`, `cache/download`).
+    /// New modules add or touch directories in the first two levels (`github.com/<org>`, `cache/download`);
+    /// build-cache entries live in `go-build/<xx>/`, so adding or trimming one touches `<xx>`.
     static func fingerprint(of root: URL) -> [String: Double] {
         var result: [String: Double] = [:]
         var pending: [(url: URL, relative: String, depth: Int)] = [(root, ".", 0)]
