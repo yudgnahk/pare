@@ -49,12 +49,6 @@ public struct PnpmOldStoreRule: ScanRule {
 
 /// Finds the active pnpm store by asking pnpm itself (`pnpm store path`), bounded and non-fatal.
 public enum PnpmStoreLocator {
-    /// Where standalone pnpm installs keep the binary, besides PATH and Homebrew.
-    static func binaryDirectories(home: URL, environment: [String: String]) -> [String] {
-        [environment["PNPM_HOME"], home.appending(path: "Library/pnpm").path, home.appending(path: ".local/share/pnpm").path]
-            .compactMap { $0 }
-    }
-
     /// The last absolute line of `pnpm store path` output, when it ends in a `v<N>` folder.
     static func activeStore(fromStorePathOutput output: String?) -> URL? {
         guard let line = output?
@@ -69,11 +63,13 @@ public enum PnpmStoreLocator {
     /// Nil when pnpm is absent, fails, times out, or prints something unexpected.
     public static func activeStore(home: URL) async -> URL? {
         var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = ([environment["PATH"]] + binaryDirectories(home: home, environment: environment).map { Optional($0) })
-            .compactMap { $0 }
-            .joined(separator: ":")
+        environment["HOME"] = home.path
         let runner = ToolCommandRunner()
         guard let pnpm = runner.resolveExecutable(named: "pnpm", environmentVariables: environment) else { return nil }
-        return activeStore(fromStorePathOutput: await runner.capture(executable: pnpm, arguments: ["store", "path"]))
+        // A Node-based pnpm runs `#!/usr/bin/env node`, so the child needs the widened PATH too.
+        let path = ToolSearchPath.pathValue(environment: environment)
+        return activeStore(fromStorePathOutput: await runner.capture(
+            executable: pnpm, arguments: ["store", "path"], environment: ["PATH": path]
+        ))
     }
 }

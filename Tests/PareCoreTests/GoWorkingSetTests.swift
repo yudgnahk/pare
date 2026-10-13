@@ -125,6 +125,21 @@ final class GoWorkingSetTests: XCTestCase {
         XCTAssertEqual(findings.first?.riskLevel, .advanced)
     }
 
+    func testCutShortGoCacheKeepsItsAtLeastSize() async throws {
+        let goBuild = try makeCache("Library/Caches/go-build")
+        let rule = GoCachesRule(
+            locations: GoCacheLocations(query: { nil }),
+            moduleSizes: GoModuleCacheSizeStore(storeURL: tmp.appending(path: "go-sizes.json"))
+        )
+        let bounded = DirectorySizeIndex(budgetSeconds: 0, now: { Date(timeIntervalSinceReferenceDate: 0) })
+
+        let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp, sizeIndex: bounded)) ?? []
+
+        let build = try XCTUnwrap(findings.first { $0.path == goBuild.path })
+        XCTAssertFalse(build.isSizeComplete, "a cut-short size must still read as \"at least\"")
+        XCTAssertEqual(build.annotations, [.workingSet(selfTrimDays: 5)])
+    }
+
     func testGoFindingsExcludedFromReclaimableTotal() async throws {
         _ = try makeCache("Library/Caches/go-build")
         _ = try makeCache("go/pkg/mod/cache/download")

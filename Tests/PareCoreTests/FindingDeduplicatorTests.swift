@@ -158,4 +158,37 @@ final class FindingDeduplicatorTests: XCTestCase {
         ])
         XCTAssertEqual(result.map(\.path), ["/z/one", "/a/two", "/m/three"])
     }
+
+    func testDiagnosticsAtSamePathNeitherReplaceNorJoinCleanableFinding() {
+        let result = dedupe([
+            (0, finding("/a/cache", risk: .advanced, category: .diagnostics, reason: "restart X")),
+            (1, finding("/a/cache", reason: "cache")),
+        ])
+
+        XCTAssertEqual(result.map(\.category), [.diagnostics, .userCaches])
+        XCTAssertEqual(result.map(\.riskLevel), [.advanced, .safe])
+        XCTAssertEqual(result.map(\.reason), ["restart X", "cache"])
+    }
+
+    func testDiagnosticsInsideCleanableFolderDoNotRaiseIt() {
+        let result = dedupe([
+            (0, finding("/a/cache", reason: "cache")),
+            (1, finding("/a/cache/held.db", risk: .advanced, category: .diagnostics, reason: "restart X")),
+        ])
+
+        XCTAssertEqual(result.map(\.path), ["/a/cache", "/a/cache/held.db"])
+        XCTAssertEqual(result.first?.riskLevel, .safe)
+        XCTAssertEqual(result.first?.reason, "cache")
+    }
+
+    func testDiagnosticsFolderNeitherSwallowsNorLiftsCleanableChild() {
+        let result = dedupe([
+            (0, finding("/private/var/vm", risk: .advanced, category: .diagnostics, reason: "swap")),
+            (1, finding("/private/var/vm/cache", reason: "cache")),
+            (2, finding("/private/var/vm/cache/file", reason: "inner")),
+        ])
+
+        XCTAssertEqual(result.map(\.path), ["/private/var/vm", "/private/var/vm/cache"])
+        XCTAssertEqual(result.last?.riskLevel, .safe)
+    }
 }

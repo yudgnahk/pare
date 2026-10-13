@@ -35,6 +35,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case restoreFailed(String)
     /// Another process has a file open at or under the path.
     case inUse(String, holder: String)
+    /// A version sibling that must stay, with the reason `ScanPolicy.versionSiblingRefusal` gave.
+    case versionKept(String, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -73,6 +75,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "Cannot restore — \(reason)"
         case .inUse(let path, let holder):
             return "Skipped: in use by \(holder): \(path)"
+        case .versionKept(let path, let reason):
+            return "Kept (\(reason)): \(path)"
         }
     }
 }
@@ -437,8 +441,11 @@ public actor CleanupEngine {
                 if executablesSnapshot == nil {
                     executablesSnapshot = .some(await runningExecutables.runningExecutablePaths())
                 }
-                if !ScanPolicy.isReclaimableVersionSibling(url, runningExecutables: executablesSnapshot ?? nil) {
-                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                if let refusal = ScanPolicy.versionSiblingRefusal(
+                    url, runningExecutables: executablesSnapshot ?? nil, customRoots: goCacheRoots) {
+                    let error: CleanupError = refusal == .outsidePolicy
+                        ? .unsafePath(finding.path) : .versionKept(finding.path, reason: refusal.reason)
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: error))
                     continue
                 }
             } else if ScanPolicy.isPnpmGuardedPath(url) {
@@ -470,7 +477,14 @@ public actor CleanupEngine {
             } else if let rejection = policyRejection(
                 for: finding, url: url, projectRootPaths: projectRootPaths, gitStatuses: gitStatuses
             ) {
-                skipped.append(CleanupSkippedItem(path: finding.path, error: rejection))
+                // Refused either way; a version folder whose group shrank says why instead of "unsafe".
+                let error: CleanupError
+                if case .unsafePath = rejection, ScanPolicy.isShrunkVersionSiblingGroup(url) {
+                    error = .versionKept(finding.path, reason: VersionSiblingRefusal.fewerNewerVersions.reason)
+                } else {
+                    error = rejection
+                }
+                skipped.append(CleanupSkippedItem(path: finding.path, error: error))
                 continue
             }
 

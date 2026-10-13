@@ -23,8 +23,11 @@ enum FindingDeduplicator {
                 finding: item.finding
             )
         }
-        let sorted = mergeSamePath(entries).sorted { $0.key.lexicographicallyPrecedes($1.key) }
-        return collapseDescendants(liftingDetectOnlyAncestors(sorted))
+        // Diagnostics explain live system state and are never cleaned, so they must not raise or replace a cleanable finding.
+        let diagnostics = entries.filter { $0.finding.category == .diagnostics }
+        let sorted = mergeSamePath(entries.filter { $0.finding.category != .diagnostics })
+            .sorted { $0.key.lexicographicallyPrecedes($1.key) }
+        return (collapseDescendants(liftingDetectOnlyAncestors(sorted)) + diagnostics)
             .sorted { $0.inputOrder < $1.inputOrder }
             .map(\.finding)
     }
@@ -99,16 +102,6 @@ enum FindingDeduplicator {
         guard floor.severity > finding.riskLevel.severity else { return finding }
         let relative = descendant.url.pathComponents.dropFirst(entry.url.pathComponents.count).joined(separator: "/")
         let note = floor == .advanced ? "Holds a report-only item" : "Holds an item that needs review"
-        return ScanFinding(
-            category: finding.category,
-            riskLevel: floor,
-            reason: "\(finding.reason) \(note): \(relative) — \(descendant.finding.reason)",
-            path: finding.path,
-            sizeBytes: finding.sizeBytes,
-            lastUsed: finding.lastUsed,
-            confidence: finding.confidence,
-            annotations: finding.annotations,
-            isSizeComplete: finding.isSizeComplete
-        )
+        return finding.copy(riskLevel: floor, reason: "\(finding.reason) \(note): \(relative) — \(descendant.finding.reason)")
     }
 }

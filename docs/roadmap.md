@@ -59,9 +59,9 @@ slice 1 (#69, registered in the developer profile) are done. Duplicate Chrome `I
 - [ ] One running-process seam: `RunningAppChecking` (#48), `RunningAppsProviding` (#50) and `RunningExecutablesProviding` (#57) overlap, plus direct `NSWorkspace` reads in `CodexStagingRule` and `CaskLeaveHomebrew`.
 - [ ] One free-space seam: `FreeSpaceProviding` (#48, statfs) and `VolumeFreeSpaceProviding` (#54), plus private readers in `DiskHeaderProvider`, `MemoryPressureRule` and `VolumeUsageModel`. The swap-plus-low-disk warning uses different thresholds in `DiskHeaderSnapshot` and `MemoryPressureRule`.
 - [ ] One swap parser: `SwapUsageParser` (`DiskHeaderSnapshot.swift`) and `SwapUsageRule.usedBytes` both parse `sysctl vm.swapusage`. Also two `lsof` field parsers (`OpenFileSnapshot`, `DeletedOpenFilesRule`).
-- [ ] A `ScanFinding` copy helper that keeps every field. `GoCachesRule.annotated(with:)` drops `isSizeComplete`, so a cut-short Go cache loses its "at least".
-- [ ] `FindingDeduplicator` should pass `.diagnostics` findings through untouched; today a diagnostics path can raise or swallow a cleanable finding.
-- [ ] `isReclaimableVersionSibling` should also check `isNeverCleanPath`, and give a clearer skip reason ("kept: fewer than 2 newer versions").
+- [x] A `ScanFinding` copy helper that keeps every field. `GoCachesRule.annotated(with:)` drops `isSizeComplete`, so a cut-short Go cache loses its "at least".
+- [x] `FindingDeduplicator` should pass `.diagnostics` findings through untouched; today a diagnostics path can raise or swallow a cleanable finding.
+- [x] `isReclaimableVersionSibling` should also check `isNeverCleanPath`, and give a clearer skip reason ("kept: fewer than 2 newer versions").
 - [ ] `CrashLoopRule` and `RegrowthDetector` keep their facts only in `reason`; move them to `FindingAnnotation` (e.g. `.regrew(days:)`).
 - [ ] `RegrowthDetector`: a restored (undone) item looks 100 % regrown. Restores are not recorded.
 - [ ] `Tests/PareAppTests/DiskAnalyzerViewModelTests.swift` still builds a real `CleanupEngine()` (5 sites); switch to the hermetic fixture.

@@ -84,6 +84,27 @@ public struct ScanFinding: Sendable {
     }
 }
 
+extension ScanFinding {
+    /// A copy with the given fields replaced; every other field, `isSizeComplete` included, carries over.
+    public func copy(
+        riskLevel: RiskLevel? = nil,
+        reason: String? = nil,
+        annotations: [FindingAnnotation]? = nil
+    ) -> ScanFinding {
+        ScanFinding(
+            category: category,
+            riskLevel: riskLevel ?? self.riskLevel,
+            reason: reason ?? self.reason,
+            path: path,
+            sizeBytes: sizeBytes,
+            lastUsed: lastUsed,
+            confidence: confidence,
+            annotations: annotations ?? self.annotations,
+            isSizeComplete: isSizeComplete
+        )
+    }
+}
+
 public struct ScanCategorySummary: Sendable {
     public let category: ScanCategory
     public let reclaimableBytes: Int64

@@ -291,6 +291,51 @@ final class VersionSiblingTests: XCTestCase {
                        "fewer than two newer siblings remain")
     }
 
+    func testRefusalNamesWhyAVersionIsKept() throws {
+        let versions = home.appending(path: ".tool/versions")
+        let oldest = try makeVersion(versions, "1.0.0")
+        try makeVersion(versions, "1.1.0")
+        try makeVersion(versions, "1.2.0")
+        let cases: [(name: String, url: URL, executables: [String]?, refusal: VersionSiblingRefusal?)] = [
+            ("reclaimable", oldest, [], nil),
+            ("previous is kept", versions.appending(path: "1.1.0"), [], .fewerNewerVersions),
+            ("no snapshot", oldest, nil, .processListUnavailable),
+            ("running", oldest, [oldest.appending(path: "bin/tool").path], .runningFrom),
+            ("not a member", home.appending(path: "Documents/MyApp-1.0.0"), [], .outsidePolicy),
+        ]
+        for testCase in cases {
+            let refusal = ScanPolicy.versionSiblingRefusal(testCase.url, runningExecutables: testCase.executables, customRoots: [])
+            XCTAssertEqual(refusal, testCase.refusal, testCase.name)
+        }
+        XCTAssertEqual(VersionSiblingRefusal.fewerNewerVersions.reason, "fewer than 2 newer versions")
+    }
+
+    func testShrunkGroupIsRecognisedOnlyBelowTheMinimum() throws {
+        let versions = home.appending(path: ".tool/versions")
+        let oldest = try makeVersion(versions, "1.0.0")
+        try makeVersion(versions, "1.1.0")
+        let newest = try makeVersion(versions, "1.2.0")
+        XCTAssertFalse(ScanPolicy.isShrunkVersionSiblingGroup(newest), "a full group goes through the gate itself")
+
+        try FileManager.default.removeItem(at: oldest)
+        XCTAssertTrue(ScanPolicy.isShrunkVersionSiblingGroup(newest))
+        XCTAssertFalse(ScanPolicy.isShrunkVersionSiblingGroup(oldest), "a folder that is gone is not a sibling")
+
+        let nvm = try makeVersion(home.appending(path: ".nvm/versions/node"), "v18.0.0")
+        XCTAssertFalse(ScanPolicy.isShrunkVersionSiblingGroup(nvm), "excluded trees are never version siblings")
+    }
+
+    func testNeverCleanVersionSiblingsAreNeverReclaimable() throws {
+        let tool = home.appending(path: ".gotool")
+        let oldest = try makeVersion(tool.appending(path: "versions"), "1.0.0")
+        try makeVersion(tool.appending(path: "versions"), "1.1.0")
+        try makeVersion(tool.appending(path: "versions"), "1.2.0")
+
+        XCTAssertTrue(ScanPolicy.isReclaimableVersionSibling(oldest, runningExecutables: [], customRoots: []), "control")
+        XCTAssertEqual(ScanPolicy.versionSiblingRefusal(oldest, runningExecutables: [], customRoots: [tool]), .outsidePolicy)
+        XCTAssertFalse(ScanPolicy.isReclaimableVersionSibling(oldest, runningExecutables: [], customRoots: [tool]))
+    }
+
     func testExcludedTreeIsNeverReclaimable() throws {
         let versions = home.appending(path: ".nvm/versions/node")
         for version in ["v18.0.0", "v19.0.0", "v20.0.0"] {
@@ -312,6 +357,10 @@ final class VersionSiblingTests: XCTestCase {
         let ok = try await engine(StubExecutables([])).clean(findings: [finding(oldest), finding(newest)], profileName: "test")
         XCTAssertEqual(ok.succeeded.map(\.originalPath), [oldest.path], "\(ok.skipped.map(\.reason))")
         XCTAssertEqual(ok.skipped.map(\.path), [newest.path])
+        guard case .some(.versionKept(_, let reason)) = ok.skipped.first?.error else {
+            return XCTFail("expected .versionKept, got \(ok.skipped.map(\.reason))")
+        }
+        XCTAssertEqual(reason, "fewer than 2 newer versions")
 
         let middle = versions.appending(path: "1.1.0")
         try makeVersion(versions, "1.3.0")
