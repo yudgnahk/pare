@@ -460,6 +460,13 @@ extension ScanPolicy {
         ".vscode", ".vscode-insiders", ".vscode-server", ".cursor", ".windsurf",
         "mise", "pipx", "uv", "node_modules", "site-packages", "jetbrains", "code", "cursor", "windsurf", "google",
         "corepack", "session-env", "cache", "caches", "indexeddb",
+        // Runtime managers; bare names cover their `Application Support/<name>` and `~/.local/share/<name>` homes.
+        ".proto", ".rye", ".juliaup", ".swiftly", ".elan", ".tfenv", ".tenv", ".terraform.d", ".tgenv", ".rvm",
+        ".rubies", ".phpenv", ".plenv", ".luaenv", ".crenv", ".kerl", ".kiex", ".gvm", ".g", ".goup", ".dvm",
+        ".zvm", ".choosenim", ".jabba", ".fvm", ".vfox", ".pkgx", ".nvs", ".n", ".rakubrew", ".pnpm",
+        "fnm", "nvm", "volta", "asdf", "nodenv", "rbenv", "pyenv", "goenv", "jenv", "rustup", "sdkman", "ghcup",
+        "proto", "rye", "juliaup", "swiftly", "elan", "tfenv", "tenv", "rvm", "gvm", "zvm", "fvm", "jabba",
+        "vfox", "pkgx", "nvs", "pnpm", "aquaproj-aqua", "nix",
     ]
 
     /// Marker files/directories whose presence identifies a directory as a project root.

@@ -63,11 +63,13 @@ public struct BrewCleanupPreview: Sendable, Equatable {
 public enum BrewCleanupError: Error, LocalizedError, Equatable {
     case notConfirmed
     case nothingToClean
+    case timedOut(seconds: Int)
 
     public var errorDescription: String? {
         switch self {
         case .notConfirmed: return "Homebrew cleanup needs confirmation first."
         case .nothingToClean: return "Homebrew has nothing to clean up."
+        case .timedOut(let seconds): return "Homebrew did not finish within \(seconds) seconds and was stopped."
         }
     }
 }
@@ -76,26 +78,63 @@ public enum BrewCleanupError: Error, LocalizedError, Equatable {
 public struct BrewCleanupAction: Sendable {
     public static let previewArguments = ["cleanup", "-n"]
     public static let cleanupArguments = ["cleanup"]
+    /// A preview stuck on Homebrew's lock or a dead network mount is stopped after this.
+    public static let defaultPreviewTimeoutSeconds: TimeInterval = 120
+    public static let defaultCleanupTimeoutSeconds: TimeInterval = 600
 
     private let runner: BrewRunner
+    private let previewTimeoutSeconds: TimeInterval
+    private let cleanupTimeoutSeconds: TimeInterval
 
-    public init(runner: BrewRunner = .shared) {
+    public init(
+        runner: BrewRunner = .shared,
+        previewTimeoutSeconds: TimeInterval = BrewCleanupAction.defaultPreviewTimeoutSeconds,
+        cleanupTimeoutSeconds: TimeInterval = BrewCleanupAction.defaultCleanupTimeoutSeconds
+    ) {
         self.runner = runner
+        self.previewTimeoutSeconds = previewTimeoutSeconds
+        self.cleanupTimeoutSeconds = cleanupTimeoutSeconds
     }
 
     public func preview() async throws -> BrewCleanupPreview {
-        BrewCleanupPreview.parse(try await runner.run(Self.previewArguments))
+        let runner = runner
+        return try await Self.withTimeout(seconds: previewTimeoutSeconds) {
+            BrewCleanupPreview.parse(try await runner.run(Self.previewArguments))
+        }
     }
 
     /// Only with explicit confirmation: re-runs the preview, refuses when nothing is left, then streams
     /// `brew cleanup`. Returns the preview it acted on, for the "about X freed" estimate.
-    public func run(confirmed: Bool, onLine: @Sendable (String) -> Void) async throws -> BrewCleanupPreview {
+    /// Cancelling the calling task or hitting the timeout terminates brew and throws.
+    public func run(confirmed: Bool, onLine: @escaping @Sendable (String) -> Void) async throws -> BrewCleanupPreview {
         guard confirmed else { throw BrewCleanupError.notConfirmed }
         let fresh = try await preview()
         guard !fresh.isEmpty else { throw BrewCleanupError.nothingToClean }
-        for try await line in runner.stream(Self.cleanupArguments) {
-            onLine(line)
+        let runner = runner
+        try await Self.withTimeout(seconds: cleanupTimeoutSeconds) {
+            for try await line in runner.stream(Self.cleanupArguments) {
+                onLine(line)
+            }
+            // A cancelled stream just ends; that is not a finished cleanup.
+            try Task.checkCancellation()
         }
         return fresh
+    }
+
+    /// Races `operation` against a timer; the loser is cancelled, which terminates a running brew.
+    static func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw BrewCleanupError.timedOut(seconds: Int(seconds.rounded()))
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else { throw CancellationError() }
+            return first
+        }
     }
 }

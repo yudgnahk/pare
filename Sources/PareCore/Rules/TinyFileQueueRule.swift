@@ -2,7 +2,7 @@ import Foundation
 
 /// Folders holding a huge number of tiny files whose disk blocks far exceed their content
 /// (e.g. 318k × ~250 B using 1.2 GB), left untouched for a month. Explain-only: the owning app
-/// has to clear its own queue. Direct children only; bounded by an entry budget and a per-folder deadline.
+/// has to clear its own queue. Direct children only; bounded by an entry budget, a per-folder and a total deadline.
 public struct TinyFileQueueRule: ScanRule {
     public let id = "tiny-file-queues"
     public let title = "Folders of Tiny Files"
@@ -39,6 +39,9 @@ public struct TinyFileQueueRule: ScanRule {
     public static let defaultEntryBudget = 3_000_000
     /// Longest one candidate folder may take to measure; unfinished folders are not reported.
     public static let defaultPerDirectoryBudgetSeconds: TimeInterval = 5
+    /// Longest the whole rule may walk; past it the scan reports this rule as incomplete.
+    public static let defaultTotalBudgetSeconds: TimeInterval = 20
+    static let incompleteMessage = "Stopped early (time or entry budget); some folders of tiny files may be missing."
     /// Levels below each root that are searched.
     static let maxDepth = 3
     /// Entries between clock reads while measuring a candidate.
@@ -47,17 +50,20 @@ public struct TinyFileQueueRule: ScanRule {
     private let thresholds: Thresholds
     private let entryBudget: Int
     private let perDirectoryBudgetSeconds: TimeInterval
+    private let totalBudgetSeconds: TimeInterval
     private let now: @Sendable () -> Date
 
     public init(
         thresholds: Thresholds = .default,
         entryBudget: Int = TinyFileQueueRule.defaultEntryBudget,
         perDirectoryBudgetSeconds: TimeInterval = TinyFileQueueRule.defaultPerDirectoryBudgetSeconds,
+        totalBudgetSeconds: TimeInterval = TinyFileQueueRule.defaultTotalBudgetSeconds,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.thresholds = thresholds
         self.entryBudget = entryBudget
         self.perDirectoryBudgetSeconds = perDirectoryBudgetSeconds
+        self.totalBudgetSeconds = totalBudgetSeconds
         self.now = now
     }
 
@@ -65,25 +71,42 @@ public struct TinyFileQueueRule: ScanRule {
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool { false }
 
     public func customScan(environment: ScanEnvironment) async -> [ScanFinding]? {
+        walk(home: environment.homeDirectory).findings
+    }
+
+    public func customScanResult(environment: ScanEnvironment) async throws -> ScanRuleResult? {
+        let result = walk(home: environment.homeDirectory)
+        // Cancelled scans are discarded, so only a budget makes a result partial.
+        let partial = result.stoppedEarly && !Task.isCancelled
+        return ScanRuleResult(findings: result.findings, incompleteMessage: partial ? Self.incompleteMessage : nil)
+    }
+
+    private func walk(home: URL) -> (findings: [ScanFinding], stoppedEarly: Bool) {
+        let deadline = now().addingTimeInterval(totalBudgetSeconds)
+        let pastDeadline = { now() >= deadline }
         var budget = entryBudget
         var findings: [ScanFinding] = []
-        for root in Self.roots(home: environment.homeDirectory) {
-            guard budget > 0, !Task.isCancelled else { break }
+        for root in Self.roots(home: home) {
             var pending = [(url: root, depth: 0)]
-            while let next = pending.popLast(), budget > 0, !Task.isCancelled {
+            while let next = pending.popLast() {
+                guard budget > 0, !Task.isCancelled, !pastDeadline() else { return (findings, true) }
                 // Drains the bridged URL objects per folder instead of holding them for the whole rule.
-                guard let listing = autoreleasepool(invoking: { Self.list(next.url, budget: &budget) }) else { break }
-                if listing.entryCount >= thresholds.minimumFileCount,
-                   let stats = autoreleasepool(invoking: { measure(next.url) }),
-                   let finding = finding(for: next.url, stats: stats, app: root.lastPathComponent) {
-                    findings.append(finding)
+                guard let listing = autoreleasepool(invoking: {
+                    Self.list(next.url, budget: &budget, pastDeadline: pastDeadline)
+                }) else { return (findings, true) }
+                if listing.entryCount >= thresholds.minimumFileCount {
+                    let stats = autoreleasepool(invoking: { measure(next.url, totalDeadline: deadline) })
+                    if stats == nil, pastDeadline() { return (findings, true) }
+                    if let stats, let finding = finding(for: next.url, stats: stats, app: root.lastPathComponent) {
+                        findings.append(finding)
+                    }
                 }
                 if next.depth < Self.maxDepth {
                     pending += listing.subdirectories.map { ($0, next.depth + 1) }
                 }
             }
         }
-        return findings
+        return (findings, false)
     }
 
     // MARK: - Walk
@@ -103,8 +126,12 @@ public struct TinyFileQueueRule: ScanRule {
         return list(url, budget: &budget)?.subdirectories ?? []
     }
 
-    /// Pass 1, cheap: direct children with only the directory flag. Nil when the budget runs out mid-listing.
-    private static func list(_ url: URL, budget: inout Int) -> (entryCount: Int, subdirectories: [URL])? {
+    /// Pass 1, cheap: direct children with only the directory flag. Nil when the budget or deadline runs out mid-listing.
+    private static func list(
+        _ url: URL,
+        budget: inout Int,
+        pastDeadline: () -> Bool = { false }
+    ) -> (entryCount: Int, subdirectories: [URL])? {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
         guard let enumerator = FileManager.default.enumerator(
             at: url, includingPropertiesForKeys: keys, options: [.skipsSubdirectoryDescendants]
@@ -113,6 +140,7 @@ public struct TinyFileQueueRule: ScanRule {
         var subdirectories: [URL] = []
         for case let child as URL in enumerator {
             guard budget > 0 else { return nil }
+            if count % deadlineCheckInterval == 0, count > 0, pastDeadline() { return nil }
             budget -= 1
             count += 1
             let values = try? child.resourceValues(forKeys: Set(keys))
@@ -132,14 +160,14 @@ public struct TinyFileQueueRule: ScanRule {
     }
 
     /// Pass 2, only for folders with enough entries: sizes and dates of the direct child files.
-    /// Nil when the per-folder deadline passes first.
-    private func measure(_ url: URL) -> Stats? {
+    /// Nil when the per-folder or the total deadline passes first.
+    private func measure(_ url: URL, totalDeadline: Date) -> Stats? {
         let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey, .totalFileAllocatedSizeKey,
                                       .fileAllocatedSizeKey, .contentModificationDateKey]
         guard let enumerator = FileManager.default.enumerator(
             at: url, includingPropertiesForKeys: keys, options: [.skipsSubdirectoryDescendants]
         ) else { return nil }
-        let deadline = now().addingTimeInterval(perDirectoryBudgetSeconds)
+        let deadline = min(now().addingTimeInterval(perDirectoryBudgetSeconds), totalDeadline)
         var stats = Stats()
         var visited = 0
         for case let child as URL in enumerator {

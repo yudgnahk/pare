@@ -72,6 +72,23 @@ final class TinyFileQueueRuleTests: XCTestCase {
         XCTAssertTrue(pastDeadline.isEmpty, "a directory not fully measured before its deadline is not reported")
     }
 
+    func testTotalDeadlineAndBudgetMarkTheRuleIncomplete() async throws {
+        try makeFiles(count: 60, bytes: 200, daysAgo: 40)
+        let environment = ScanEnvironment(homeDirectory: home)
+        let cases: [(name: String, rule: TinyFileQueueRule, findings: Int, incomplete: Bool)] = [
+            ("complete", TinyFileQueueRule(thresholds: Self.thresholds), 1, false),
+            ("total deadline spent", TinyFileQueueRule(thresholds: Self.thresholds, totalBudgetSeconds: 0), 0, true),
+            ("entry budget spent", TinyFileQueueRule(thresholds: Self.thresholds, entryBudget: 10), 0, true),
+        ]
+        for testCase in cases {
+            let scanned = try await testCase.rule.customScanResult(environment: environment)
+            let result = try XCTUnwrap(scanned, testCase.name)
+
+            XCTAssertEqual(result.findings.count, testCase.findings, testCase.name)
+            XCTAssertEqual(result.incompleteMessage != nil, testCase.incomplete, testCase.name)
+        }
+    }
+
     func testCleanupRefusesTheQueueFinding() async throws {
         try makeFiles(count: 60, bytes: 200, daysAgo: 40)
         let findings = await scan()

@@ -17,6 +17,7 @@ final class HomebrewCleanupModel: ObservableObject {
     @Published private(set) var log: [String] = []
 
     private let action: BrewCleanupAction
+    private var cleanUpTask: Task<Void, Never>?
 
     init(action: BrewCleanupAction = BrewCleanupAction()) {
         self.action = action
@@ -33,9 +34,20 @@ final class HomebrewCleanupModel: ObservableObject {
     }
 
     /// Called only from the confirmation dialog.
+    func startCleanUp() {
+        guard phase != .running else { return }
+        cleanUpTask = Task { await cleanUp() }
+    }
+
+    /// Stops a running `brew cleanup`; whatever Homebrew already deleted stays deleted.
+    func cancelCleanUp() {
+        cleanUpTask?.cancel()
+    }
+
     func cleanUp() async {
         phase = .running
         log = []
+        defer { cleanUpTask = nil }
         do {
             let actedOn = try await action.run(confirmed: true) { [weak self] line in
                 Task { @MainActor in self?.log.append(line) }
@@ -43,6 +55,8 @@ final class HomebrewCleanupModel: ObservableObject {
             phase = .finished("Homebrew cleanup finished — about \(ScanReportPresenter.formatBytes(actedOn.totalBytes)) freed.")
         } catch BrewCleanupError.nothingToClean {
             phase = .nothingToClean
+        } catch is CancellationError {
+            phase = .failed("Homebrew cleanup was stopped. Anything it already removed is gone; the rest is untouched.")
         } catch {
             phase = .failed("Homebrew cleanup failed: \(error.localizedDescription)")
         }
@@ -70,7 +84,7 @@ struct HomebrewCleanupSheet: View {
         .frame(width: 560)
         .task { await model.loadPreview() }
         .confirmationDialog("Clean up with Homebrew?", isPresented: $confirming) {
-            Button("Clean Up", role: .destructive) { Task { await model.cleanUp() } }
+            Button("Clean Up", role: .destructive) { model.startCleanUp() }
             Button("Cancel", role: .cancel) {}
         } message: {
             if case .ready(let preview) = model.phase {
@@ -116,8 +130,11 @@ struct HomebrewCleanupSheet: View {
                 Text(summary).font(.callout).foregroundStyle(AppTheme.accent)
             }
             Spacer()
-            SecondaryActionButton(title: model.phase == .running ? "Running…" : "Done", isEnabled: model.phase != .running) {
-                onDone()
+            if model.phase == .running {
+                ProgressView().controlSize(.small)
+                SecondaryActionButton(title: "Stop", isEnabled: true) { model.cancelCleanUp() }
+            } else {
+                SecondaryActionButton(title: "Done", isEnabled: true) { onDone() }
             }
             if case .ready = model.phase {
                 PrimaryActionButton(title: "Clean Up with Homebrew", systemImage: "sparkles", style: .compact, tint: .review) {

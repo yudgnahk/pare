@@ -13,9 +13,11 @@ extension ScanPolicy {
     /// Finder bookkeeping files that say nothing about whether the app is still writing.
     static let upgradeBackupIgnoredSiblingNames: Set<String> = [".DS_Store", ".localized", "Icon\r"]
 
-    /// Dot directories holding credentials or repositories, whose backups are never offered.
+    /// Dot directories holding credentials, repositories or package caches (crates like `diesel_migrations-2.1.0`
+    /// look like backups), whose entries are never offered.
     public static let upgradeBackupExcludedDotDirectories: Set<String> = [
         ".ssh", ".gnupg", ".aws", ".kube", ".docker", ".password-store", ".git", ".trash",
+        ".cargo", ".rustup", ".npm", ".gradle", ".m2", ".ivy2", ".gem", ".pub-cache", ".nuget", ".cache",
     ]
 
     /// `Application Support` folders that hold user data or device backups (plus every `com.apple.*`).
@@ -91,14 +93,14 @@ extension ScanPolicy {
         let store = upgradeBackupStoreKey(name)
         var hasNewerLiveSibling = false
         var hasNewerBackup = false
-        for sibling in siblings {
+        for sibling in siblings where !(hasNewerLiveSibling && hasNewerBackup) {
             let siblingName = sibling.lastPathComponent
             guard siblingName != name, !upgradeBackupIgnoredSiblingNames.contains(siblingName) else { continue }
             if hasUpgradeBackupSignal(siblingName) {
-                guard upgradeBackupStoreKey(siblingName) == store, let written = latestWrite(sibling) else { continue }
-                hasNewerBackup = hasNewerBackup || written > backupWritten || (written == backupWritten && siblingName > name)
-            } else if let written = liveWrite(sibling), written > backupWritten {
-                hasNewerLiveSibling = true
+                guard !hasNewerBackup, upgradeBackupStoreKey(siblingName) == store, let written = latestWrite(sibling) else { continue }
+                hasNewerBackup = written > backupWritten || (written == backupWritten && siblingName > name)
+            } else if !hasNewerLiveSibling {
+                hasNewerLiveSibling = wasWrittenLive(sibling, after: backupWritten)
             }
         }
         return hasNewerLiveSibling && hasNewerBackup
@@ -137,18 +139,20 @@ extension ScanPolicy {
         return [values?.contentModificationDate, values?.creationDate].compactMap { $0 }.max()
     }
 
-    /// A live entry's last write: its own mtime, or for a directory the newest of it and its direct children.
-    private static func liveWrite(_ url: URL) -> Date? {
+    /// Whether a live entry, or for a directory one of its direct children, was written after `date`.
+    /// Children are listed only when the entry's own mtime is not already newer.
+    private static func wasWrittenLive(_ url: URL, after date: Date) -> Bool {
         let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isDirectoryKey])
-        var newest = values?.contentModificationDate
+        if let own = values?.contentModificationDate, own > date { return true }
         guard values?.isDirectory == true,
               let children = try? FileManager.default.contentsOfDirectory(
                   at: url, includingPropertiesForKeys: [.contentModificationDateKey]
-              ) else { return newest }
-        for child in children {
-            guard let date = try? child.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else { continue }
-            newest = max(newest ?? date, date)
+              ) else { return false }
+        return children.contains { child in
+            guard let written = try? child.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else {
+                return false
+            }
+            return written > date
         }
-        return newest
     }
 }

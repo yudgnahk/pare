@@ -19,6 +19,21 @@ public struct SystemProcessRunner: ProcessRunning {
         arguments: [String],
         environment: [String: String]?
     ) async throws -> ProcessResult {
+        let handle = CancellableProcess()
+        return try await withTaskCancellationHandler {
+            try await runToCompletion(executablePath: executablePath, arguments: arguments,
+                                      environment: environment, handle: handle)
+        } onCancel: {
+            handle.cancel()
+        }
+    }
+
+    private func runToCompletion(
+        executablePath: String,
+        arguments: [String],
+        environment: [String: String]?,
+        handle: CancellableProcess
+    ) async throws -> ProcessResult {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: executablePath)
@@ -58,6 +73,7 @@ public struct SystemProcessRunner: ProcessRunning {
                 continuation.resume(throwing: error)
                 return
             }
+            handle.attach(process)
 
             // Drain both pipes on background OS threads (not the cooperative pool).
             drainGroup.enter()
@@ -106,6 +122,10 @@ public struct SystemProcessRunner: ProcessRunning {
                     continuation.finish(throwing: error)
                     return
                 }
+                // A consumer that stops listening (cancelled, timed out) must not leave the child running.
+                let handle = CancellableProcess()
+                handle.attach(process)
+                continuation.onTermination = { _ in handle.cancel() }
 
                 // Collect stderr text so a non-zero exit can report it even when
                 // callers ignore the interleaved `.stderr` lines.
@@ -139,6 +159,35 @@ public struct SystemProcessRunner: ProcessRunning {
                 }
             }
         }
+    }
+}
+
+// MARK: - Cancellation
+
+/// Terminates a child once cancelled, whether cancellation arrives before or after launch.
+private final class CancellableProcess: @unchecked Sendable {
+    private let lock = NSLock()
+    private var process: Process?
+    private var cancelled = false
+
+    func attach(_ process: Process) {
+        let terminateNow = lock.withLock { () -> Bool in
+            self.process = process
+            return cancelled
+        }
+        if terminateNow { terminate(process) }
+    }
+
+    func cancel() {
+        let target = lock.withLock { () -> Process? in
+            cancelled = true
+            return process
+        }
+        if let target { terminate(target) }
+    }
+
+    private func terminate(_ process: Process) {
+        if process.isRunning { process.terminate() }
     }
 }
 
