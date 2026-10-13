@@ -39,7 +39,7 @@ Release candidate `release/2026-10`: pull requests #37–#74 (#38–#69 via `int
 - Folder sizing has a deadline; slow folders show "at least" instead of a guess (#58).
 - Abandoned Codex marketplace staging folders can be cleaned while Codex is not running (#59).
 - pnpm store versions the current pnpm no longer uses are offered for review (#61).
-- Dependency folders (`node_modules`, `venv`, `.venv`, `.bundle`) of idle projects: rule built with a lockfile, git-ignore evidence and an in-use check (#69), but **not registered** in `RuleCatalog` until its policy is decided (#68, #72).
+- Dependency folders (`node_modules`, `venv`, `.venv`, `.bundle`) of idle projects: offered for review in the developer profile (#69), never pre-selected. Needs a lockfile, git-ignore evidence, an idle project and an in-use check; a `venv` without a lockfile is not reported (#68 decision C).
 
 ### Diagnostics
 - Deleted-but-open files and swap usage are explained, with how to get the space back (#51).

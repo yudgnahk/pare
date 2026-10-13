@@ -46,7 +46,7 @@ Removing the Maintenance `docker system prune -f` action ahead of Phase 10 was d
 ## Phase 12 — Project dependency reclaim
 
 Spec and reasons: `docs/features/project-dependency-reclaim.md`. 12.1 (SwiftPM `.build`, #44) and 12.2
-slice 1 (#69) are done. Duplicate Chrome `IndexedDB` in the CLI was fixed by #39.
+slice 1 (#69, registered in the developer profile) are done. Duplicate Chrome `IndexedDB` in the CLI was fixed by #39.
 
 - [ ] Broken venvs (dangling `bin/python`): report regardless of activity when a lockfile or manifest exists
 - [ ] Manifest-only projects with a version-drift warning, only if users ask
