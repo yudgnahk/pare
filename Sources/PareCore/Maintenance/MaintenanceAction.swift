@@ -30,6 +30,7 @@ public struct MaintenanceAction: Identifiable, Sendable, Equatable {
 
 /// Static catalog of all available maintenance actions.
 /// Docker prune is included here; the ViewModel filters it out when Docker is not running.
+/// No Launch Services rebuild: it drops VPN tunnels and forces a Spotlight reindex.
 public enum MaintenanceCatalog {
     public static let flushDNS = MaintenanceAction(
         id: "flush-dns",
@@ -37,14 +38,6 @@ public enum MaintenanceCatalog {
         description: "Clears the system DNS resolver cache to fix stale or broken hostname lookups.",
         systemImage: "network.badge.shield.half.filled",
         estimatedSeconds: 2
-    )
-
-    public static let rebuildLaunchServices = MaintenanceAction(
-        id: "rebuild-launch-services",
-        title: "Rebuild Launch Services",
-        description: "Rebuilds the Launch Services database to fix broken 'Open With' menus and default app assignments.",
-        systemImage: "arrow.clockwise.circle",
-        estimatedSeconds: 15
     )
 
     public static let restartFinder = MaintenanceAction(
@@ -58,7 +51,7 @@ public enum MaintenanceCatalog {
     public static let vacuumDatabases = MaintenanceAction(
         id: "vacuum-databases",
         title: "Vacuum SQLite Databases",
-        description: "Reclaims wasted space in Mail, Safari, and Messages databases. Close those apps first.",
+        description: "Reclaims wasted space in the Mail and Safari databases. Quit those apps first; busy or damaged databases are skipped.",
         systemImage: "cylinder.split.1x2",
         estimatedSeconds: 20
     )
@@ -92,7 +85,6 @@ public enum MaintenanceCatalog {
     /// All actions. Docker prune is included; callers filter based on availability.
     public static let all: [MaintenanceAction] = [
         flushDNS,
-        rebuildLaunchServices,
         restartFinder,
         vacuumDatabases,
         dockerPrune,

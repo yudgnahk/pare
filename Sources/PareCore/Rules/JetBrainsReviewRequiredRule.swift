@@ -28,7 +28,7 @@ public struct JetBrainsReviewRequiredRule: ScanRule {
             return false
         }
 
-        let hasExcludedMarker = ScanPolicy.developerReviewExclusionMarkers.contains { path.contains($0) }
+        let hasExcludedMarker = ScanPolicy.containsAnyMarker(path, ScanPolicy.developerReviewExclusionMarkers)
         guard !hasExcludedMarker else {
             return false
         }

@@ -1,7 +1,7 @@
 # Docker Safety Policy (Pare)
 
 **Status:** binding product policy  
-**Last updated:** 2026-07-13  
+**Last updated:** 2026-10-09  
 
 This document defines how Pare treats Docker Desktop storage. Implementation must match these rules.
 
@@ -69,8 +69,17 @@ This document defines how Pare treats Docker Desktop storage. Implementation mus
 | Cleanup hard block | `CleanupEngine.clean` (before risk / persona checks) |
 | System prune args (no volumes) | `MaintenanceRunner.dockerSystemPruneArguments` |
 | Builder prune args (7d / 1d) | `MaintenanceRunner.dockerBuilderPruneArguments(untilHours:)` |
-| Maintenance actions | `MaintenanceCatalog.dockerBuilderPrune7d` / `dockerBuilderPrune1d` |
+| Maintenance actions | `MaintenanceCatalog.dockerPrune` / `dockerBuilderPrune7d` / `dockerBuilderPrune1d` |
 | CLI advisory | `PareCLI.printDockerBuildCacheHint` (suggests `until=168h`) |
+
+---
+
+## Planned change (Phase 10)
+
+The selective Docker manager in `docs/roadmap.md` would allow `docker volume rm <exact-name>` for one
+unused volume the user selected and confirmed. Update this policy before building it. `volume prune`,
+`--volumes`, force removal and touching `Docker.raw` stay forbidden. Removing `docker system prune -f`
+early was declined on 2026-10-03.
 
 ---
 

@@ -521,11 +521,25 @@ struct AppUninstallConfirmSheet: View {
     private var groupContainers: [AppLeftover] { leftovers.filter { $0.isGroupContainer } }
 
     private var totalBytes: Int64 {
-        let base = app.sizeBytes
-        let leftoverBytes = normalLeftovers.reduce(0) { $0 + $1.sizeBytes }
-        let groupBytes = viewModel.includeGroupContainers
-            ? groupContainers.reduce(0) { $0 + $1.sizeBytes } : 0
-        return base + leftoverBytes + groupBytes
+        app.sizeBytes + viewModel.selectedLeftovers.reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    private var errorMessage: String? {
+        if case .error(let message) = viewModel.uninstallState { return message }
+        return nil
+    }
+
+    private func row(for leftover: AppLeftover) -> LeftoverRow {
+        LeftoverRow(
+            path: leftover.path,
+            size: leftover.sizeBytes,
+            isGroup: leftover.isGroupContainer,
+            note: leftover.reportOnlyReason,
+            isSelected: Binding(
+                get: { viewModel.isLeftoverSelected(leftover) },
+                set: { viewModel.setLeftover(leftover, selected: $0) }
+            )
+        )
     }
 
     var body: some View {
@@ -562,7 +576,9 @@ struct AppUninstallConfirmSheet: View {
                             path: app.path,
                             size: app.sizeBytes,
                             isGroup: false,
-                            isSelected: .constant(true)
+                            note: nil,
+                            isSelected: .constant(true),
+                            isLocked: true
                         )
                     ])
 
@@ -572,14 +588,7 @@ struct AppUninstallConfirmSheet: View {
                         if let items = grouped[cat], !items.isEmpty {
                             leftoverSection(
                                 title: cat.rawValue,
-                                items: items.map { leftover in
-                                    LeftoverRow(
-                                        path: leftover.path,
-                                        size: leftover.sizeBytes,
-                                        isGroup: false,
-                                        isSelected: .constant(true)
-                                    )
-                                }
+                                items: items.map(row(for:))
                             )
                         }
                     }
@@ -597,6 +606,12 @@ struct AppUninstallConfirmSheet: View {
 
             // Footer actions
             HStack(spacing: 12) {
+                if let errorMessage {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(scale.font(12))
+                        .foregroundStyle(AppTheme.warning)
+                        .lineLimit(2)
+                }
                 Spacer()
                 Button("Cancel") { viewModel.cancelUninstall() }
                     .keyboardShortcut(.escape)
@@ -648,28 +663,17 @@ struct AppUninstallConfirmSheet: View {
                     .textCase(.uppercase)
             }
 
-            Text("This data may be shared with other apps in the same suite. Remove only if you are uninstalling all related apps.")
+            Text("This data may be shared with other apps in the same suite. Tick it only if you are uninstalling all related apps.")
                 .font(scale.font(12))
                 .foregroundStyle(.secondary)
 
-            Toggle("Also remove shared group containers", isOn: $viewModel.includeGroupContainers)
-                .font(scale.font(12, weight: .medium))
-                .toggleStyle(.checkbox)
-
-            if viewModel.includeGroupContainers {
-                VStack(spacing: 2) {
-                    ForEach(groupContainers) { leftover in
-                        LeftoverRow(
-                            path: leftover.path,
-                            size: leftover.sizeBytes,
-                            isGroup: true,
-                            isSelected: .constant(true)
-                        )
-                    }
+            VStack(spacing: 2) {
+                ForEach(groupContainers) { leftover in
+                    row(for: leftover)
                 }
-                .padding(10)
-                .background(AppTheme.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
             }
+            .padding(10)
+            .background(AppTheme.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
         }
         .padding(AppTheme.Spacing.cardCompact)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: AppTheme.Radius.md, style: .continuous))
@@ -681,20 +685,37 @@ private struct LeftoverRow: View {
     let path: String
     let size: Int64
     let isGroup: Bool
+    /// Report-only reason; such rows can't be ticked.
+    let note: String?
     @Binding var isSelected: Bool
+    var isLocked = false
 
     var body: some View {
         HStack(spacing: 8) {
+            Toggle("", isOn: $isSelected)
+                .toggleStyle(.checkbox)
+                .labelsHidden()
+                .disabled(isLocked || note != nil)
+                .accessibilityLabel(Text(path))
+
             Image(systemName: isGroup ? "folder.badge.questionmark" : "doc")
                 .font(scale.font(11))
                 .foregroundStyle(isGroup ? AppTheme.warning : AppTheme.textSecondary)
                 .frame(width: 16)
 
-            Text(path)
-                .font(scale.font(11, design: .monospaced))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(path)
+                    .font(scale.font(11, design: .monospaced))
+                    .foregroundStyle(note == nil ? .primary : .secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let note {
+                    Text(note)
+                        .font(scale.font(10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
 
             Spacer()
 

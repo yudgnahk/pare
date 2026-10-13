@@ -69,6 +69,8 @@ extension ScanPolicy {
             return defaultCacheMinAgeSeconds  // 3 days
         case .launchAgents:
             return launchAgentOrphanMinAgeSeconds
+        case .diagnostics:
+            return nil
         }
     }
 
@@ -84,6 +86,24 @@ extension ScanPolicy {
         guard values.isDirectory == true else { return values.contentModificationDate }
         let candidates = [values.creationDate, values.contentModificationDate].compactMap { $0 }
         return candidates.min()
+    }
+
+    /// Age reference for project artifacts. Hidden caches with a sibling manifest use the newest of their own
+    /// date and their direct children's mtimes, because builds rewrite files inside (e.g. `.build/build.db`).
+    /// Nil when that listing or any child date is unreadable, so age gates fail closed.
+    public static func projectArtifactAgeDate(for url: URL, values: URLResourceValues) -> Date? {
+        guard let own = effectiveAgeDate(from: values) else { return nil }
+        guard projectArtifactRequiredSiblingMarkers[url.lastPathComponent.lowercased()] != nil else { return own }
+        let key: URLResourceKey = .contentModificationDateKey
+        guard let children = try? FileManager.default.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: [key]
+        ) else { return nil }
+        var newest = own
+        for child in children {
+            guard let date = try? child.resourceValues(forKeys: [key]).contentModificationDate else { return nil }
+            newest = max(newest, date)
+        }
+        return newest
     }
 
     /// Fail-closed: when an age gate applies (`minimumAgeSeconds != nil`) and no date is

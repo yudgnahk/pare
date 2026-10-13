@@ -6,7 +6,7 @@ extension ScanPolicy {
 
     public static func isSearchIndexSensitivePath(_ url: URL) -> Bool {
         let path = url.path.lowercased()
-        return searchIndexSensitivePathMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, searchIndexSensitivePathMarkers)
     }
 
     /// Large cleans cause heavy incremental Spotlight work (FSEvents), even without
@@ -20,9 +20,9 @@ extension ScanPolicy {
     }
 
     public static func isReconstructibleCachePath(_ url: URL) -> Bool {
-        if isSearchIndexSensitivePath(url) { return false }
+        if isNeverCleanPath(url) || isSearchIndexSensitivePath(url) { return false }
         let path = url.path.lowercased()
-        return reconstructibleCachePathMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, reconstructibleCachePathMarkers)
     }
 
     /// True when the path contains a credential/user-data marker (bookmarks, history,
@@ -30,7 +30,7 @@ extension ScanPolicy {
     /// divergent copy of the marker list (R1.4).
     public static func containsSensitiveDataMarker(_ url: URL) -> Bool {
         let path = url.path.lowercased()
-        return sensitiveDataMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, sensitiveDataMarkers)
     }
 
     /// True when the path is JetBrains plugin/driver data requiring review.
@@ -55,6 +55,13 @@ extension ScanPolicy {
             || path.hasPrefix(home + "/library/mobile documents/")
     }
 
+    /// True for a top-level `Library/Caches` entry `UserCachesRule` must skip, folder or file.
+    public static func isUserCacheFolderProtected(name: String) -> Bool {
+        let lower = name.lowercased()
+        return neverCleanUserCacheFolderNames.contains(lower)
+            || userCacheProtectedFolderPrefixes.contains { lower.hasPrefix($0) }
+    }
+
     /// `true` when the directory name is a dependency tree that must never be reclaimable.
     public static func isProjectDependencyDirectory(_ name: String) -> Bool {
         projectDependencyDirectoryNames.contains(name.lowercased())
@@ -65,6 +72,26 @@ extension ScanPolicy {
     /// which additionally requires project-root evidence (fail-closed).
     public static func isProjectArtifact(_ url: URL) -> Bool {
         projectArtifactDirectoryNames.contains(url.lastPathComponent.lowercased())
+    }
+
+    public static func requiresGitIgnoreEvidence(_ url: URL) -> Bool {
+        projectArtifactNamesRequiringGitIgnoreEvidence.contains(url.lastPathComponent.lowercased())
+    }
+
+    /// Ungated names always pass; gated names need git to report them ignored and untracked (nil fails closed).
+    public static func gitEvidenceAllows(artifact url: URL, status: GitArtifactStatus?) -> Bool {
+        guard requiresGitIgnoreEvidence(url) else { return true }
+        return status == .ignoredUntracked
+    }
+
+    /// True when the artifact has no sibling-marker requirement, or one of its markers sits beside it.
+    public static func hasRequiredSiblingMarker(
+        _ url: URL,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> Bool {
+        guard let markers = projectArtifactRequiredSiblingMarkers[url.lastPathComponent.lowercased()] else { return true }
+        let parent = url.deletingLastPathComponent().path
+        return markers.contains { fileExists(parent + "/" + $0) }
     }
 
     /// Cleanup-time gate for project build artifacts. Fail-closed: a bare directory
@@ -80,12 +107,15 @@ extension ScanPolicy {
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> Bool {
         guard isProjectArtifact(url) else { return false }
+        // Before the registered-root shortcut: a root does not prove `.build` belongs to a Swift package.
+        guard hasRequiredSiblingMarker(url, fileExists: fileExists) else { return false }
 
-        let path = url.path
+        // Component matching: `/tmp` roots meet `/private/tmp` paths, and case folds only where the volume does.
+        let caseSensitive = !registeredRootPaths.isEmpty && volumeSupportsCaseSensitiveNames(atPath: url.path)
         let underRegisteredRoot = registeredRootPaths.contains { root in
-            guard !root.isEmpty else { return false }
-            let normalized = root.hasSuffix("/") ? String(root.dropLast()) : root
-            return path == normalized || path.hasPrefix(normalized + "/")
+            !root.isEmpty && isCanonicallyEqualToOrDescendant(
+                candidate: url, root: URL(fileURLWithPath: root), caseSensitive: caseSensitive
+            )
         }
         if underRegisteredRoot { return true }
 
@@ -104,56 +134,96 @@ extension ScanPolicy {
         return false
     }
 
+    /// True when the path is home or above it, sits inside an app/framework bundle or a home SDK folder, or contains
+    /// any `projectDiscoveryExcludedPathComponents` run as whole, case-sensitive components.
+    public static func isExcludedFromProjectDiscovery(
+        _ url: URL,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Bool {
+        let components = url.standardizedFileURL.pathComponents
+        if isHomeOrAncestor(url, home: home) { return true }
+        if components.contains(where: isBundleComponent) { return true }
+        if projectDiscoveryExcludedHomeFolders.contains(where: {
+            isEqualToOrDescendant(candidate: url, root: home.appending(path: $0))
+        }) { return true }
+        return projectDiscoveryExcludedComponentRuns.contains { run in
+            guard components.count >= run.count else { return false }
+            return (0...(components.count - run.count)).contains { start in
+                components[start..<(start + run.count)].elementsEqual(run)
+            }
+        }
+    }
+
+    /// A stray `~/package.json` must not make the whole home folder (and `~/Library`) one project to walk.
+    public static func isHomeOrAncestor(_ url: URL, home: URL) -> Bool {
+        let candidate = url.standardizedFileURL.pathComponents
+        let homeComponents = home.standardizedFileURL.pathComponents
+        return candidate.count <= homeComponents.count && homeComponents.starts(with: candidate)
+    }
+
+    /// True for a directory name like `Foo.app` or `Electron Framework.framework`.
+    public static func isBundleComponent(_ name: String) -> Bool {
+        let ext = (name as NSString).pathExtension.lowercased()
+        return !ext.isEmpty && projectDiscoveryExcludedBundleExtensions.contains(ext)
+    }
+
+    private static let projectDiscoveryExcludedComponentRuns: [[String]] =
+        projectDiscoveryExcludedPathComponents.map { $0.split(separator: "/").map(String.init) }
+
     public static func matchesPersonaPath(_ url: URL, allowedMarkers: [String]) -> Bool {
+        // Tool-managed working sets beat every allow-marker below.
+        if isNeverCleanPath(url) { return false }
         // Parity with isLowImpactPath (R1.6): search-index stores must never pass
         // the persona gate either — deleting them forces a costly reindex.
         if isSearchIndexSensitivePath(url) { return false }
 
         let path = url.path.lowercased()
 
-        let isProtected = protectedPathMarkers.contains { path.contains($0) }
+        let isProtected = containsAnyMarker(path, protectedPathMarkers)
         if isProtected {
-            let allowsProtectedPath = personaProtectedPathOverrides.contains { path.contains($0) }
+            let allowsProtectedPath = containsAnyMarker(path, personaProtectedPathOverrides)
             guard allowsProtectedPath else {
                 return false
             }
         }
 
-        let containsSensitiveDataMarker = sensitiveDataMarkers.contains { path.contains($0) }
+        let containsSensitiveDataMarker = containsAnyMarker(path, sensitiveDataMarkers)
         guard !containsSensitiveDataMarker else {
             return false
         }
 
-        let containsAppStateSensitiveMarker = appStateSensitiveMarkers.contains { path.hasSuffix($0) || path.contains($0) }
+        let containsAppStateSensitiveMarker = containsAnyMarker(path, appStateSensitiveMarkers, orSuffix: true)
         guard !containsAppStateSensitiveMarker else {
             return false
         }
 
-        return allowedMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, allowedMarkers)
     }
 
     public static func isLowImpactPath(_ url: URL) -> Bool {
+        // Tool-managed working sets beat every allow-marker below (`/library/caches/` included).
+        if isNeverCleanPath(url) { return false }
         // Spotlight / Help / media-analysis indexes are never "low impact" to delete.
         if isSearchIndexSensitivePath(url) { return false }
 
         let path = url.path.lowercased()
 
-        let isProtected = protectedPathMarkers.contains { path.contains($0) }
+        let isProtected = containsAnyMarker(path, protectedPathMarkers)
         guard !isProtected else {
             return false
         }
 
-        let containsSensitiveDataMarker = sensitiveDataMarkers.contains { path.contains($0) }
+        let containsSensitiveDataMarker = containsAnyMarker(path, sensitiveDataMarkers)
         guard !containsSensitiveDataMarker else {
             return false
         }
 
-        let containsAppStateSensitiveMarker = appStateSensitiveMarkers.contains { path.hasSuffix($0) || path.contains($0) }
+        let containsAppStateSensitiveMarker = containsAnyMarker(path, appStateSensitiveMarkers, orSuffix: true)
         guard !containsAppStateSensitiveMarker else {
             return false
         }
 
-        return lowImpactMarkers.contains { path.contains($0) }
+        return containsAnyMarker(path, lowImpactMarkers)
     }
 
     /// Returns `true` for apps inside /System/Applications — SIP-protected and cannot be removed.
@@ -180,9 +250,15 @@ extension ScanPolicy {
     /// Component containment that honours the volume's case sensitivity when `caseSensitive` is true.
     public static func isEqualToOrDescendant(candidate: URL, root: URL, caseSensitive: Bool) -> Bool {
         let fold: (String) -> String = caseSensitive ? { $0 } : { $0.lowercased() }
-        let candidateComponents = candidate.standardizedFileURL.pathComponents.map(fold)
-        let rootComponents = root.standardizedFileURL.pathComponents.map(fold)
+        return isEqualToOrDescendant(
+            candidateComponents: candidate.standardizedFileURL.pathComponents.map(fold),
+            rootComponents: root.standardizedFileURL.pathComponents.map(fold)
+        )
+    }
+
+    /// The same test over standardized, already case-folded components, for callers comparing many pairs.
+    static func isEqualToOrDescendant(candidateComponents: [String], rootComponents: [String]) -> Bool {
         guard !rootComponents.isEmpty, candidateComponents.count >= rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
+        return candidateComponents.starts(with: rootComponents)
     }
 }
