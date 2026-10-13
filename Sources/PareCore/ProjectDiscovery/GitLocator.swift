@@ -27,14 +27,9 @@ public struct GitLocator: Sendable {
         self.developerDirectory = developerDirectory
     }
 
-    /// PATH (minus `/usr/bin`), then Homebrew locations, then the selected developer directory.
+    /// `ToolSearchPath` (minus `/usr/bin`), then the selected developer directory.
     public func locate() async -> URL? {
-        let pathEntries = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
-        var searched = Set<String>()
-        for entry in pathEntries + ToolCommandRunner.conventionalSearchPaths {
-            let directory = entry.hasSuffix("/") ? String(entry.dropLast()) : entry
-            guard !directory.isEmpty, directory != Self.shimDirectory,
-                  searched.insert(directory).inserted else { continue }
+        for directory in ToolSearchPath.directories(environment: environment) where directory != Self.shimDirectory {
             let candidate = directory + "/git"
             if isExecutable(candidate) { return URL(fileURLWithPath: candidate) }
         }

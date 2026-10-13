@@ -18,9 +18,6 @@ public final class GoCacheLocations: @unchecked Sendable {
 
     public static let shared = GoCacheLocations()
 
-    /// The official installer's location, which Finder-launched apps do not get on PATH.
-    static let officialInstallBinDirectory = "/usr/local/go/bin"
-
     private let query: Query
     private let lock = NSLock()
     private var paths: GoCachePaths = .empty
@@ -60,10 +57,7 @@ public final class GoCacheLocations: @unchecked Sendable {
 
     private static let defaultQuery: Query = {
         let runner = ToolCommandRunner()
-        var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = [environment["PATH"], officialInstallBinDirectory]
-            .compactMap { $0 }
-            .joined(separator: ":")
+        let environment = ProcessInfo.processInfo.environment
         guard let go = runner.resolveExecutable(named: "go", environmentVariables: environment) else { return nil }
         return await runner.capture(executable: go, arguments: ["env", "GOCACHE", "GOMODCACHE"])
     }
