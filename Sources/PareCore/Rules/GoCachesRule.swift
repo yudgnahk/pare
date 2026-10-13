@@ -15,9 +15,11 @@ public struct GoCachesRule: ScanRule {
     public static let buildCacheSelfTrimDays = 5
 
     private let locations: GoCacheLocations
+    private let moduleSizes: GoModuleCacheSizeStore
 
-    public init(locations: GoCacheLocations = .shared) {
+    public init(locations: GoCacheLocations = .shared, moduleSizes: GoModuleCacheSizeStore = .shared) {
         self.locations = locations
+        self.moduleSizes = moduleSizes
     }
 
     public func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
@@ -42,16 +44,40 @@ public struct GoCachesRule: ScanRule {
             let annotation = FindingAnnotation.workingSet(
                 selfTrimDays: target.isModuleCache ? nil : Self.buildCacheSelfTrimDays
             )
-            findings += ScanFindingBuilder.directoryFindings(
+            if target.isModuleCache, let remembered = rememberedModuleFinding(at: root, annotation: annotation) {
+                findings.append(remembered)
+                continue
+            }
+            let measured = ScanFindingBuilder.directoryFindings(
                 at: root,
                 category: category,
                 riskLevel: riskLevel,
                 reason: Self.reason(for: annotation),
                 confidence: confidence,
                 sizeIndex: environment.sizeIndex
-            ).map { $0.annotated(with: annotation) }
+            )
+            if target.isModuleCache, let finding = measured.first, finding.isSizeComplete {
+                moduleSizes.remember(finding.sizeBytes, for: root)
+            }
+            findings += measured.map { $0.annotated(with: annotation) }
         }
         return findings
+    }
+
+    /// The module cache's last complete size, when `GoModuleCacheSizeStore` still trusts it.
+    private func rememberedModuleFinding(at root: URL, annotation: FindingAnnotation) -> ScanFinding? {
+        guard FileManager.default.fileExists(atPath: root.path),
+              let bytes = moduleSizes.size(for: root), bytes > 0 else { return nil }
+        return ScanFinding(
+            category: category,
+            riskLevel: riskLevel,
+            reason: Self.reason(for: annotation),
+            path: root.path,
+            sizeBytes: bytes,
+            lastUsed: try? root.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+            confidence: confidence,
+            annotations: [annotation]
+        )
     }
 
     private static func reason(for annotation: FindingAnnotation) -> String {
@@ -76,7 +102,8 @@ private extension ScanFinding {
             sizeBytes: sizeBytes,
             lastUsed: lastUsed,
             confidence: confidence,
-            annotations: annotations + [annotation]
+            annotations: annotations + [annotation],
+            isSizeComplete: isSizeComplete
         )
     }
 }

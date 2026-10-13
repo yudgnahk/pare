@@ -133,15 +133,34 @@ extension ScanPolicy {
         return false
     }
 
-    /// True when the path contains any `projectDiscoveryExcludedPathComponents` run as whole, case-sensitive components.
-    public static func isExcludedFromProjectDiscovery(_ url: URL) -> Bool {
+    /// True when the path is home or above it, sits inside an app/framework bundle, or contains any
+    /// `projectDiscoveryExcludedPathComponents` run as whole, case-sensitive components.
+    public static func isExcludedFromProjectDiscovery(
+        _ url: URL,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Bool {
         let components = url.standardizedFileURL.pathComponents
+        if isHomeOrAncestor(url, home: home) { return true }
+        if components.contains(where: isBundleComponent) { return true }
         return projectDiscoveryExcludedComponentRuns.contains { run in
             guard components.count >= run.count else { return false }
             return (0...(components.count - run.count)).contains { start in
                 components[start..<(start + run.count)].elementsEqual(run)
             }
         }
+    }
+
+    /// A stray `~/package.json` must not make the whole home folder (and `~/Library`) one project to walk.
+    public static func isHomeOrAncestor(_ url: URL, home: URL) -> Bool {
+        let candidate = url.standardizedFileURL.pathComponents
+        let homeComponents = home.standardizedFileURL.pathComponents
+        return candidate.count <= homeComponents.count && homeComponents.starts(with: candidate)
+    }
+
+    /// True for a directory name like `Foo.app` or `Electron Framework.framework`.
+    public static func isBundleComponent(_ name: String) -> Bool {
+        let ext = (name as NSString).pathExtension.lowercased()
+        return !ext.isEmpty && projectDiscoveryExcludedBundleExtensions.contains(ext)
     }
 
     private static let projectDiscoveryExcludedComponentRuns: [[String]] =

@@ -141,7 +141,14 @@ extension ScanPolicy {
         "/venv/", "/.venv/", "/.Trash/", "/.Trashes/", "/site-packages/",
         "/Applications/", "/go/pkg/mod/", "/.pub-cache/", "/.cargo/registry/",
         "/.cargo/git/", "/fvm/versions/", "/_work/_tool/",
+        "/.nvm/", "/.rustup/", "/.pyenv/", "/.rbenv/", "/.nodenv/", "/.goenv/", "/.sdkman/", "/.asdf/",
+        "/.volta/", "/.fnm/", "/.bun/", "/.deno/", "/.npm/", "/.gradle/", "/.m2/", "/.cache/",
+        "/.local/share/mise/", "/.local/share/pnpm/", "/.vscode/extensions/", "/.vscode-insiders/extensions/",
+        "/.cursor/extensions/", "/.windsurf/extensions/", "/.vscode-server/", "/Pods/", "/.build/checkouts/",
     ]
+
+    /// Bundle extensions (lowercased) whose contents are shipped app code, never a user project root.
+    public static let projectDiscoveryExcludedBundleExtensions: Set<String> = ["app", "framework"]
 
     /// App-specific state paths that must never be deleted — removing them would
     /// break credentials, active sessions, or IDE state for the matching tool.
@@ -447,6 +454,7 @@ extension ScanPolicy {
         ".conda", ".nuget", ".dotnet", ".julia", ".ghcup", ".stack", ".opam", ".swiftpm", ".git", ".trash",
         ".vscode", ".vscode-insiders", ".vscode-server", ".cursor", ".windsurf",
         "mise", "pipx", "uv", "node_modules", "site-packages", "jetbrains", "code", "cursor", "windsurf", "google",
+        "corepack", "session-env", "cache", "caches", "indexeddb",
     ]
 
     /// Marker files/directories whose presence identifies a directory as a project root.
