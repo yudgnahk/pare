@@ -108,7 +108,7 @@ extension ScanPolicy {
         return false
     }
 
-    private static func isSymbolicLink(atPath path: String) -> Bool {
+    static func isSymbolicLink(atPath path: String) -> Bool {
         var metadata = stat()
         return lstat(path, &metadata) == 0 && (metadata.st_mode & S_IFMT) == S_IFLNK
     }

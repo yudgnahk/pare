@@ -50,7 +50,7 @@ final class AppManagerViewModel: ObservableObject {
     // Uninstall flow
     @Published var selectedApp: InstalledApp?
     @Published var pendingLeftovers: [AppLeftover] = []
-    @Published var includeGroupContainers = false
+    @Published var selectedLeftoverIDs: Set<UUID> = []
     @Published var showUninstallSheet = false
 
     // MARK: - Private
@@ -210,34 +210,61 @@ final class AppManagerViewModel: ObservableObject {
 
     func requestUninstall(for app: InstalledApp) {
         selectedApp = app
-        pendingLeftovers = uninstaller.findLeftovers(for: app)
-        includeGroupContainers = false
+        // Other installed IDs keep e.g. Chrome Canary's files out of Chrome's uninstall.
+        let otherBundleIDs = Set(apps.compactMap(\.bundleID)).subtracting([app.bundleID].compactMap { $0 })
+        pendingLeftovers = uninstaller.findLeftovers(for: app, otherBundleIDs: otherBundleIDs)
+        selectedLeftoverIDs = Set(pendingLeftovers.filter(\.isSelectedByDefault).map(\.id))
         uninstallState = .confirming
         showUninstallSheet = true
     }
 
+    func isLeftoverSelected(_ leftover: AppLeftover) -> Bool {
+        selectedLeftoverIDs.contains(leftover.id)
+    }
+
+    func setLeftover(_ leftover: AppLeftover, selected: Bool) {
+        guard !leftover.isReportOnly else { return }
+        selectedLeftoverIDs = selected
+            ? selectedLeftoverIDs.union([leftover.id])
+            : selectedLeftoverIDs.subtracting([leftover.id])
+    }
+
+    var selectedLeftovers: [AppLeftover] {
+        pendingLeftovers.filter { !$0.isReportOnly && selectedLeftoverIDs.contains($0.id) }
+    }
+
     func confirmUninstall() {
         guard let app = selectedApp else { return }
+        let chosen = selectedLeftovers
         uninstallState = .uninstalling
         Task {
-            let (trashed, failed) = await uninstaller.uninstall(
-                app: app,
-                leftovers: pendingLeftovers,
-                includeGroupContainers: includeGroupContainers
-            )
-            self.apps.removeAll { $0.path == app.path }
-            self.uninstallState = .done(trashed: trashed.count, failed: failed.count)
-            self.showUninstallSheet = false
-            self.selectedApp = nil
-            self.pendingLeftovers = []
+            do {
+                let result = try await uninstaller.uninstall(app: app, leftovers: chosen)
+                if result.trashed.contains(app.path) {
+                    self.apps.removeAll { $0.path == app.path }
+                }
+                self.uninstallState = .done(
+                    trashed: result.trashed.count,
+                    failed: result.failed.count + result.skipped.count
+                )
+                self.resetUninstallFlow()
+            } catch {
+                // Keep the sheet open so the user sees why nothing moved.
+                self.uninstallState = .error(error.localizedDescription)
+            }
         }
     }
 
     func cancelUninstall() {
         uninstallState = .idle
+        resetUninstallFlow()
+    }
+
+    private func resetUninstallFlow() {
         showUninstallSheet = false
         selectedApp = nil
         pendingLeftovers = []
+        selectedLeftoverIDs = []
     }
 
     // MARK: - Private
