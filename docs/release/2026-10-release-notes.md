@@ -5,7 +5,7 @@
 > or downloaded from the official yudgnahk/pare release page.
 
 ## Highlights
-- **Faster, lighter Smart Scan.** On the integration branch the full scan dropped from ~35 s to ~15 s warm (debug build), and peak memory from ~550–700 MB to ~120–145 MB. Projects are no longer discovered inside `$HOME` itself, app bundles, SDKs or toolchain trees; the Go module cache size is remembered for 24 h; results appear without the post-scan stall (#37, #71).
+- **Faster, lighter Smart Scan.** A warm full scan of all 47 rules takes ~5 s on an idle Mac (release build), down from ~35 s, and peak memory dropped from ~550–700 MB to ~110–130 MB. Listing-only walks read directories with `readdir`, the Go build-cache size is remembered like the module cache, and path checks skip work they don't need. Projects are no longer discovered inside `$HOME` itself, app bundles, SDKs or toolchain trees; the Go module cache size is remembered for 24 h; results appear without the post-scan stall (#37, #71, #76).
 - **Safer cleanup.**
   - Build, `dist` and `target` folders are reclaimed only when git ignores them (#41); the git check now has a 20 s total deadline and fails closed (#72).
   - A folder that holds something Pare only reports, or never deletes (Go caches, protected app data, Docker VM disk), is never moved to the Trash as a whole (#39, #72).
