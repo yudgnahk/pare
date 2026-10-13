@@ -61,12 +61,14 @@ public struct AppUninstaller: Sendable {
         self.launchAgents = launchAgents
         self.runningApps = runningApps
         self.exclusions = exclusions ?? { try? ExclusionStore.shared.load() }
-        self.trashItem = trashItem ?? { url in
-            var resultURL: NSURL?
-            try FileManager.default.trashItem(at: url, resultingItemURL: &resultURL)
-            return resultURL as URL?
-        }
+        self.trashItem = trashItem ?? Self.moveToSystemTrash
         self.transactionStore = transactionStore
+    }
+
+    private static let moveToSystemTrash: @Sendable (URL) throws -> URL? = { url in
+        var resultURL: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &resultURL)
+        return resultURL as URL?
     }
 
     private var library: URL { home.appendingPathComponent("Library") }
@@ -98,17 +100,17 @@ public struct AppUninstaller: Sendable {
             }
         }
 
-        leftovers += namedItems(in: library.appendingPathComponent("Preferences"), app: bundleID, others: otherBundleIDs) {
-            makeLeftover(at: $0, category: .preferences, selected: $1 == .exact, excluded: excluded)
+        leftovers += namedItems(in: library.appendingPathComponent("Preferences"), app: bundleID, others: otherBundleIDs) { url, match in
+            makeLeftover(at: url, category: .preferences, selected: match == .exact, excluded: excluded)
         }
         // A user agent is booted out before trashing, but it can still belong to a helper the user keeps.
-        leftovers += namedItems(in: library.appendingPathComponent("LaunchAgents"), app: bundleID, others: otherBundleIDs) {
-            makeLeftover(at: $0, category: .launchAgents, selected: false, excluded: excluded)
+        leftovers += namedItems(in: library.appendingPathComponent("LaunchAgents"), app: bundleID, others: otherBundleIDs) { url, _ in
+            makeLeftover(at: url, category: .launchAgents, selected: false, excluded: excluded)
         }
         let systemFolders: [(String, AppLeftoverCategory)] = [("LaunchAgents", .launchAgents), ("LaunchDaemons", .launchDaemons)]
         for (folder, category) in systemFolders {
-            leftovers += namedItems(in: systemLibrary.appendingPathComponent(folder), app: bundleID, others: otherBundleIDs) {
-                makeLeftover(at: $0, category: category, excluded: excluded, reportOnly: Self.systemLaunchItemReason)
+            leftovers += namedItems(in: systemLibrary.appendingPathComponent(folder), app: bundleID, others: otherBundleIDs) { url, _ in
+                makeLeftover(at: url, category: category, excluded: excluded, reportOnly: Self.systemLaunchItemReason)
             }
         }
         leftovers += groupContainers(bundleID: bundleID, others: otherBundleIDs, excluded: excluded)

@@ -26,12 +26,14 @@ public struct LaunchctlAgentUnloader: LaunchAgentUnloading {
 
     public init(uid: uid_t = getuid(), run: Runner? = nil) {
         self.uid = uid
-        self.run = run ?? { arguments in
-            await ToolCommandRunner(timeoutSeconds: Self.timeoutSeconds).run(
-                executable: URL(fileURLWithPath: Self.launchctlPath),
-                arguments: arguments
-            )?.exitCode
-        }
+        self.run = run ?? Self.runLaunchctl
+    }
+
+    private static let runLaunchctl: Runner = { arguments in
+        await ToolCommandRunner(timeoutSeconds: timeoutSeconds).run(
+            executable: URL(fileURLWithPath: launchctlPath),
+            arguments: arguments
+        )?.exitCode
     }
 
     public func unload(plistAt url: URL) async -> LaunchAgentUnloadOutcome {
@@ -39,16 +41,11 @@ public struct LaunchctlAgentUnloader: LaunchAgentUnloading {
             return .failed("Couldn't read the launch agent's label")
         }
         let service = "gui/\(uid)/\(label)"
-        switch await run(["print", service]) {
-        case nil:
+        guard let printStatus = await run(["print", service]) else {
             return .failed("launchctl did not respond")
-        case Self.serviceNotFoundExitCode?:
-            return .notLoaded
-        case 0?:
-            break
-        case let code?:
-            return .failed("launchctl print exited with \(code)")
         }
+        if printStatus == Self.serviceNotFoundExitCode { return .notLoaded }
+        guard printStatus == 0 else { return .failed("launchctl print exited with \(printStatus)") }
         guard let code = await run(["bootout", service]) else {
             return .failed("launchctl did not respond")
         }
