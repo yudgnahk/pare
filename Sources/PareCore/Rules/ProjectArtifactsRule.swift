@@ -136,27 +136,39 @@ public struct ProjectArtifactsRule: ScanRule {
     /// Drops roots the walk of another root already reaches, so nested projects are not walked twice.
     static func droppingCoveredRoots(_ roots: [URL]) -> [URL] {
         // Canonical spelling, so a `/var/…` root nested in a `/private/var/…` root is not walked twice.
-        let canonical = roots.map { ScanPolicy.canonicalPathURL($0) }
-        return zip(roots, canonical)
-            .filter { _, candidate in !canonical.contains { isReachable(candidate, fromRoot: $0) } }
+        let keys = roots.map { RootKey(ScanPolicy.canonicalPathURL($0)) }
+        return zip(roots, keys)
+            .filter { _, candidate in !keys.contains { isReachable(candidate, fromRoot: $0) } }
             .map(\.0)
     }
 
-    private static func isReachable(_ candidate: URL, fromRoot root: URL) -> Bool {
-        let rootComponents = root.standardizedFileURL.pathComponents
-        let candidateComponents = candidate.standardizedFileURL.pathComponents
-        guard candidateComponents.count > rootComponents.count,
-              ScanPolicy.isEqualToOrDescendant(candidate: candidate, root: root) else { return false }
-        let relative = candidateComponents.dropFirst(rootComponents.count)
-        // The walk lists a directory k levels down only when k < max depth, through visible non-artifact dirs.
-        guard relative.count < walkMaxDepth else { return false }
-        return relative.allSatisfy { name in
-            let lower = name.lowercased()
-            return !name.hasPrefix(".")
-                && !ScanPolicy.isBundleComponent(name)
-                && !ScanPolicy.isProjectDependencyDirectory(lower)
-                && !ScanPolicy.projectLocalArtifactDirectoryNames.contains(lower)
+    /// Components worked out once per root: every pair is compared, and hundreds of roots are common.
+    private struct RootKey {
+        let componentCount: Int
+        let folded: [String]
+        /// Whether the walk descends through each component (visible, not a bundle, dependency or artifact).
+        let walkable: [Bool]
+
+        init(_ url: URL) {
+            let components = url.standardizedFileURL.pathComponents
+            componentCount = components.count
+            folded = components.map { $0.lowercased() }
+            walkable = components.map { name in
+                let lower = name.lowercased()
+                return !name.hasPrefix(".")
+                    && !ScanPolicy.isBundleComponent(name)
+                    && !ScanPolicy.isProjectDependencyDirectory(lower)
+                    && !ScanPolicy.projectLocalArtifactDirectoryNames.contains(lower)
+            }
         }
+    }
+
+    private static func isReachable(_ candidate: RootKey, fromRoot root: RootKey) -> Bool {
+        let depth = candidate.componentCount - root.componentCount
+        // The walk lists a directory k levels down only when k < max depth, through visible non-artifact dirs.
+        guard depth > 0, depth < walkMaxDepth,
+              candidate.walkable[root.componentCount...].allSatisfy({ $0 }) else { return false }
+        return ScanPolicy.isEqualToOrDescendant(candidateComponents: candidate.folded, rootComponents: root.folded)
     }
 
     // MARK: Private

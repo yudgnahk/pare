@@ -250,9 +250,15 @@ extension ScanPolicy {
     /// Component containment that honours the volume's case sensitivity when `caseSensitive` is true.
     public static func isEqualToOrDescendant(candidate: URL, root: URL, caseSensitive: Bool) -> Bool {
         let fold: (String) -> String = caseSensitive ? { $0 } : { $0.lowercased() }
-        let candidateComponents = candidate.standardizedFileURL.pathComponents.map(fold)
-        let rootComponents = root.standardizedFileURL.pathComponents.map(fold)
+        return isEqualToOrDescendant(
+            candidateComponents: candidate.standardizedFileURL.pathComponents.map(fold),
+            rootComponents: root.standardizedFileURL.pathComponents.map(fold)
+        )
+    }
+
+    /// The same test over standardized, already case-folded components, for callers comparing many pairs.
+    static func isEqualToOrDescendant(candidateComponents: [String], rootComponents: [String]) -> Bool {
         guard !rootComponents.isEmpty, candidateComponents.count >= rootComponents.count else { return false }
-        return Array(candidateComponents.prefix(rootComponents.count)) == rootComponents
+        return candidateComponents.starts(with: rootComponents)
     }
 }

@@ -112,6 +112,26 @@ final class ScanWorkGuardTests: XCTestCase {
         XCTAssertEqual(ProjectArtifactsRule.droppingCoveredRoots([outer, insideBundle]), [outer, insideBundle])
     }
 
+    func testCoveredRootsTable() {
+        let outer = URL(fileURLWithPath: "/Users/u/Projects/p")
+        let cases: [(name: String, nested: String, dropped: Bool)] = [
+            ("direct child", "/Users/u/Projects/p/app", true),
+            ("seven levels down", "/Users/u/Projects/p/1/2/3/4/5/6/7", true),
+            ("eight levels down is past the walk", "/Users/u/Projects/p/1/2/3/4/5/6/7/8", false),
+            ("case differs", "/Users/u/projects/P/app", true),
+            ("under a hidden folder", "/Users/u/Projects/p/.hidden/app", false),
+            ("under a dependency folder", "/Users/u/Projects/p/node_modules/app", false),
+            ("under an artifact folder", "/Users/u/Projects/p/target/app", false),
+            ("sibling sharing a name prefix", "/Users/u/Projects/p2/app", false),
+        ]
+        for testCase in cases {
+            let nested = URL(fileURLWithPath: testCase.nested)
+            let kept = ProjectArtifactsRule.droppingCoveredRoots([outer, nested])
+            XCTAssertEqual(kept, testCase.dropped ? [outer] : [outer, nested], testCase.name)
+        }
+        XCTAssertEqual(ProjectArtifactsRule.droppingCoveredRoots([outer, outer]), [outer, outer], "equal roots never cover each other")
+    }
+
     // MARK: - VersionSiblingsRule
 
     func testWideDirectoryIsCheckedForGroupsButNotDescended() async throws {
