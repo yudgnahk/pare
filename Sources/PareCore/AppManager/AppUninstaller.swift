@@ -19,6 +19,7 @@ public enum AppUninstallError: Error, LocalizedError, Equatable {
     case appRunning(String)
     case appExcluded(String)
     case exclusionsUnreadable
+    case openFileCheckUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -28,6 +29,8 @@ public enum AppUninstallError: Error, LocalizedError, Equatable {
             return "\(name) is in your exclusion list, so Pare won't remove it."
         case .exclusionsUnreadable:
             return "Pare couldn't read your exclusion list, so nothing was removed."
+        case .openFileCheckUnavailable:
+            return "Pare couldn't check which files are in use, so nothing was removed."
         }
     }
 }
@@ -43,6 +46,7 @@ public struct AppUninstaller: Sendable {
     private let systemLibrary: URL
     private let launchAgents: any LaunchAgentUnloading
     private let runningApps: any RunningAppsProviding
+    private let openFiles: any OpenFileSnapshotProviding
     private let exclusions: @Sendable () -> ExclusionList?
     private let trashItem: @Sendable (URL) throws -> URL?
     private let transactionStore: CleanupTransactionStore
@@ -52,6 +56,7 @@ public struct AppUninstaller: Sendable {
         systemLibrary: URL = URL(fileURLWithPath: "/Library"),
         launchAgents: any LaunchAgentUnloading = LaunchctlAgentUnloader(),
         runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider(),
+        openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
         exclusions: (@Sendable () -> ExclusionList?)? = nil,
         trashItem: (@Sendable (URL) throws -> URL?)? = nil,
         transactionStore: CleanupTransactionStore = .shared
@@ -60,6 +65,7 @@ public struct AppUninstaller: Sendable {
         self.systemLibrary = systemLibrary
         self.launchAgents = launchAgents
         self.runningApps = runningApps
+        self.openFiles = openFiles
         self.exclusions = exclusions ?? { try? ExclusionStore.shared.load() }
         self.trashItem = trashItem ?? Self.moveToSystemTrash
         self.transactionStore = transactionStore
@@ -181,7 +187,8 @@ public struct AppUninstaller: Sendable {
     // MARK: - Uninstall
 
     /// Moves the app bundle, then each of `leftovers` the user kept ticked, to Trash.
-    /// Every leftover is re-checked here; a running app or unreadable exclusion list refuses the whole uninstall.
+    /// Every leftover is re-checked here; a running app, unreadable exclusion list or missing open-file
+    /// listing refuses the whole uninstall, and a leftover with anything open at or under it is skipped.
     public func uninstall(app: InstalledApp, leftovers: [AppLeftover]) async throws -> AppUninstallResult {
         if let bundleID = app.bundleID?.lowercased(),
            runningApps.runningApps().contains(where: { $0.bundleIdentifier.lowercased() == bundleID }) {
@@ -189,11 +196,10 @@ public struct AppUninstaller: Sendable {
         }
         guard let excluded = exclusions() else { throw AppUninstallError.exclusionsUnreadable }
         guard !excluded.blocksRemoval(of: app.path) else { throw AppUninstallError.appExcluded(app.name) }
+        // Taken before anything moves: without it an open database would be trashed under its writer.
+        guard let firstSnapshot = await openFiles.snapshot() else { throw AppUninstallError.openFileCheckUnavailable }
 
         var items: [CleanupItem] = []
-        var skipped: [AppUninstallSkip] = []
-        var failed: [AppUninstallSkip] = []
-
         do {
             items.append(try trash(path: app.path, size: app.sizeBytes, reason: "Uninstalled \(app.name)"))
         } catch {
@@ -207,9 +213,14 @@ public struct AppUninstaller: Sendable {
             )
         }
 
-        for leftover in leftovers {
-            if let reason = await refusal(for: leftover, excluded: excluded) {
-                skipped.append(AppUninstallSkip(path: leftover.path, reason: reason))
+        let screened = await screen(leftovers, excluded: excluded)
+        var skipped = screened.skipped
+        var failed: [AppUninstallSkip] = []
+        // A stopped agent no longer holds its own files; the older listing is the safe fallback.
+        let snapshot = screened.stoppedAgent ? (await openFiles.snapshot() ?? firstSnapshot) : firstSnapshot
+        for leftover in screened.pending {
+            if let holder = snapshot.holder(atOrUnder: leftover.path) {
+                skipped.append(AppUninstallSkip(path: leftover.path, reason: "In use by \(holder)"))
                 continue
             }
             do {
@@ -227,8 +238,37 @@ public struct AppUninstaller: Sendable {
         )
     }
 
-    /// Why `leftover` must not be trashed now, or nil; user launch agents are booted out first.
-    private func refusal(for leftover: AppLeftover, excluded: ExclusionList) async -> String? {
+    /// Splits `leftovers` into those still eligible and those refused, booting out user launch agents on the way.
+    private func screen(
+        _ leftovers: [AppLeftover],
+        excluded: ExclusionList
+    ) async -> (pending: [AppLeftover], skipped: [AppUninstallSkip], stoppedAgent: Bool) {
+        var pending: [AppLeftover] = []
+        var skipped: [AppUninstallSkip] = []
+        var stoppedAgent = false
+        for leftover in leftovers {
+            if let reason = refusal(for: leftover, excluded: excluded) {
+                skipped.append(AppUninstallSkip(path: leftover.path, reason: reason))
+                continue
+            }
+            if leftover.category == .launchAgents {
+                switch await launchAgents.unload(plistAt: URL(fileURLWithPath: leftover.path)) {
+                case .unloaded:
+                    stoppedAgent = true
+                case .notLoaded:
+                    break
+                case .failed(let reason):
+                    skipped.append(AppUninstallSkip(path: leftover.path, reason: "Launch agent still loaded (\(reason))"))
+                    continue
+                }
+            }
+            pending.append(leftover)
+        }
+        return (pending, skipped, stoppedAgent)
+    }
+
+    /// Why `leftover` must not be trashed now, or nil.
+    private func refusal(for leftover: AppLeftover, excluded: ExclusionList) -> String? {
         if let reason = leftover.reportOnlyReason { return reason }
         guard ScanPolicy.isAppLeftoverLocation(leftover.path, home: home) else {
             return "Outside the folders Pare uninstalls from"
@@ -236,13 +276,7 @@ public struct AppUninstaller: Sendable {
         guard !ScanPolicy.isSymbolicLink(atPath: leftover.path) else { return "Symbolic link" }
         guard FileManager.default.fileExists(atPath: leftover.path) else { return "Already gone" }
         guard !excluded.blocksRemoval(of: leftover.path) else { return Self.excludedReason }
-        guard leftover.category == .launchAgents else { return nil }
-        switch await launchAgents.unload(plistAt: URL(fileURLWithPath: leftover.path)) {
-        case .unloaded, .notLoaded:
-            return nil
-        case .failed(let reason):
-            return "Launch agent still loaded (\(reason))"
-        }
+        return nil
     }
 
     private func trash(path: String, size: Int64, reason: String) throws -> CleanupItem {

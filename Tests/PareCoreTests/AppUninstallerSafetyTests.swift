@@ -77,7 +77,8 @@ final class AppUninstallerSafetyTests: XCTestCase {
     private func makeUninstaller(
         unloader: any LaunchAgentUnloading = StubUnloader(outcome: .notLoaded),
         running: [RunningApp] = [],
-        exclusions: ExclusionList? = .empty
+        exclusions: ExclusionList? = .empty,
+        openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen)
     ) -> AppUninstaller {
         let trashDir = self.trashDir
         return AppUninstaller(
@@ -85,6 +86,7 @@ final class AppUninstallerSafetyTests: XCTestCase {
             systemLibrary: systemLibrary,
             launchAgents: unloader,
             runningApps: StubRunningApps(apps: running),
+            openFiles: openFiles,
             exclusions: { exclusions },
             trashItem: { url in
                 let destination = trashDir.appendingPathComponent(UUID().uuidString + "-" + url.lastPathComponent)
@@ -325,6 +327,85 @@ final class AppUninstallerSafetyTests: XCTestCase {
         XCTAssertTrue(result.trashed.contains(agent.path))
         let unloaded = await unloader.unloaded
         XCTAssertEqual(unloaded, ["\(chromeID).plist"])
+    }
+
+    func testOpenLeftoverIsSkippedWhileOthersAreTrashed() async throws {
+        let app = try makeApp()
+        let support = try makeDirectory(library.appendingPathComponent("Application Support/\(chromeID)"))
+        let cache = try makeDirectory(library.appendingPathComponent("Caches/\(chromeID)"))
+        let openDB = support.appendingPathComponent("db/History.sqlite").path
+        let snapshot = OpenFileSnapshot(lsofFieldOutput: "p42\ncchrome_helper\nn\(openDB)\n")
+
+        let result = try await makeUninstaller(openFiles: CountingSnapshotProvider(snapshot: snapshot)).uninstall(
+            app: app,
+            leftovers: [
+                AppLeftover(path: support.path, sizeBytes: 1, category: .support),
+                AppLeftover(path: cache.path, sizeBytes: 1, category: .caches),
+            ]
+        )
+
+        XCTAssertEqual(result.trashed, [app.path, cache.path])
+        XCTAssertEqual(result.skipped, [AppUninstallSkip(path: support.path, reason: "In use by chrome_helper (pid 42)")])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: support.path))
+    }
+
+    func testUninstallRefusesWhenOpenFileSnapshotUnavailable() async throws {
+        let app = try makeApp()
+        let cache = try makeDirectory(library.appendingPathComponent("Caches/\(chromeID)"))
+        let agent = try makeFile(library.appendingPathComponent("LaunchAgents/\(chromeID).plist"))
+        let unloader = StubUnloader(outcome: .unloaded)
+
+        do {
+            _ = try await makeUninstaller(unloader: unloader, openFiles: CountingSnapshotProvider(snapshot: nil)).uninstall(
+                app: app,
+                leftovers: [
+                    AppLeftover(path: cache.path, sizeBytes: 1, category: .caches),
+                    AppLeftover(path: agent.path, sizeBytes: 1, category: .launchAgents),
+                ]
+            )
+            XCTFail("expected openFileCheckUnavailable")
+        } catch let error as AppUninstallError {
+            XCTAssertEqual(error, .openFileCheckUnavailable)
+        }
+        for kept in [app.path, cache.path, agent.path] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: kept), kept)
+        }
+        let unloaded = await unloader.unloaded
+        XCTAssertTrue(unloaded.isEmpty, "nothing may be booted out when the uninstall is refused")
+    }
+
+    func testNothingOpenTrashesEveryLeftoverWithOneSnapshot() async throws {
+        let app = try makeApp()
+        let support = try makeDirectory(library.appendingPathComponent("Application Support/\(chromeID)"))
+        let prefs = try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let provider = CountingSnapshotProvider(snapshot: .nothingOpen)
+
+        let result = try await makeUninstaller(openFiles: provider).uninstall(app: app, leftovers: [
+            AppLeftover(path: support.path, sizeBytes: 1, category: .support),
+            AppLeftover(path: prefs.path, sizeBytes: 1, category: .preferences),
+        ])
+
+        XCTAssertEqual(result.trashed, [app.path, support.path, prefs.path])
+        XCTAssertTrue(result.skipped.isEmpty)
+        XCTAssertEqual(provider.calls, 1, "one listing per uninstall, never one per item")
+    }
+
+    func testListingIsRetakenAfterAgentBootout() async throws {
+        let support = try makeDirectory(library.appendingPathComponent("Application Support/\(chromeID)"))
+        let agent = try makeFile(library.appendingPathComponent("LaunchAgents/\(chromeID).plist"))
+        let provider = CountingSnapshotProvider(snapshot: .nothingOpen)
+
+        let result = try await makeUninstaller(unloader: StubUnloader(outcome: .unloaded), openFiles: provider).uninstall(
+            app: try makeApp(),
+            leftovers: [
+                AppLeftover(path: support.path, sizeBytes: 1, category: .support),
+                AppLeftover(path: agent.path, sizeBytes: 1, category: .launchAgents),
+            ]
+        )
+
+        XCTAssertTrue(result.trashed.contains(support.path))
+        XCTAssertTrue(result.trashed.contains(agent.path))
+        XCTAssertEqual(provider.calls, 2, "a stopped agent may have held files in the first listing")
     }
 
     // MARK: - launchctl
