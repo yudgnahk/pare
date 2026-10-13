@@ -82,7 +82,7 @@ final class DiagnosticsFindingsTests: XCTestCase {
             (#"/tmp/short\x4"#, #"/tmp/short\x4"#),
         ]
         for testCase in cases {
-            XCTAssertEqual(DeletedOpenFilesRule.unescapedLsofName(testCase.raw), testCase.decoded, testCase.raw)
+            XCTAssertEqual(LsofFieldName.unescaped(testCase.raw), testCase.decoded, testCase.raw)
         }
 
         let output = "p42\ncTool\nf3\nD0x1\ni9\ns\(20 * Self.megabyte)\n" + #"n/private/tmp/q/Ti\xe1\xba\xbfng.log"#

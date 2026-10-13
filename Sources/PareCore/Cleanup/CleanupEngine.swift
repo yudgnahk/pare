@@ -349,6 +349,8 @@ public actor CleanupEngine {
         let readingBefore = volumeURL.flatMap { freeSpace.freeSpace(forVolumeContaining: $0) }
         var readingAfter: VolumeFreeSpace?
         var executablesSnapshot: [String]??
+        // Started at the first dependency folder; activity walks past it fail closed.
+        var dependencyActivityDeadline: Date?
 
         func makeTransaction(_ items: [CleanupItem]) -> CleanupTransaction {
             let bytes = Self.comparableFreeBytes(before: readingBefore, after: readingAfter)
@@ -442,7 +444,7 @@ public actor CleanupEngine {
             } else if ScanPolicy.isPnpmGuardedPath(url) {
                 // Anything in a pnpm store or pnpm home passes only the old-store or wrong-platform check,
                 // never the broad pnpm persona marker.
-                if !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore),
+                if !ScanPolicy.isReclaimableOldPnpmStore(url, activeStore: activePnpmStore, now: now()),
                    !ScanPolicy.isCleanableWrongPlatformPath(url) {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                     continue
@@ -450,8 +452,12 @@ public actor CleanupEngine {
             } else if ScanPolicy.isProjectDependencyDirectory(url.lastPathComponent) {
                 // Dependency folders pass only their own gate, even under a low-impact or persona path.
                 isProjectDependency = true
+                let activityDeadline = dependencyActivityDeadline
+                    ?? now().addingTimeInterval(ScanPolicy.projectActivityBatchTimeBudget)
+                dependencyActivityDeadline = activityDeadline
                 if !ScanPolicy.isReclaimableProjectDependency(
-                    url, registeredRootPaths: projectRootPaths, tier: dependencyTier(for: url), now: now()) {
+                    url, registeredRootPaths: projectRootPaths, tier: dependencyTier(for: url), now: now(),
+                    activityDeadline: activityDeadline, clock: now) {
                     skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
                     continue
                 }

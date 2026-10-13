@@ -42,6 +42,8 @@ extension ScanPolicy {
     /// Entries and seconds the activity walk may spend per project; a project too big to read counts as active.
     public static let projectActivityEntryBudget = 20_000
     public static let projectActivityTimeBudget: TimeInterval = 2
+    /// Cap on all activity walks of one cleanup batch; dependency folders left unchecked are skipped.
+    public static let projectActivityBatchTimeBudget: TimeInterval = 30
     static let projectActivityDeadlineCheckInterval = 256
 
     public static func diskPressureTier(freeBytes: Int64, totalBytes: Int64) -> DiskPressureTier {
@@ -74,20 +76,24 @@ extension ScanPolicy {
 
     /// Newest mtime among the project's git markers (its own repo, a worktree's `gitdir:`, or the enclosing
     /// repo) and every file below it, skipping dependency and build folders. Nil when unknown, or when the walk
-    /// runs out of budget or hits an unreadable folder: callers treat nil as active.
+    /// runs out of budget, passes the caller's overall `deadline`, or hits an unreadable folder: callers treat
+    /// nil as active.
     public static func projectActivityDate(
         projectRoot: URL,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         entryBudget: Int = projectActivityEntryBudget,
         timeBudget: TimeInterval = projectActivityTimeBudget,
+        deadline overall: Date? = nil,
         now: () -> Date = { Date() }
     ) -> Date? {
+        let deadline = min(now().addingTimeInterval(timeBudget), overall ?? .distantFuture)
+        guard now() < deadline else { return nil }
         var markerDates: [Date] = []
         if let gitDir = gitDirectory(enclosing: projectRoot, homeDirectory: homeDirectory) {
             markerDates = projectActivityGitMarkers.compactMap { modificationDate(of: gitDir.appending(path: $0)) }
         }
         let walk = newestFileModification(
-            under: projectRoot, entryBudget: entryBudget, deadline: now().addingTimeInterval(timeBudget), now: now
+            under: projectRoot, entryBudget: entryBudget, deadline: deadline, now: now
         )
         guard case .finished(let newestFile) = walk else { return nil }
         return (markerDates + [newestFile].compactMap { $0 }).max()
@@ -134,16 +140,20 @@ extension ScanPolicy {
     }
 
     /// Cleanup- and scan-time gate. Fail-closed: a dependency name directly under a project inside a confirmed
-    /// root, with a matching lockfile, idle for the tier's threshold. Unknown activity is never idle.
+    /// root, with a matching lockfile, idle for the tier's threshold. Unknown activity is never idle, and so is
+    /// activity not read before `activityDeadline` (measured on `clock`).
     public static func isReclaimableProjectDependency(
         _ url: URL,
         registeredRootPaths: [String],
         tier: DiskPressureTier,
         now: Date,
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        activityDeadline: Date? = nil,
+        clock: () -> Date = { Date() }
     ) -> Bool {
         reclaimableProjectDependencyActivity(
-            url, registeredRootPaths: registeredRootPaths, tier: tier, now: now, homeDirectory: homeDirectory
+            url, registeredRootPaths: registeredRootPaths, tier: tier, now: now, homeDirectory: homeDirectory,
+            activityDeadline: activityDeadline, clock: clock
         ) != nil
     }
 
@@ -153,7 +163,9 @@ extension ScanPolicy {
         registeredRootPaths: [String],
         tier: DiskPressureTier,
         now: Date,
-        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        activityDeadline: Date? = nil,
+        clock: () -> Date = { Date() }
     ) -> Date? {
         guard isProjectDependencyDirectory(url.lastPathComponent), !isInsideLibraryOrAppBundle(url) else { return nil }
         let project = url.deletingLastPathComponent()
@@ -162,7 +174,8 @@ extension ScanPolicy {
             !rootPath.isEmpty && isEqualToOrDescendant(candidate: project, root: URL(fileURLWithPath: rootPath))
         }
         guard underRoot, projectDependencyLockfile(for: url) != nil,
-              let activity = projectActivityDate(projectRoot: project, homeDirectory: homeDirectory),
+              let activity = projectActivityDate(
+                projectRoot: project, homeDirectory: homeDirectory, deadline: activityDeadline, now: clock),
               now.timeIntervalSince(activity) >= projectDependencyInactivitySeconds(for: tier) else { return nil }
         return activity
     }

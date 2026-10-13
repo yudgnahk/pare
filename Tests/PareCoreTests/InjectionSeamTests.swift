@@ -13,8 +13,11 @@ final class StubProcessRunner: ProcessRunning, @unchecked Sendable {
 
     private let lock = NSLock()
     private var _invocations: [Invocation] = []
+    private var _environments: [[String: String]?] = []
 
     var invocations: [Invocation] { lock.withLock { _invocations } }
+    /// Environment of each invocation, in the same order as `invocations`.
+    var environments: [[String: String]?] { lock.withLock { _environments } }
 
     let result: ProcessResult
     let lines: [ProcessOutputLine]
@@ -37,6 +40,7 @@ final class StubProcessRunner: ProcessRunning, @unchecked Sendable {
     ) async throws -> ProcessResult {
         lock.withLock {
             _invocations.append(Invocation(executablePath: executablePath, arguments: arguments))
+            _environments.append(environment)
         }
         return result
     }
@@ -48,6 +52,7 @@ final class StubProcessRunner: ProcessRunning, @unchecked Sendable {
     ) -> AsyncThrowingStream<ProcessOutputLine, Error> {
         lock.withLock {
             _invocations.append(Invocation(executablePath: executablePath, arguments: arguments))
+            _environments.append(environment)
         }
         let lines = self.lines
         let streamError = self.streamError

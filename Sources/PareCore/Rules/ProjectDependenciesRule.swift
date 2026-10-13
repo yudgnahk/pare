@@ -69,10 +69,18 @@ public struct ProjectDependenciesRule: ScanRule {
             collectDependencyFolders(in: root, depth: 0, budget: &walk, into: &candidates)
         }
         var reported = Set<String>()
+        // Activity walks share the walk's deadline; candidates left unchecked are never offered.
+        var activityCut = false
         let findings: [ScanFinding] = candidates.compactMap { url in
-            guard !Task.isCancelled, reported.insert(url.standardizedFileURL.path).inserted,
-                  let activity = ScanPolicy.reclaimableProjectDependencyActivity(
-                    url, registeredRootPaths: rootPaths, tier: tier, now: scanTime) else {
+            guard !Task.isCancelled, reported.insert(url.standardizedFileURL.path).inserted else { return nil }
+            guard now() < walk.deadline else {
+                activityCut = true
+                return nil
+            }
+            guard let activity = ScanPolicy.reclaimableProjectDependencyActivity(
+                url, registeredRootPaths: rootPaths, tier: tier, now: scanTime,
+                activityDeadline: walk.deadline, clock: now) else {
+                if now() >= walk.deadline { activityCut = true }
                 return nil
             }
             // A deadline-cut size is still reported, flagged as a lower bound.
@@ -90,7 +98,7 @@ public struct ProjectDependenciesRule: ScanRule {
             )
         }
         // Cancelled scans are discarded, so only the budget makes a result partial.
-        let stoppedEarly = walk.isExhausted && !Task.isCancelled
+        let stoppedEarly = (walk.isExhausted || activityCut) && !Task.isCancelled
         return ScanRuleResult(
             findings: findings,
             incompleteMessage: stoppedEarly

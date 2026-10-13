@@ -33,9 +33,12 @@ extension ScanPolicy {
         return parent == "library" || (parent == "share" && components.count >= 3 && components[components.count - 3] == ".local")
     }
 
-    /// A store version strictly older than the active one, in the same store root, as a real folder.
-    /// Nil `activeStore` (pnpm absent or silent) fails closed.
-    public static func isReclaimableOldPnpmStore(_ url: URL, activeStore: URL?) -> Bool {
+    /// An older store written this recently may still serve a project pinned to an older pnpm through corepack.
+    public static let pnpmStoreRecentWriteSeconds: TimeInterval = 14 * 24 * 60 * 60
+
+    /// A store version strictly older than the active one, in the same store root, as a real folder, and not
+    /// written recently. Nil `activeStore` (pnpm absent or silent) fails closed.
+    public static func isReclaimableOldPnpmStore(_ url: URL, activeStore: URL?, now: Date = Date()) -> Bool {
         guard let activeStore,
               let active = pnpmStoreVersion(activeStore.lastPathComponent),
               let version = pnpmStoreVersion(url.lastPathComponent), version < active,
@@ -44,6 +47,23 @@ extension ScanPolicy {
               !hasSymbolicLinkComponent(atPath: url.path),
               let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
               values.isDirectory == true, values.isSymbolicLink != true else { return false }
-        return true
+        return !isRecentlyWrittenPnpmStore(url, now: now)
+    }
+
+    /// The folder, its `index/` and `files/`, and their shard folders (which change when pnpm adds a package).
+    /// An unreadable date counts as recent.
+    static func isRecentlyWrittenPnpmStore(_ url: URL, now: Date) -> Bool {
+        let cutoff = now.addingTimeInterval(-pnpmStoreRecentWriteSeconds)
+        let shardParents = ["index", "files"].map { url.appending(path: $0) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        let shards = shardParents.flatMap { parent in
+            (try? FileManager.default.contentsOfDirectory(at: parent, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        }
+        return ([url] + shardParents + shards).contains { entry in
+            guard let written = try? entry.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else {
+                return true
+            }
+            return written > cutoff
+        }
     }
 }

@@ -131,6 +131,82 @@ final class VersionSiblingTests: XCTestCase {
         XCTAssertEqual(executables.calls, 0, "no process snapshot when there is nothing to offer")
     }
 
+    func testRuntimeManagerHomesAreIgnored() async throws {
+        let trees = [
+            "Library/Application Support/fnm/node-versions", ".local/share/fnm/node-versions", ".proto/tools/node",
+            ".rye/py", ".juliaup/bin", ".swiftly/toolchains", ".elan/toolchains", ".tfenv/versions",
+            "Library/Application Support/mise/installs/node",
+        ]
+        for tree in trees {
+            for version in ["v18.0.0", "v19.0.0", "v20.0.0"] {
+                try makeVersion(home.appending(path: tree), version)
+            }
+            XCTAssertFalse(ScanPolicy.isVersionSiblingMember(home.appending(path: tree + "/v18.0.0")), tree)
+        }
+
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+
+        XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
+    }
+
+    func testAliasPinnedGroupIsNeverOffered() async throws {
+        let cases: [(name: String, pinned: Bool, pin: (URL, URL) throws -> Void)] = [
+            ("aliases/ symlink into a member", true, { manager, oldest in
+                try FileManager.default.createDirectory(at: manager.appending(path: "aliases"), withIntermediateDirectories: true)
+                try FileManager.default.createSymbolicLink(at: manager.appending(path: "aliases/default"),
+                                                           withDestinationURL: oldest.appending(path: "bin"))
+            }),
+            ("current symlink beside the members", true, { manager, oldest in
+                try FileManager.default.createSymbolicLink(at: manager.appending(path: "node-versions/current"),
+                                                           withDestinationURL: oldest)
+            }),
+            ("default file naming a partial version", true, { manager, _ in
+                try "v1.0\n".write(to: manager.appending(path: "default"), atomically: true, encoding: .utf8)
+            }),
+            ("version file with alias syntax", true, { manager, _ in
+                try "lts/*".write(to: manager.appending(path: "version"), atomically: true, encoding: .utf8)
+            }),
+            ("default file naming another version", false, { manager, _ in
+                try "0.9.0".write(to: manager.appending(path: "default"), atomically: true, encoding: .utf8)
+            }),
+            ("no alias", false, { _, _ in }),
+        ]
+        for testCase in cases {
+            let manager = root.appending(path: "home-\(UUID().uuidString)/.toolman")
+            try FileManager.default.createDirectory(at: manager.deletingLastPathComponent().appending(path: "Library"),
+                                                    withIntermediateDirectories: true)
+            let versions = manager.appending(path: "node-versions")
+            let oldest = try makeVersion(versions, "v1.0.0")
+            try makeVersion(versions, "v1.1.0")
+            try makeVersion(versions, "v1.2.0")
+            try testCase.pin(manager, oldest)
+            let members = ["v1.0.0", "v1.1.0", "v1.2.0"].map { versions.appending(path: $0) }
+
+            XCTAssertEqual(ScanPolicy.isPinnedVersionSiblingGroup(members), testCase.pinned, testCase.name)
+            XCTAssertEqual(ScanPolicy.isReclaimableVersionSibling(oldest, runningExecutables: []), !testCase.pinned, testCase.name)
+            let scan = ScanEnvironment(homeDirectory: manager.deletingLastPathComponent(),
+                                       tempDirectory: root.appending(path: "tmp"), systemApplicationDirectories: [])
+            let findings = await rule(StubExecutables([])).customScan(environment: scan) ?? []
+            XCTAssertEqual(findings.map(\.path), testCase.pinned ? [] : [oldest.path], testCase.name)
+        }
+    }
+
+    func testVersionExecutedThroughASymlinkIsKept() throws {
+        let versions = home.appending(path: ".tool/versions")
+        let oldest = try makeVersion(versions, "1.0.0")
+        try makeVersion(versions, "1.1.0")
+        try makeVersion(versions, "1.2.0")
+        // Like fnm_multishells: the process runs from a link outside the group's own folders.
+        let shell = root.appending(path: "multishells/1234_abcd")
+        try FileManager.default.createDirectory(at: shell.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: shell, withDestinationURL: oldest)
+        let running = [shell.appending(path: "bin/tool").path]
+
+        XCTAssertTrue(ScanPolicy.isExecutedFrom(oldest, runningExecutables: running))
+        XCTAssertFalse(ScanPolicy.isReclaimableVersionSibling(oldest, runningExecutables: running))
+        XCTAssertTrue(ScanPolicy.isReclaimableVersionSibling(oldest, runningExecutables: []), "control")
+    }
+
     func testSearchDepthIsBounded() async throws {
         let deep = home.appending(path: ".tool/a/b/c/d/e/f/versions")
         for version in ["1.0.0", "1.1.0", "1.2.0"] {
