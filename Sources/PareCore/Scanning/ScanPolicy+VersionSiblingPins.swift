@@ -52,7 +52,7 @@ extension ScanPolicy {
               let text = String(data: data, encoding: .utf8) else { return true }
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return false }
-        if value.contains("/") {
+        if value.hasPrefix("/") || value.hasPrefix("./") || value.hasPrefix("../") {
             let target = value.hasPrefix("/")
                 ? URL(fileURLWithPath: value)
                 : file.deletingLastPathComponent().appending(path: value)
