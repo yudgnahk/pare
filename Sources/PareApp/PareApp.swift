@@ -93,6 +93,8 @@ struct MainShellView: View {
             HomebrewManagerView(viewModel: models.homebrew)
         case .disk:
             DiskAnalyzerView(viewModel: models.disk, onRunSmartScan: { models.scan.runScan() })
+        case .processes:
+            ProcessesView(viewModel: models.processes)
         case .maintenance:
             MaintenanceView(viewModel: models.maintenance)
         case .history:

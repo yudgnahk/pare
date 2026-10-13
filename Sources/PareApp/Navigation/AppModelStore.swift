@@ -18,6 +18,7 @@ final class AppModelStore: ObservableObject {
     let apps = AppManagerViewModel()
     let homebrew = HomebrewManagerViewModel()
     let maintenance = MaintenanceViewModel()
+    let processes: ProcessMonitorViewModel
     /// Shared by the sidebar meter and Smart Scan so every disk readout agrees.
     let volume = VolumeUsageModel()
     lazy var disk = DiskAnalyzerViewModel(
@@ -27,9 +28,10 @@ final class AppModelStore: ObservableObject {
     )
 
     /// Injectable so the DEBUG snapshot renderer can run on an engine that never touches real files.
-    init(cleanup: CleanupCoordinator? = nil, history: HistoryViewModel? = nil) {
+    init(cleanup: CleanupCoordinator? = nil, history: HistoryViewModel? = nil, processes: ProcessMonitorViewModel? = nil) {
         let cleanup = cleanup ?? CleanupCoordinator()
         self.cleanup = cleanup
+        self.processes = processes ?? ProcessMonitorViewModel()
         self.scan = ScanDashboardViewModel(cleanup: cleanup)
         self.history = history ?? HistoryViewModel()
         cleanup.addCompletionHandler { [volume] in volume.refresh() }
