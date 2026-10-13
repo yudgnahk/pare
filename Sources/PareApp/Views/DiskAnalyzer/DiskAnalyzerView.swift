@@ -143,7 +143,10 @@ struct DiskAnalyzerView: View {
     private func doneBanner(bytesFreed: Int64, skippedCount: Int) -> some View {
         let saveWarning = viewModel.transactionSaveError.map { "Undo record warning: \($0)" }
         let skipDetails = skipDetailsText(skippedCount: skippedCount)
-        let details = [skipDetails, saveWarning].compactMap { $0 }.joined(separator: "\n")
+        let reclaim = viewModel.cleanupReclaim.flatMap { summary in
+            summary.measuredBytes == nil ? nil : [summary.text, summary.trashHint].compactMap { $0 }.joined(separator: "\n")
+        }
+        let details = [reclaim, skipDetails, saveWarning].compactMap { $0 }.joined(separator: "\n")
         let isError = saveWarning != nil || (bytesFreed == 0 && skippedCount > 0)
         return StatusBanner(
             kind: isError ? .error : (skippedCount > 0 ? .warning : .success),

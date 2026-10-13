@@ -23,6 +23,21 @@ public protocol ScanRule: Sendable {
     /// meaningfully override this so "rule failed" is distinguishable from
     /// "rule found nothing" — failures surface as `ScanReport.ruleFailures`.
     func customScanThrowing(environment: ScanEnvironment) async throws -> [ScanFinding]?
+
+    /// Invoked by `ScanRunner`. Rules that can stop early (e.g. a time budget) override this
+    /// to return their partial findings with a notice instead of looking complete.
+    func customScanResult(environment: ScanEnvironment) async throws -> ScanRuleResult?
+}
+
+/// Findings from a custom scan, plus a notice when the rule stopped before covering everything.
+public struct ScanRuleResult: Sendable {
+    public let findings: [ScanFinding]
+    public let incompleteMessage: String?
+
+    public init(findings: [ScanFinding], incompleteMessage: String? = nil) {
+        self.findings = findings
+        self.incompleteMessage = incompleteMessage
+    }
 }
 
 public extension ScanRule {
@@ -32,6 +47,11 @@ public extension ScanRule {
     /// Default: delegate to the non-throwing `customScan`.
     func customScanThrowing(environment: ScanEnvironment) async throws -> [ScanFinding]? {
         await customScan(environment: environment)
+    }
+
+    /// Default: a complete result wrapping `customScanThrowing`.
+    func customScanResult(environment: ScanEnvironment) async throws -> ScanRuleResult? {
+        try await customScanThrowing(environment: environment).map { ScanRuleResult(findings: $0) }
     }
 }
 

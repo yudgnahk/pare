@@ -73,9 +73,17 @@ struct ScanSummaryHero: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
 
-            Text("ready to reclaim across \(viewModel.summaries.count) \(viewModel.summaries.count == 1 ? "category" : "categories")")
+            Text("\(viewModel.isTotalSizePartial ? "or more " : "")ready to reclaim across \(viewModel.summaries.count) \(viewModel.summaries.count == 1 ? "category" : "categories")")
                 .font(scale.body)
                 .foregroundStyle(AppTheme.textSecondary)
+
+            if let growth = viewModel.growthSinceLastScan {
+                Text(growth)
+                    .font(scale.body)
+                    .foregroundStyle(AppTheme.textTertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
 
             CategoryShareBar(summaries: viewModel.summaries, formatBytes: viewModel.formattedBytes)
                 .padding(.top, 6)

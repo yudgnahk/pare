@@ -228,7 +228,7 @@ final class RustCachesRuleTests: XCTestCase {
 final class GoCachesRuleTests: XCTestCase {
 
     func testReturnsEmptyWhenNoGoPathsExist() async {
-        let rule = GoCachesRule()
+        let rule = GoCachesRule(locations: GoCacheLocations(query: { nil }))
         let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/tmp/nonexistent_\(UUID().uuidString)"))
         let findings = await rule.customScan(environment: env)
         XCTAssertNotNil(findings)
@@ -244,11 +244,11 @@ final class GoCachesRuleTests: XCTestCase {
         backdateItem(at: goBuild, days: 1)
         backdateItem(at: goBuild.appending(path: "content.bin"), days: 1)
 
-        let rule = GoCachesRule()
+        let rule = GoCachesRule(locations: GoCacheLocations(query: { nil }))
         let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
 
         XCTAssertTrue(findings.contains { $0.path.hasSuffix("/go-build") })
-        XCTAssertEqual(findings.first?.riskLevel, .safe)
+        XCTAssertEqual(findings.first?.riskLevel, .advanced, "report-only working set")
         XCTAssertEqual(findings.first?.category, .developerPackageCaches)
     }
 
@@ -261,9 +261,9 @@ final class GoCachesRuleTests: XCTestCase {
         backdateItem(at: goModCache, days: 1)
         backdateItem(at: goModCache.appending(path: "content.bin"), days: 1)
 
-        let rule = GoCachesRule()
+        let rule = GoCachesRule(locations: GoCacheLocations(query: { nil }))
         let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp))!
-        XCTAssertTrue(findings.contains { $0.path.hasSuffix("/mod/cache") })
+        XCTAssertTrue(findings.contains { $0.path.hasSuffix("/go/pkg/mod") }, "whole module cache, report-only")
     }
 }
 
@@ -431,7 +431,7 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         backdateItem(at: dist, days: 10)
 
         let discovery = await makeDiscovery(root: tmp)
-        let rule = ProjectArtifactsRule(discovery: discovery)
+        let rule = ProjectArtifactsRule(discovery: discovery, gitInspector: StubGitInspector(status: .ignoredUntracked))
         let findings = await rule.customScan(environment: ScanEnvironment.current())!
 
         let distFinding = findings.first { $0.path.hasSuffix("/dist") }
@@ -446,7 +446,7 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         let outer = tmp.appending(path: "app/.cache")
         let inner = outer.appending(path: "subdir/.cache")
         try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
-        // Visible file under outer — directorySize skips hidden paths.
+        // Each cache gets a payload; only the outer one may be reported.
         try Data(repeating: 0x00, count: 256).write(to: outer.appending(path: "blob.bin"))
         try Data(repeating: 0x00, count: 256).write(to: inner.appending(path: "inner.bin"))
         backdateItem(at: outer, days: 10)
@@ -527,7 +527,7 @@ final class ProjectArtifactsRuleTests: XCTestCase {
         makeIsolatedDiscovery(manual: [root.path], confirmed: [])
     }
 
-    /// Builds a discovery instance that will not invoke Spotlight in `discoverIfNeeded()`.
+    /// Builds a discovery instance whose search is a stub, so no test reaches real Spotlight.
     private func makeIsolatedDiscovery(manual: [String], confirmed: [String]) -> ProjectRootDiscovery {
         let storeURL = FileManager.default.temporaryDirectory
             .appending(path: "pare_test_\(UUID().uuidString)/project-roots.json")
@@ -540,7 +540,7 @@ final class ProjectArtifactsRuleTests: XCTestCase {
             lastDiscoveredAt: Date()
         )
         try? JSONEncoder().encode(store).write(to: storeURL)
-        return ProjectRootDiscovery(storeURL: storeURL)
+        return ProjectRootDiscovery(storeURL: storeURL, spotlightSearch: { await SearchStub().run() })
     }
 }
 
@@ -587,7 +587,7 @@ final class Phase6ScanPolicyTests: XCTestCase {
         XCTAssertTrue(markers.contains { $0.contains(".pyenv") }, "pyenv marker missing")
         XCTAssertTrue(markers.contains { $0.contains(".cargo") }, "cargo marker missing")
         XCTAssertTrue(markers.contains { $0.contains(".rustup") }, "rustup marker missing")
-        XCTAssertTrue(markers.contains { $0.contains("go/pkg/mod/cache") }, "go mod cache marker missing")
+        XCTAssertFalse(markers.contains { $0.contains("go/pkg/mod") }, "Go module cache is never-clean")
         XCTAssertTrue(markers.contains { $0.contains(".gradle") }, "gradle marker missing")
         XCTAssertTrue(markers.contains { $0.contains(".m2") }, "maven marker missing")
         XCTAssertTrue(markers.contains { $0.contains(".ivy2") }, "ivy2 marker missing")

@@ -18,6 +18,8 @@ public struct CategoryFolderRow: Identifiable, Equatable, Sendable {
     public let isSelectable: Bool
     /// Tool/app label (same as donut chart) for nested grouping.
     public let toolName: String
+    /// True when a member's size stopped at its deadline, so `totalBytes` is a lower bound.
+    public let hasPartialSize: Bool
 
     public var isSafeFolder: Bool { riskLevel == .safe }
 
@@ -29,7 +31,8 @@ public struct CategoryFolderRow: Identifiable, Equatable, Sendable {
         itemCount: Int,
         riskLevel: RiskLevel,
         isSelectable: Bool,
-        toolName: String
+        toolName: String,
+        hasPartialSize: Bool = false
     ) {
         self.id = id
         self.folderPath = folderPath
@@ -39,6 +42,7 @@ public struct CategoryFolderRow: Identifiable, Equatable, Sendable {
         self.riskLevel = riskLevel
         self.isSelectable = isSelectable
         self.toolName = toolName
+        self.hasPartialSize = hasPartialSize
     }
 }
 
@@ -153,6 +157,9 @@ public enum FolderRollup {
         let parts = URL(fileURLWithPath: path).pathComponents.filter { $0 != "/" }
         guard !parts.isEmpty else { return path }
 
+        // Codex staging roots: one row per root, however many abandoned folders it holds.
+        if let root = ScanPolicy.codexStagingRoot(containing: path) { return root }
+
         // Package manager / tool cache roots — one row per root, not per blob.
         let singleSegmentRoots = [
             "_cacache", "_npx", "Yarn", "pnpm", "CocoaPods", "org.swift.swiftpm",
@@ -243,6 +250,7 @@ public enum FolderRollup {
             var reviewCount: Int = 0
             var paths: [String] = []
             var worstRisk: RiskLevel = .safe
+            var hasPartialSize = false
         }
 
         var byCategory: [ScanCategory: [String: Acc]] = [:]
@@ -253,6 +261,7 @@ public enum FolderRollup {
             var catMap = byCategory[finding.category] ?? [:]
             var acc = catMap[folderPath] ?? Acc()
             acc.bytes += finding.sizeBytes
+            acc.hasPartialSize = acc.hasPartialSize || !finding.isSizeComplete
             acc.count += 1
             acc.paths.append(finding.path)
             if finding.riskLevel == .review {
@@ -306,7 +315,8 @@ public enum FolderRollup {
                             itemCount: acc.count,
                             riskLevel: acc.worstRisk,
                             isSelectable: !acc.paths.isEmpty,
-                            toolName: toolName
+                            toolName: toolName,
+                            hasPartialSize: acc.hasPartialSize
                         )
                     )
                 }

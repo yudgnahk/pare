@@ -61,10 +61,15 @@ run-app: build ensure-icon
 	cp scripts/AppInfo.plist $(APP_BUNDLE)/Contents/Info.plist
 	cp scripts/AppIcon.icns $(APP_BUNDLE)/Contents/Resources/AppIcon.icns
 	cp scripts/PareLogo.png $(APP_BUNDLE)/Contents/Resources/PareLogo.png
-	# Copy SPM resource bundles next to the executable (e.g. app-catalog.json).
-	@if [ -d .build/debug/Pare_PareCore.bundle ]; then \
-		cp -R .build/debug/Pare_PareCore.bundle $(APP_BUNDLE)/Contents/MacOS/; \
-	fi
+	# SPM resource bundles must land in Contents/Resources, where ResourceBundle looks; Contents/MacOS is not searched.
+	@find .build/debug/ -maxdepth 1 -type d -name '*.bundle' | while read -r b; do \
+		rm -rf "$(APP_BUNDLE)/Contents/Resources/$$(basename $$b)"; \
+		cp -R "$$b" $(APP_BUNDLE)/Contents/Resources/; \
+		printf 'Bundled resource: %s\n' "$$(basename $$b)"; \
+	done
+	@find $(APP_BUNDLE)/Contents/MacOS -maxdepth 1 -name '*.bundle' -exec rm -rf {} +
+	# Sign last so the signature covers everything above; a stable identity keeps the Full Disk Access grant across rebuilds.
+	@bash scripts/sign-app.sh $(APP_BUNDLE)
 	# Bump modtime so Dock/Finder refresh the icon after rebuilds.
 	touch $(APP_BUNDLE)
 	open $(APP_BUNDLE)

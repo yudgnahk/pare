@@ -50,6 +50,17 @@ public enum ScanReportPresenter {
         return formatter.string(fromByteCount: bytes)
     }
 
+    /// One finding's size: "≥ X" when sizing stopped early, "size unknown" when nothing was counted.
+    public static func formatFindingSize(bytes: Int64, isComplete: Bool) -> String {
+        if isComplete { return formatBytes(bytes) }
+        return bytes > 0 ? "≥ " + formatBytes(bytes) : "size unknown"
+    }
+
+    /// A reclaimable total, prefixed "at least" when any finding in it is a lower bound.
+    public static func formatTotal(bytes: Int64, isPartial: Bool) -> String {
+        (isPartial ? "at least " : "") + formatBytes(bytes)
+    }
+
     /// Bracketed risk tag for terminal/report output, e.g. `[SAFE]`.
     public static func riskTag(_ level: RiskLevel) -> String {
         switch level {

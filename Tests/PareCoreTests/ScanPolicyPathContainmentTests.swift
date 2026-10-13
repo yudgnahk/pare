@@ -114,4 +114,16 @@ final class ScanPolicyPathContainmentTests: XCTestCase {
             XCTAssertEqual(ScanPolicy.hasSymbolicLinkComponent(atPath: testCase.path), testCase.expected, testCase.name)
         }
     }
+
+    func testCanonicalPathKeyFoldsAliasesAndCase() {
+        let cases: [(name: String, path: String, expected: String)] = [
+            ("var alias", "/var/folders/AB/T/Cache", "/private/var/folders/ab/t/cache"),
+            ("already private", "/private/var/folders/ab/t/cache", "/private/var/folders/ab/t/cache"),
+            ("dot segments", "/Users/u/./Library/../Library/Caches", "/users/u/library/caches"),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(ScanPolicy.canonicalPathKey(testCase.path), testCase.expected, testCase.name)
+        }
+        XCTAssertEqual(GrowthSnapshot.key("/tmp/X"), ScanPolicy.canonicalPathKey("/private/tmp/x"))
+    }
 }

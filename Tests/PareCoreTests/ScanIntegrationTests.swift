@@ -206,6 +206,33 @@ final class ScanIntegrationTests: XCTestCase {
                       "Non-excluded cache folder should still appear in findings")
     }
 
+    // MARK: - Browser rules overlapping on the same profile folders
+
+    func testBrowserIndexedDBAndDatabasesAreReportedOnce() async throws {
+        let old = Date().addingTimeInterval(-40 * 86400)
+        var folders: [URL] = []
+        for name in ["IndexedDB", "databases"] {
+            let file = try builder.file("Library", "Application Support", "Google", "Chrome", "Default", name, "store.db",
+                                        ageSeconds: 40 * 86400)
+            let folder = file.deletingLastPathComponent()
+            try FileManager.default.setAttributes([.creationDate: old, .modificationDate: old], ofItemAtPath: folder.path)
+            folders.append(folder)
+        }
+
+        let report = await makeRunner().run(rules: [BrowserExtendedArtifactsRule(), BrowserReviewDataRule()])
+
+        for folder in folders {
+            let matches = report.findings.filter { $0.path == folder.path }
+            XCTAssertEqual(matches.count, 1, "\(folder.lastPathComponent) must be reported exactly once")
+            XCTAssertEqual(matches.first?.riskLevel, .review)
+        }
+        let browserFindings = report.findings.filter { $0.category == .browserCaches }
+        let summary = report.summaries.first(where: { $0.category == .browserCaches })
+        XCTAssertEqual(browserFindings.count, 2)
+        XCTAssertEqual(summary?.fileCount, 2)
+        XCTAssertEqual(summary?.reclaimableBytes, browserFindings.reduce(0) { $0 + $1.sizeBytes })
+    }
+
     // MARK: - Risk labels are propagated correctly
 
     func testAllBaselineFindingsAreSafeRisk() async throws {
@@ -213,8 +240,9 @@ final class ScanIntegrationTests: XCTestCase {
         let runner = makeRunner()
         let report = await runner.run(rules: RuleCatalog.baseline)
 
-        // All baseline rules produce safe-risk findings.
-        for finding in report.findings {
+        // All baseline rules produce safe-risk findings on the fixture home. Diagnostics read the live
+        // machine (lsof, sysctl), not the fixture, and are explain-only `.advanced` by design.
+        for finding in report.findings where finding.category != .diagnostics {
             XCTAssertEqual(finding.riskLevel, .safe,
                            "Baseline finding at \(finding.path) should be .safe")
         }
@@ -301,7 +329,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         )
 
         // Run quick clean.
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let result = try await engine.quickClean(findings: report.findings, profileName: "baseline")
 
         XCTAssertEqual(result.succeeded.count, report.findings.filter { $0.riskLevel == .safe }.count)
@@ -325,7 +353,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
 
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let cleanResult = try await engine.quickClean(findings: report.findings, profileName: "baseline")
 
         guard let tx = cleanResult.transaction else {
@@ -363,7 +391,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
 
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let result = try await engine.quickClean(findings: report.findings, profileName: "baseline", dryRun: true)
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: file1.path),
@@ -389,7 +417,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
             confidence: 0.9
         )
 
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let result = try await engine.deepClean(
             findings: [reviewFinding],
             profileName: "test",
@@ -411,7 +439,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
         )
         let report = await runner.run(rules: RuleCatalog.baseline)
         let store = makeStore()
-        let engine = CleanupEngine(store: store)
+        let engine = CleanupEngineFixture.make(store: store)
         let cleanResult = try await engine.quickClean(findings: report.findings, profileName: "baseline")
 
         guard let tx = cleanResult.transaction else {
@@ -441,7 +469,7 @@ final class CleanupRestoreIntegrationTests: XCTestCase {
             CleanupItem(originalPath: finding.path, trashedPath: nil, sizeBytes: 1,
                         reason: "test", riskLevel: .safe)
         ])
-        let engine = CleanupEngine(store: makeStore())
+        let engine = CleanupEngineFixture.make(store: makeStore())
         let (restored, skipped) = await engine.restore(transaction: tx)
 
         XCTAssertTrue(restored.isEmpty, "Dry-run transaction should not restore anything")

@@ -8,13 +8,13 @@ extension ScanPolicy {
     public static let reconstructibleCachePathMarkers: [String] = [
         "/.npm/_npx",
         "/.npm/_cacache",
-        "/library/caches/go-build",
         "/.cargo/registry/",
         "/.cargo/git/",
         "/.rustup/downloads",
-        "/go/pkg/mod/cache",
         "/.cache/opencode",
-        "/.local/share/opencode/",
+        // Only OpenCode's logs and snapshots; its storage, database and auth.json are user data.
+        "/.local/share/opencode/log",
+        "/.local/share/opencode/snapshot",
         "/library/caches/homebrew",
         "/library/caches/yarn",
         "/library/caches/pnpm",
@@ -50,6 +50,9 @@ extension ScanPolicy {
         "metadata",
         "com.apple.helpd",
     ]
+
+    /// Top-level `Library/Caches` name prefixes `UserCachesRule` never reports (browser and Google app state).
+    public static let userCacheProtectedFolderPrefixes: [String] = ["com.google.", "org.mozilla."]
 
     /// Rule-ownership policy: top-level `~/Library/Caches` folder names (lowercased)
     /// that are owned by other scan rules and must not be double-reported by
@@ -131,13 +134,26 @@ extension ScanPolicy {
         (ide: "/datagrip", subtree: "/jdbc-drivers/"),
     ]
 
-    /// Path components that disqualify a Spotlight hit from being a project root
-    /// (system/library trees, dependency dirs, Trash).
+    /// Path-component runs that disqualify a Spotlight hit from being a project root
+    /// (system/library trees, dependency dirs, package-manager and toolchain trees, Trash).
     public static let projectDiscoveryExcludedPathComponents = [
         "/Library/", "/System/", "/node_modules/", "/vendor/",
-        "/venv/", "/.venv/", "/.Trash/", "/site-packages/",
-        "/.Trash", "/Applications/"
+        "/venv/", "/.venv/", "/.Trash/", "/.Trashes/", "/site-packages/",
+        "/Applications/", "/go/pkg/mod/", "/.pub-cache/", "/.cargo/registry/",
+        "/.cargo/git/", "/fvm/versions/", "/_work/_tool/",
+        "/.nvm/", "/.rustup/", "/.pyenv/", "/.rbenv/", "/.nodenv/", "/.goenv/", "/.sdkman/", "/.asdf/",
+        "/.volta/", "/.fnm/", "/.bun/", "/.deno/", "/.npm/", "/.gradle/", "/.m2/", "/.cache/",
+        "/.local/share/mise/", "/.local/share/pnpm/", "/.vscode/extensions/", "/.vscode-insiders/extensions/",
+        "/.cursor/extensions/", "/.windsurf/extensions/", "/.vscode-server/", "/Pods/", "/.build/checkouts/",
+        "/anaconda3/", "/miniconda3/", "/miniforge3/", "/mambaforge/", "/micromamba/", "/.conda/",
+        "/opt/homebrew/", "/usr/local/Homebrew/", "/usr/local/Cellar/",
     ]
+
+    /// Home-relative SDK folders (git clones full of `pubspec.yaml`); names too generic to exclude anywhere else.
+    public static let projectDiscoveryExcludedHomeFolders = ["flutter", "fvm", "development/flutter"]
+
+    /// Bundle extensions (lowercased) whose contents are shipped app code, never a user project root.
+    public static let projectDiscoveryExcludedBundleExtensions: Set<String> = ["app", "framework"]
 
     /// App-specific state paths that must never be deleted — removing them would
     /// break credentials, active sessions, or IDE state for the matching tool.
@@ -373,7 +389,29 @@ extension ScanPolicy {
         "coverage",
         ".tox",
         ".eggs",
+        ".build",           // SwiftPM
+        ".dart_tool",
+        ".angular",
+        ".svelte-kit",
+        ".vite",
+        ".expo",
+        ".serverless",
     ]
+
+    /// Hidden caches reclaimable only beside the manifest that regenerates them (keys lowercased).
+    /// `.swiftpm` (committed schemes) and `.terraform` (backend state) are deliberately absent.
+    public static let projectArtifactRequiredSiblingMarkers: [String: [String]] = [
+        ".build": ["Package.swift"],
+        ".dart_tool": ["pubspec.yaml"],
+        ".angular": ["angular.json"],
+        ".svelte-kit": ["package.json"],
+        ".vite": ["package.json"],
+        ".expo": ["package.json"],
+        ".serverless": ["serverless.yml", "serverless.yaml", "serverless.ts", "serverless.js", "serverless.json"],
+    ]
+
+    /// Generic output names people also commit; reclaimable only when git ignores them and tracks nothing inside.
+    public static let projectArtifactNamesRequiringGitIgnoreEvidence: Set<String> = ["build", "dist", "target", "coverage"]
 
     /// Union used by walkers and cleanup path allow-lists for *local* artifacts only.
     /// Does **not** include dependency trees (`node_modules`, `.venv`, …).
@@ -391,7 +429,6 @@ extension ScanPolicy {
         "/.cargo/registry/src",
         "/.cargo/git/",
         "/.rustup/downloads",
-        "/go/pkg/mod/cache",
         "/.gradle/caches",
         "/.gradle/wrapper/dists",
         "/.m2/repository",
@@ -402,16 +439,35 @@ extension ScanPolicy {
         "/.bun/install/cache",
         "/.local/share/pnpm",
         "/library/pnpm",
-        "/.local/share/opencode/",
+        "/.local/share/opencode/log",
+        "/.local/share/opencode/snapshot",
         "/library/caches/homebrew",
     ]
 
+    /// File names `ProjectRootDiscovery` asks Spotlight for. `.git` is absent: Spotlight never indexes it.
+    public static let projectDiscoverySignalNames: [String] = [
+        "Package.swift", "Cargo.toml", "go.mod", "pyproject.toml", "setup.py",
+        "Gemfile", "pom.xml", "build.gradle", "build.gradle.kts", "package.json",
+        "pubspec.yaml", "composer.json", "Package.resolved",
+    ]
+
+    /// Directory names (lowercased) whose trees keep side-by-side versions on purpose (version managers,
+    /// package caches, extension stores owned by other rules); version siblings are never offered inside them.
+    public static let versionSiblingExcludedDirectoryNames: Set<String> = [
+        ".nvm", ".pyenv", ".rbenv", ".rustup", ".cargo", ".npm", ".gem", ".m2", ".gradle", ".ivy2",
+        ".sdkman", ".asdf", ".volta", ".fnm", ".nodenv", ".goenv", ".jenv", ".bun", ".deno", ".pub-cache",
+        ".conda", ".nuget", ".dotnet", ".julia", ".ghcup", ".stack", ".opam", ".swiftpm", ".git", ".trash",
+        ".vscode", ".vscode-insiders", ".vscode-server", ".cursor", ".windsurf",
+        "mise", "pipx", "uv", "node_modules", "site-packages", "jetbrains", "code", "cursor", "windsurf", "google",
+        "corepack", "session-env", "cache", "caches", "indexeddb",
+    ]
+
     /// Marker files/directories whose presence identifies a directory as a project root.
-    /// Mirrors the Spotlight signal names used by `ProjectRootDiscovery`.
+    /// Mirrors `projectDiscoverySignalNames` plus `.git`, minus the `Package.resolved` lockfile.
     public static let projectRootMarkerFileNames: [String] = [
         ".git", "package.json", "Package.swift", "Cargo.toml", "go.mod",
         "pyproject.toml", "setup.py", "Gemfile", "pom.xml", "build.gradle",
-        "build.gradle.kts",
+        "build.gradle.kts", "pubspec.yaml", "composer.json",
     ]
 
     /// How many ancestor directories to inspect for project-root evidence.

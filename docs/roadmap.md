@@ -1,417 +1,133 @@
-# Roadmap & Checklist
+# Roadmap
 
 Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 
----
-
-## Phase 0 — Rename to Pare
-
-New name: **Pare** — surgical, deliberate reduction. Bundle ID: `com.yudgnahk.pare`.
-
-- [x] Update `Package.swift` — product names, target names
-- [ ] Update bundle IDs (`com.yudgnahk.pare`) across all targets — deferred to Phase 6 (requires Info.plist + signing)
-- [x] Update `AppTheme`, window titles, About panel
-- [x] Rename `PareApp/`, `PareCore/`, `PareCLI/` source directories
-- [x] Update `CLAUDE.md` and all docs to reflect new name
-- [x] Rename the repo
-
----
-
-## Phase 1 — Quick Wins (small-effort scan rules)
-
-### AI Tool Cache Rules
-- [~] `AIToolCachesRule` — target dirs and what each produces:
-  - [x] GitHub Copilot CLI: `~/.copilot/logs/`
-  - [x] Cursor: `~/Library/Application Support/Cursor/Cache/`
-  - [ ] Cursor Todesktop cache: `~/Library/Caches/com.todesktop.*/` — **needs ID verification; not present on test machine**
-  - [x] Claude desktop: `~/Library/Application Support/Claude/Cache/`
-  - [x] Windsurf: `~/Library/Application Support/Windsurf/Cache/`
-  - [x] Continue.dev: `~/.continue/cache/`
-  - [x] Tabnine: `~/.tabnine/`
-- [x] Register in `RuleCatalog` (developer profile + `all`)
-
-### Homebrew Download Cache Rule
-- [x] `HomebrewCacheRule` — target: `~/Library/Caches/Homebrew/downloads` (bottles + cask downloads)
-- [x] Skip gracefully if Homebrew not installed — cache dir doesn't exist → traversal returns empty (no-op)
-- [x] Risk: `.safe` (download cache, always reconstructible)
-- [x] Register in `RuleCatalog` (developer profile + `all`)
-- Note: full `BrewRunner.homebrewPrefix()` integration deferred to Phase 4 (path is arch-independent)
-
-### Installer File Finder
-- [x] `InstallerFileRule` — scan locations:
-  - [x] Downloads, Desktop
-  - [x] `~/Library/Mobile Documents/com~apple~CloudDocs/` (iCloud Drive)
-  - [ ] Telegram downloads — path unverifiable (not installed on dev machine); skip
-- [x] Match: `.dmg`, `.pkg`, `.iso`, `.xip` at any depth
-- [x] For `.zip`: inspect PK magic + central directory for `.app/` or `Payload/` entries
-- [x] Risk: `.review` (may be intentionally kept)
-- [x] Minimum age gate: 7 days (fresh downloads excluded)
-- [x] Register in `RuleCatalog` (baseline profile + `all`)
-
----
-
-## Phase 2 — Stale App Version Detection
-
-- [x] Extract version comparison logic from `JetBrainsStaleVersionRule` into `FileSystemUtils.compareVersionStrings(_ a: String, _ b: String) -> ComparisonResult`
-- [x] Update `JetBrainsStaleVersionRule` to use the shared utility
-- [x] Implement `StaleAppVersionRule` (`customScan`):
-  - Enumerate `/Applications`, `~/Applications` at depth 1
-  - Read `CFBundleIdentifier` + `CFBundleVersion` from each `.app/Contents/Info.plist`
-  - Group by bundle ID; skip groups with count == 1
-  - Within each group: sort by `compareVersionStrings`, tiebreak by `effectiveAgeDate`
-  - Flag all but highest as `.review` findings (category: `.applications`)
-  - Skip `/System/Applications/` entirely
-  - Fallback for missing bundle ID: normalise display name (strip trailing digits, "beta", "dev")
-  - Do not flag groups where all members share the same `CFBundleVersion`
-- [x] Write tests in `PareCoreTests`:
-  - Two copies same bundle ID → older flagged
-  - Same bundle ID, same version → neither flagged
-  - Missing bundle ID → name-based fallback groups correctly
-  - SIP path excluded
-- [x] Register in `RuleCatalog.all` (added to `baseline` so all profiles include it)
-
----
-
-## Phase 3 — App Manager
-
-### Core (no UI yet — backend only)
-- [x] `AppInventory` actor — discovery + metadata fetch
-  - Scan `/Applications`, `/System/Applications`, `~/Applications`
-  - Supplement with `NSMetadataQuery` for Setapp and other non-standard locations
-  - Per-app: name, bundle ID, version, size (`totalFileAllocatedSizeKey`), install date, last-used (`kMDItemLastUsedDate`), MAS flag, SIP flag
-  - Fetch concurrently with `withTaskGroup`
-- [x] `AppUninstaller` — leftover scan + Trash
-  - Key by bundle ID across all leftover locations (see `app-manager.md` for full list)
-  - Detect Homebrew-managed apps via caskroom receipt; prefer `brew uninstall --zap`
-  - Group Container: detect, surface as warning, never auto-select
-  - Always uses `FileManager.trashItem`, never `removeItem`
-- [x] `OutdatedChecker` — version check
-  - Sparkle: read `SUFeedURL`, fetch appcast, parse `<sparkle:version>`
-  - MAS: iTunes Lookup API, batch ≤ 25, retry with backoff
-  - Run both channels in parallel
-- [x] `InstalledApp`, `AppLeftover`, `UpdateInfo` value types (all `Sendable`)
-- [x] Add `isSystemApp`, `isGroupContainer` to `ScanPolicy`
-
-### SwiftUI (after backend is solid)
-- [x] `AppManagerViewModel` (`@MainActor ObservableObject`)
-- [x] `AppManagerView` — sortable list with filter bar
-  - Columns: icon, name, version, size, install date, last used
-  - Sort by any column (name, size, install date, last used)
-  - Filter bar: search, hide SIP apps, only outdated
-- [x] `AppUninstallConfirmSheet` — leftover preview, Group Container warning, confirm → Trash
-- [x] Integrate into main navigation (Apps tab)
-
----
-
-## Phase 4 — Homebrew Manager
-
-### Core
-- [x] `BrewRunner` — process wrapper
-  - Detect prefix (check `/opt/homebrew/bin/brew` then `/usr/local/bin/brew`)
-  - Set `HOMEBREW_NO_AUTO_UPDATE=1` and `HOME`
-  - Read stdout + stderr concurrently (pipe deadlock prevention)
-- [x] `BrewInventory` actor — `brew info --json=v2 --installed`
-  - Parse formulae (name, version, install date, `installed_on_request`)
-  - Parse casks (token, version, `auto_updates`, installed app names)
-  - Default view: user-requested only (`installed_on_request: true`); toggle for all
-- [x] `BrewOutdatedChecker` — `brew outdated --json=v2 --greedy`
-  - Respect `pinned: true`
-  - Tag `auto_updates: true` casks with "(auto)" badge
-- [x] `MigrationAdvisor`
-  - Fetch `https://formulae.brew.sh/api/cask.json` (24-hour cache)
-  - Match installed apps by artifact app name and bundle ID (`artifacts[].uninstall[].quit`)
-  - Exclude already Homebrew-managed apps
-  - Prefer `brew install --cask --adopt <token>` (Homebrew ≥ 3.5)
-- [x] `BrewFormula`, `BrewCask`, `OutdatedPackage`, `MigrationCandidate` value types
-
-### SwiftUI
-- [x] `HomebrewManagerViewModel` (`@MainActor ObservableObject`)
-- [x] `HomebrewManagerView` — segmented: Formulae / Casks / Outdated / Migrate
-- [x] `BrewOperationSheet` — streaming log output for upgrade/uninstall/migrate
-- [x] "Not installed" placeholder with install instructions if Homebrew absent
-- [x] Integrate into main navigation
-
----
-
-## Phase 5 — Medium Priority Gaps
-
-### Browser Extended Artifact Cleanup
-- [x] Extend `BrowserCachesRule` to add Arc, Edge, Opera to `targetDirectories`
-- [x] `BrowserExtendedArtifactsRule` (`customScan`) covers:
-  - Shader / GPU caches in Application Support for Chrome, Edge, Brave, Arc, Opera → `.safe`
-  - Session restore, WebSQL, IndexedDB, local storage for same browsers → `.review`
-  - Note: browser crash reports already covered by `LogsAndCrashReportsRule` (DiagnosticReports)
-- [x] Added `browserExtendedSafePathMarkers` / `browserExtendedReviewPathMarkers` to `ScanPolicy` + `personaProtectedPathOverrides`
-- [x] `CleanupEngine.isPersonaPath` includes new markers so paths pass the re-verify guard
-
-### Project Artifact Purge
-- [x] `ProjectScanPathStore` — persists user-supplied root paths in `UserDefaults`
-- [x] `ProjectArtifactRule` (`customScan`) — recursive walk (depth ≤ 5) of user roots
-  - Targets: `node_modules/`, `target/`, `venv/`, `.venv/`, `__pycache__/`, `build/`, `.gradle/`, `.bundle/`, `dist/`, `.next/`, `.nuxt/`, `.cache/`
-  - 7-day minimum age gate
-  - Prunes descent into matched artifact dirs (no double-counting nested node_modules)
-- [x] `ScanPolicy.isProjectArtifact()` + `CleanupEngine` bypass so paths in user project trees are cleanable
-- [x] `ProjectScanPathsView` sheet accessible from new folder button in Scan header
-- [x] Registered in `RuleCatalog.baseline` (included in `all`)
-
-### System Optimizer
-- [ ] Requires admin privileges — use `SMJobBless` or `AuthorizationExecuteWithPrivileges`
-- [ ] Tasks: DNS flush, Finder refresh, LaunchServices rebuild, SQLite VACUUM (Mail/Safari/Messages), broken pref repair
-- [ ] Each task is individually toggleable; show estimated time
-- [ ] This is the riskiest phase — validate on macOS 13, 14, 15 before shipping
-- Note: deferred — too risky without hardware validation on multiple macOS versions
-
-### Disk Analyzer Drill-Down
-- [x] `DiskAnalyzerView` + `DiskAnalyzerViewModel` — new "Disk" tab
-  - Async tree scan (depth ≤ 4, top-50 children per node, sorted by size)
-  - Size bar per row proportional to parent (colour shifts red for items > 50% of parent)
-  - "Reveal in Finder" and "Move to Trash" actions on hover
-- [ ] Highlight items matching existing scan findings (deferred — requires cross-ViewModel wiring)
-
-### History / Audit Log UI
-- [x] List view with expandable detail already existed (Phase 3/4)
-- [x] Export as JSON (`NSSavePanel` → pretty-printed) and CSV (per-item rows) via Export menu in History header
-
----
-
-## Phase 6 — Developer Ecosystem Breadth
-
-Spec: `docs/features/phase-6-developer-breadth.md`
-
-### Package Manager Cache Rules
-- [x] `PythonCachesRule` — pip, Poetry, uv, pyenv download cache (NOT Python runtimes)
-- [x] `RubyCachesRule` — gem download cache, Bundler cache, rbenv download cache (NOT installed versions)
-- [x] `JavaBuildCachesRule` — Gradle caches + wrapper dists, Maven local repo, Ivy2 cache
-- [x] `RustCachesRule` — Cargo registry cache + src, git checkouts, rustup downloads
-- [x] `GoCachesRule` — Go build cache (`~/Library/Caches/go-build/`), module download cache
-- [x] Register all in `RuleCatalog` (developer profile + `all`)
-
-### Project Artifact Purge v2 — Smart Discovery
-The Phase 5 implementation hardcodes scan paths. Replace with Spotlight-based project discovery:
-- [x] `ProjectRootDiscovery` actor — `NSMetadataQuery` search for `.git` directories + language signal files (`Package.swift`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `Gemfile`) scoped to user home
-- [x] Deduplicate to project roots: resolve each signal to its parent, drop descendants within 3 path components of an ancestor (submodule heuristic)
-- [x] Filter out system paths, `node_modules/`, `vendor/`, `.Trash/`
-- [x] Persist confirmed roots to `~/Library/Application Support/Pare/project-roots.json`
-- [x] `ProjectArtifactsRule` (customScan) — scan confirmed roots for artifact patterns; 7-day age gate per artifact directory
-- [x] Artifact patterns: `node_modules/`, `target/`, `venv/`/`.venv/`, `__pycache__/`, `.gradle/`, `.bundle/`, `.next/`, `.nuxt/`, `.parcel-cache/`, `.turbo/`, `.nx/`, `dist/`
-- [x] UI: "Project Roots" card in Scan tab — discovered roots with checkboxes (opt-out), "Rescan" button, "Add folder…" for manual addition
-
----
-
-## Phase 7 — Platform Completeness
-
-Spec: `docs/features/phase-7-platform-completeness.md`
-
-### Docker Full Cleanup
-- [x] `DockerStorageRule` covers aged Docker Desktop logs only; `Docker.raw` and the entire `Data/vms/` tree are hard-blocked and never emitted as cleanable scan findings
-- [x] Add Docker daemon and Desktop UI log paths to the existing rule
-- [x] Add Docker-native build-cache actions for cache older than 7 days or 1 day
-- [~] Retire the broad `docker system prune -f` action; replace it with individually selected resources in Phase 10
-- [x] Never use bulk volume pruning; Phase 10 may remove only explicitly selected, unused volumes by exact name
-- [~] Full storage diagnosis, per-resource selection, and reclaim preview — continued in Phase 10
-
-### iOS / iPadOS Backup Management
-- [x] `MobileSyncBackupsRule` (customScan) — enumerate `~/Library/Application Support/MobileSync/Backup/`
-- [x] Parse `Info.plist` per backup for device name, iOS version, last backup date
-- [x] Group by device; flag oldest backups per device as `.review` if > 1 backup exists, or any backup > 180 days old
-- [x] "Device Backups" card in Scan tab showing device name, iOS version, backup date, size
-
-### Browser Review Data
-- [x] `BrowserReviewDataRule` — history databases, cookies, form data, IndexedDB, WebSQL for Safari, Chrome, Firefox, Brave, Arc, Edge
-- [x] Risk: `.review` for all (personal data); 30-day minimum age gate
-- [x] Distinct from existing `BrowserCachesRule` (which stays `.safe`)
-
----
-
-## Phase 8 — Productivity & System Health
-
-Spec: `docs/features/phase-8-productivity-system.md`
-
-### Cloud & Productivity App Cleanup
-- [x] `ProductivityCachesRule` — Slack, Zoom, Google Drive FS, Dropbox, Teams, OneDrive, Office caches
-- [x] Targets: Slack workspace cache, Zoom cache + cloud recordings folder, Google Drive FS cache, Dropbox cache, Microsoft Teams cache, OneDrive cache, Office caches
-- [x] Risk: `.safe` for caches, `.review` for Zoom recordings folder
-
-### Orphaned Launch Agents
-- [x] `OrphanedLaunchAgentsRule` (customScan) — scan `~/Library/LaunchAgents/*.plist`
-- [x] Parse `Program` / `ProgramArguments[0]` from each plist; check if binary exists
-- [x] Flag plist as `.review` if binary is missing; include missing binary path in `reason`
-- [x] Skip plists with shell variable expansion in paths (can't resolve reliably)
-- [x] 30-day age gate on the plist file itself
-
-### Maintenance Tab
-- [x] New SwiftUI tab "Maintenance" (icon: `wrench.and.screwdriver`) — one-shot system actions, not file deletions
-- [x] `MaintenanceAction` struct (id, title, description, estimatedSeconds, requiresSudo) — in `PareCore/Maintenance/`
-- [x] `MaintenanceRunner` (PareCore) — executes actions, streams stdout/stderr via `AsyncThrowingStream`
-- [x] `MaintenanceViewModel` (@MainActor) — tracks running / completed / error state per action
-- [x] `MaintenanceView` — 2-column card grid; each card shows icon, title, description, status badge, Run button, expandable inline log
-- [x] Initial actions (no sudo required):
-  1. **Flush DNS cache** — `dscacheutil -flushcache; killall -HUP mDNSResponder`
-  2. **Rebuild Launch Services** — `lsregister -kill -r -domain local -domain system -domain user`
-  3. **Restart Finder** — `killall Finder`
-  4. **Vacuum SQLite databases** — Mail (version-scanned), Safari History, Messages
-  5. **Docker system prune** — current implementation; remove in Phase 10 in favor of explicit resource selection
-  6. **Docker build cache (>7 days)** — routine age-filtered builder prune
-  7. **Docker build cache (>1 day)** — low-disk age-filtered builder prune
-- [x] Actions stream stdout/stderr to an expandable inline log per card (auto-expands on first output)
-- [ ] Validate on macOS 13, 14, 15 before shipping
-
----
-
-## Competitive analysis (living)
-
-Aliases (no third-party product names): **App A** = CLI-first cleaner · **App B** = commercial care suite.
-
-- [x] App A comparison — `docs/features/comparison-app-a.md` (2026-07-20)
-- [x] App B comparison — `docs/features/comparison-app-b.md`
-- [x] Ranked next-5 backlog — `docs/reviews/2026-07-20-competitive-gaps.md`
-
----
-
-## Phase 9 — Polish & Distribution
-
-- [ ] Code signing — Developer ID Application certificate (requires your keychain cert)
-- [x] Hardened Runtime entitlements — `scripts/PareApp.entitlements` (no JIT, no DYLD injection, no sandbox)
-- [x] Privacy usage descriptions added to `scripts/AppInfo.plist` (Desktop, Documents, Downloads)
-- [ ] Notarization (`xcrun notarytool`) — automated in `scripts/release.sh`
-- [ ] Staple notarization ticket (`xcrun stapler`) — automated in `scripts/release.sh`
-- [ ] Test Gatekeeper pass on a clean machine
-- [x] App icon — design complete (`docs/brand-guide.html`); source SVG at `scripts/icon.svg`; generate .icns with `make icon`
-- [x] `CHANGELOG.md` for v1.0
-- [x] Distribution: direct download via GitHub Releases (MAS incompatible with full-disk scanning)
-- [x] `scripts/release.sh` — universal binary build → sign → DMG → notarize → staple → verify
-- [x] `make release` target added to Makefile
-- [ ] GitHub release tagged v1.0.0 with signed `.dmg`
-
----
-
-## Phase 10 — Selective Docker Storage Manager
-
-Replace broad Docker pruning with an explainable, inventory-first workflow. Pare must show what consumes space, what each resource belongs to, and exactly what will be removed. Nothing is selected automatically, and Pare never runs `docker system prune`.
-
-The binding [`Docker safety policy`](features/docker-safety.md) must be updated before implementation to permit targeted removal of an explicitly selected unused volume while continuing to forbid `docker volume prune`, `--volumes`, force removal, and direct deletion of `Docker.raw`. Docker CLI behavior references: [`docker system df`](https://docs.docker.com/reference/cli/docker/system/df/), [`docker buildx du`](https://docs.docker.com/reference/cli/docker/buildx/du/), [`docker buildx prune`](https://docs.docker.com/reference/cli/docker/buildx/prune/), [`docker volume inspect`](https://docs.docker.com/reference/cli/docker/volume/inspect/), and [`docker volume rm`](https://docs.docker.com/reference/cli/docker/volume/rm/).
-
-### Investigation baseline (2026-07-30)
-
-Read-only inspection of the current development machine:
-
-| Storage | Used | Reclaimable now | Interpretation |
-|---------|-----:|----------------:|----------------|
-| `Docker.raw` host allocation | 33 GB | Not directly deletable | Sparse VM disk containing all Docker data |
-| Images | 9.77 GB | 71 MB | Nearly every image is referenced by a container |
-| Containers | 244 MB | 244 MB | 27 stopped containers; removable without touching volumes |
-| Local volumes | 18.47 GB | 244 MB reported unused | Mostly persistent app/database data; never auto-prune |
-| Build cache | 3.50 GB | 2.91 GB | Best safe-reclaim opportunity |
-
-Largest persistent volumes are `data-api_arango_data` (12.61 GB) and `data-api_redis_data` (3.07 GB). This is why a 33–35 GB `Docker.raw` does not imply that 33–35 GB is safe to clean. About 2.91 GB of build cache is currently reclaimable. A materially larger reduction requires the user to identify and explicitly select projects or persistent datasets that are no longer needed.
-
-### 10.1 — Read-only Docker inventory
-
-- [ ] Add `DockerStorageInventory` actor in `PareCore`; run only when the Docker daemon is reachable
-- [ ] Parse `docker system df`, `docker buildx du`, resource lists, and inspect output into typed image, container, volume, and build-cache usage
-- [ ] Report three distinct numbers: `Docker.raw` host allocation, Docker-managed usage, and Docker-reported reclaimable bytes
-- [ ] For every volume, show exact size, name, named/anonymous kind, creation time, driver, labels, Compose project/service, and attached running or stopped containers
-- [ ] Infer a human-readable purpose such as database, dependency cache, or application data from labels, mounts, and owning services; display “Unknown” rather than guessing when evidence is insufficient
-- [ ] Show every image, stopped container, and build-cache record with size, last-used information, ownership clues, and active/in-use state
-- [ ] Build resource relationships so the UI can explain why an image or volume is blocked by a container
-- [ ] Handle Docker absent, daemon stopped, permission denied, command timeout, and unsupported output without failing the normal Pare scan
-- [ ] Cache read-only results briefly and add a manual Refresh action
-
-### 10.2 — Per-resource selection and safety model
-
-- [ ] Add a dedicated Docker card in Disk or Maintenance; do not represent `Docker.raw` as a normal scan finding
-- [ ] Present separate Build Cache, Images, Containers, and Volumes sections with a checkbox on each individually removable row
-- [ ] Default every checkbox to off; provide no “Select all” across resource types and no one-click broad cleanup
-- [ ] Show selected bytes per section and a deduplicated estimated total before cleanup
-- [ ] Label reclaimable build-cache records `.safe`; label stopped containers and unused images `.review`
-- [ ] Label every volume `.advanced` because it may contain irreplaceable database or application data
-- [ ] Block selection for volumes attached to any running or stopped container; show the blocking containers instead of silently removing them
-- [ ] Allow only unused volumes to be selected, require a second confirmation, and require the user to type the volume name when it is named or larger than 1 GB
-- [ ] Never preselect, bulk-prune, force-remove, detach, stop, or cascade-delete another Docker resource
-- [ ] Offer volume backup/export guidance before confirmation
-- [ ] Show the exact resource names, command, and expected consequences in confirmation UI
-
-### 10.3 — Scoped cleanup actions
-
-- [ ] Remove `MaintenanceCatalog.dockerPrune` and the `docker system prune` runner path
-- [ ] Remove selected build-cache records with Buildx ID filters; retain age and storage-budget shortcuts only as selection helpers
-- [ ] Remove selected stopped containers by exact container ID, never with container prune
-- [ ] Remove selected unused images by exact image ID, never with image prune
-- [ ] Remove selected unused volumes one at a time with `docker volume rm <exact-name>`, without `--force`
-- [ ] Validate every selected resource again immediately before execution; skip anything that became active or attached
-- [ ] Continue after an isolated resource failure and report the failed item without widening the command scope
-- [ ] Re-run Docker inventory after each action and report actual reclaimed bytes
-- [ ] Re-measure allocated `Docker.raw` size after cleanup; explain that host compaction may lag Docker-reported deletion
-- [ ] Record command, before/after totals, stdout/stderr, and result in Pare History
-- [ ] Support cancellation and prevent concurrent Docker maintenance actions
-
-### 10.4 — UX and guidance
-
-- [ ] Add a stacked usage view for images, containers, volumes, and build cache, separating active, blocked, selectable, and selected bytes
-- [ ] Add “Why is Docker.raw larger?” help that explains sparse allocation and never suggests deleting the file
-- [ ] Highlight high-return, low-risk recommendations first (currently old build cache), but leave them unselected
-- [ ] For each volume, show “What is this?” ownership evidence, mounts, attached containers, and the likely consequence of removal
-- [ ] Add search and filters for reclaimable, in use, Compose project, resource type, age, and size
-- [ ] Link to Docker Desktop disk-image settings for moving the disk or changing its limit; do not edit Docker Desktop settings directly
-- [ ] Add empty, daemon-offline, low-space, partial-failure, and post-clean states
-
-### 10.5 — Verification and acceptance
-
-- [ ] Unit-test parsers with multiple Docker CLI versions and localized/changed whitespace fixtures
-- [ ] Test that no generated command contains `system prune`, any resource-level `prune` except filtered Buildx cache removal, `--volumes`, volume force removal, or direct `Docker.raw` deletion
-- [ ] Test active resources and volumes attached to stopped containers cannot be selected
-- [ ] Test commands contain only exact IDs/names selected by the user and selection is empty by default
-- [ ] Test volume size, labels, Compose ownership, mounts, attachment state, and unknown-purpose fallback
-- [ ] Integration-test against a disposable Docker fixture with images, stopped/running containers, build cache, named volumes, and Compose labels
-- [ ] Verify before/after accounting and History output
-- [ ] Validate Docker Desktop on Intel and Apple Silicon plus macOS 13, 14, and 15
-- [ ] Acceptance: a user can understand each resource, select only exact items to remove, see selected bytes and consequences, and verify the result without Pare ever running a broad prune
-
----
-
-## Phase 11 — UI Redesign (Adaptive Theme, Category Tiles, Disk Analyzer)
-
-Make Pare look and feel like a native, premium Mac utility. Plan: `docs/plans/2026-09-26-ui-redesign-plan.md`; task log: `docs/plans/2026-09-26-ui-redesign-tasks.md`.
-
-### 11.1 — Adaptive light/dark tokens
-- [x] `ThemeSwatch`/`RGBA`/`WCAG.contrastRatio` (`Theme/ThemeSwatch.swift`) + `ThemeContrastTests`
-- [x] `AppTheme` repointed to `AppTheme.Swatch`, adding `onAccent`, `accentText`, `cardFill`, `Shadow`, `Background`
-- [x] Nine components fixed for hardcoded black/white/literal colors (`AppBackgroundView`, `GlassCard`, `PrimaryActionButton`, `CleanConfirmationSheet`, `HomebrewManagerView`, `MaintenanceView`, `TextZoomController`)
-- [x] Light-mode audit — PR #31
-
-### 11.2 — Category colors, icon tiles, sidebar vibrancy
-- [x] `CategoryStyle` rewrite (swatch/symbol per `ScanCategory`, `chartPalette`) + `CategoryStyleTests`
-- [x] `IconTile` squircle component; `DestinationStyle` for sidebar destinations
-- [x] `SidebarMaterial` (`NSVisualEffectView` `.sidebar`/`.behindWindow`) + `SidebarView` redesign
-- [x] `ScanDashboardView`, `DeviceBackupsCard`, `DisclosureSelectRow`, `ToolShareChart` migrated to tiles/swatches
-- [x] Branch `feat/ui-redesign-phase-2-category-tiles`, review pending
-
-### 11.3 — Disk Analyzer redesign
-- [x] Safety fix: removed direct `FileManager.trashItem` call; all cleanup now flows tray → `CleanupCoordinator` → `CleanupEngine`
-- [x] `FileSystemUtils.directoryUsage`, `DiskEntry`/`DiskKind`, `DiskTableQuery`, `DiskBreadcrumb`, `DiskReviewResolver`, `DiskLevelLoader` (one-level-at-a-time, off-main-actor sizing, per-path cache)
-- [x] `DiskAnalyzerViewModel` rewrite: crumbs, filter/sort pipeline, deduplicated review tray, owns a `CleanupCoordinator`
-- [x] `DiskFilterBar`, `DiskBreadcrumbBar`, `DiskAnalyzerTable` (sortable, `contextMenu(forSelectionType:)`), `DiskInspectorPane`, `DiskReviewTray`, `Theme/DiskKindStyle`
-- [x] `DiskAnalyzerView` composition: header summary, filter bar, breadcrumb, table \| inspector (280 pt, collapses under 1100 pt window width), review tray, `CleanConfirmationSheet`, result banner
-- [x] "Add to Review" accepts scan-covered items only (`DiskReviewResolver` + `ScanPolicy.isEqualToOrDescendant`); `.insideFinding` shows an explicit "Add \"‹parent›\" (size) to Review" button so the user knows the whole parent finding — not just the selected item — gets queued
-- [x] Branch `feat/ui-redesign-phase-3-disk-analyzer`, review pending
-
-### 11.4 — "Wow" pass (Tidewater direction)
-Audit + direction: `docs/design/ui-wow-audit.md`; screenshots: `docs/design/screenshots/ui-wow/`.
-- [x] Tokens: apricot `warm`/`warmText`, CTA + ring gradients, `Elevation`, motion (`reveal`, `countUp`, `ringFill`, `breathe`), `MotionPolicy` (Reduce Motion), `display`/`eyebrow` type; contrast tests extended
-- [x] Smart Scan hero: live startup-disk `DiskUsageRing` around `ScanOrbButton`; scanning turns it into an honest rule-count `ScanProgressRing` with step chips
-- [x] Results: `ScanSummaryHero` (reclaimable share on the disk ring, counting total, `CategoryShareBar`), decision tiles, floating `CleanActionBar` (all clean actions, still sheet-confirmed), `CleanResultCard`
-- [x] Shell: sidebar accent selection + `StorageMeter`; calmer page ground; refreshed `GlassCard`
-- [x] Modules: shared `PageHeader`/`ModuleChrome`, halo `EmptyStateView`, `LoadingStateView`, Maintenance Run buttons, Disk Analyzer column widths
-- [x] DEBUG `SnapshotRenderer` (`PARE_SNAPSHOT_DIR=… .build/debug/PareApp`) for light/dark PNGs without screen recording
-- [ ] Manual: run `make run-app`, then check vibrancy, hover/press states, sheets and Reduce Motion on real hardware
-
----
-
-## Always-On (every phase)
-
-- [ ] `make build` passes before any PR
-- [ ] `make test` passes; coverage ≥ 80%
-- [ ] `make run-app` — manual smoke test of changed feature
-- [ ] `gitnexus_impact` run before editing any symbol
-- [ ] `gitnexus_detect_changes` run before committing
-- [ ] Update roadmap artifact after completing each phase
+## Done
+
+- **Phase 0 — Rename to Pare.** Bundle ID `com.yudgnahk.pare`.
+- **Phase 1 — Quick wins.** AI tool caches, Homebrew download cache, installer files.
+- **Phase 2 — Stale app versions.** Duplicate `.app` bundles grouped by bundle ID; older copies `.review`.
+- **Phase 3 — App Manager.** Inventory, uninstaller with leftovers, Sparkle/MAS update checks. Doc: `docs/features/app-manager.md`.
+- **Phase 4 — Homebrew Manager.** Formulae, casks, outdated, migrate, leave Homebrew. Doc: `docs/features/homebrew-manager.md`.
+- **Phase 5 — Medium gaps.** Browser artifacts, project artifacts, Disk Analyzer, History export. The System Optimizer (admin tasks) is deferred: too risky without testing on several macOS versions.
+- **Phase 6 — Developer breadth.** Package-manager caches, Spotlight project discovery. Doc: `docs/features/phase-6-developer-breadth.md`.
+- **Phase 7 — Platform completeness.** Docker logs and build-cache actions, iOS backups, browser review data. Doc: `docs/features/phase-7-platform-completeness.md`.
+- **Phase 8 — Productivity and system health.** Productivity caches, orphaned launch agents (report-only), Maintenance tab. Doc: `docs/features/phase-8-productivity-system.md`.
+- **Phase 11 — UI redesign.** Adaptive light/dark tokens, category tiles, sidebar vibrancy, Disk Analyzer rewrite, "Tidewater" pass. Direction: `docs/design/ui-wow-audit.md`.
+- **2026-10-07 wave (#38–#69).** Safety gates, explain-only diagnostics, scan coverage and reclaim reporting. See `CHANGELOG.md` and `docs/architecture/cleanup-safety.md`.
+
+## Phase 9 — Distribution
+
+Done: hardened-runtime entitlements, privacy usage strings, app icon, `scripts/release.sh`, `make release`, CHANGELOG. Distribution is a GitHub Releases DMG; the Mac App Store sandbox cannot scan the full disk.
+
+- [ ] Code signing with a Developer ID Application certificate
+- [ ] Notarize (`xcrun notarytool`) and staple (`xcrun stapler`) through `scripts/release.sh`
+- [ ] Gatekeeper pass on a clean machine
+- [ ] Tag v1.0.0 on GitHub with the signed `.dmg`
+- [ ] Validate Maintenance actions on macOS 13, 14 and 15
+- [ ] Phase 11 manual pass on real hardware: vibrancy, hover and press states, sheets, Reduce Motion
+
+## Phase 10 — Selective Docker storage manager
+
+Show what Docker stores and remove only exact, user-selected resources. `Docker.raw` is a sparse VM
+disk: on 2026-07-30 it held 33 GB, of which only 2.9 GB (old build cache) was safely reclaimable;
+18.5 GB were persistent volumes (one ArangoDB volume alone was 12.6 GB). `docs/features/docker-safety.md`
+must be updated first to allow `docker volume rm <exact-name>` for a selected unused volume, while
+still forbidding `docker volume prune`, `--volumes`, force removal and touching `Docker.raw`.
+
+Removing the Maintenance `docker system prune -f` action ahead of Phase 10 was declined on 2026-10-03.
+
+- [ ] **10.1 Read-only inventory.** `DockerStorageInventory` actor parsing `docker system df`, `docker buildx du`, lists and inspect output. Report three numbers: `Docker.raw` allocation, Docker-managed usage, Docker-reported reclaimable. Per volume: size, kind, labels, Compose project, attached containers, inferred purpose or "Unknown". Survive Docker absent, daemon stopped, timeouts and odd output.
+- [ ] **10.2 Selection model.** A Docker card, never a scan finding. Sections for build cache, images, containers, volumes; every checkbox off by default; no cross-type select-all. Build cache `.safe`, stopped containers and unused images `.review`, volumes `.advanced`. Volumes attached to any container cannot be selected; named or > 1 GB volumes need the name typed.
+- [ ] **10.3 Scoped actions.** Remove by exact ID or name only (Buildx ID filters, container ID, image ID, `docker volume rm <name>` without `--force`). Re-validate before each command, continue past single failures, re-measure, record to History, support cancel.
+- [ ] **10.4 UX.** Stacked usage view, "Why is Docker.raw larger?" help, ownership evidence per volume, filters, offline and partial-failure states.
+- [ ] **10.5 Verification.** Parser fixtures across CLI versions; tests that no command contains `system prune`, `--volumes` or volume force removal; selection empty by default; disposable Docker fixture; Intel and Apple Silicon.
+
+## Phase 12 — Project dependency reclaim
+
+Spec and reasons: `docs/features/project-dependency-reclaim.md`. 12.1 (SwiftPM `.build`, #44) and 12.2
+slice 1 (#69) are done. Duplicate Chrome `IndexedDB` in the CLI was fixed by #39.
+
+- [ ] Broken venvs (dangling `bin/python`): report regardless of activity when a lockfile or manifest exists
+- [ ] Manifest-only projects with a version-drift warning (open decision C)
+- [ ] "Save package list" export for venvs with no manifest (open decision C)
+- [ ] Result card: at critical pressure, space returns only after emptying the Trash
+- [ ] Check git at scan time too: a tracked `node_modules` is listed today, then refused at cleanup
+
+## Engineering follow-ups
+
+- [ ] Run the whole test suite under XCTest. Nothing from #38–#69 has run locally (Command Line Tools only); CI must confirm `integration/2026-10-07` before merging to `master`.
+- [ ] One running-process seam: `RunningAppChecking` (#48), `RunningAppsProviding` (#50) and `RunningExecutablesProviding` (#57) overlap, plus direct `NSWorkspace` reads in `CodexStagingRule` and `CaskLeaveHomebrew`.
+- [ ] One free-space seam: `FreeSpaceProviding` (#48, statfs) and `VolumeFreeSpaceProviding` (#54), plus private readers in `DiskHeaderProvider`, `MemoryPressureRule` and `VolumeUsageModel`. The swap-plus-low-disk warning uses different thresholds in `DiskHeaderSnapshot` and `MemoryPressureRule`.
+- [ ] One swap parser: `SwapUsageParser` (`DiskHeaderSnapshot.swift`) and `SwapUsageRule.usedBytes` both parse `sysctl vm.swapusage`. Also two `lsof` field parsers (`OpenFileSnapshot`, `DeletedOpenFilesRule`).
+- [ ] A `ScanFinding` copy helper that keeps every field. `GoCachesRule.annotated(with:)` drops `isSizeComplete`, so a cut-short Go cache loses its "at least".
+- [ ] `FindingDeduplicator` should pass `.diagnostics` findings through untouched; today a diagnostics path can raise or swallow a cleanable finding.
+- [ ] `isReclaimableVersionSibling` should also check `isNeverCleanPath`, and give a clearer skip reason ("kept: fewer than 2 newer versions").
+- [ ] `CrashLoopRule` and `RegrowthDetector` keep their facts only in `reason`; move them to `FindingAnnotation` (e.g. `.regrew(days:)`).
+- [ ] `RegrowthDetector`: a restored (undone) item looks 100 % regrown. Restores are not recorded.
+- [ ] `Tests/PareAppTests/DiskAnalyzerViewModelTests.swift` still builds a real `CleanupEngine()` (5 sites); switch to the hermetic fixture.
+- [ ] The discovery-timeout notice shows only on the scan that ran discovery.
+- [ ] Verified reclaim measures only the first finding's volume; History keeps a stale empty-the-Trash hint.
+- [ ] Category and tool totals don't say "at least" when a size was cut short.
+- [ ] A symlinked home directory makes every cleanup item skip with no clear message.
+
+## Product backlog
+
+- [ ] Cache activity drives selection: skip hot, preselect cold `.safe` (open decision A)
+- [ ] "Safe Care": scan, select `.safe` only, confirm, clean, optional light maintenance, in at most 3 clicks; never `.review` or `.advanced`
+- [ ] App Manager: hide system apps by default, multi-select with bulk uninstall and update, confirm every update (a single cask update runs `brew upgrade --cask --greedy` without asking today)
+- [ ] Maintenance: confirm Docker prune actions before running (they delete permanently), and fix the card layout. Needs a screenshot of the actual layout defect first.
+- [ ] uv reclaim: a native `uv cache prune` / `uv cache clean` Maintenance action, never `--force`, no Undo (uv findings are `.advanced` until then). Later: adapters for pip, Poetry and pyenv (descriptors exist in `ToolCacheDescriptor`), user-added cache roots, and generic discovery by `CACHEDIR.TAG` (a hint only: tagged folders stay `.review`; check the tag's first 43 bytes)
+- [ ] A "space freed over time" ledger from cleanup history
+- [ ] Category-level exclusions (today exclusions are paths only)
+- [ ] Login items browser; large Mail attachments
+- [ ] First-launch onboarding, ⌘1–⌘7 sidebar shortcuts, VoiceOver labels across modules
+- [ ] Results: a per-tool filter chip; suggest the 1-day Docker build-cache action when disk is low
+- [ ] Disk Analyzer: "Run Smart Scan" should switch to the Smart Scan tab; skip reasons all read "policy check", and the review tray clears even when items were skipped
+- [ ] Cap very large project-root sets (the store once held 495 roots)
+
+## Scan coverage backlog
+
+Not built yet, from field scans of a 228 GB Mac mini (2026-09-28 to 2026-10-03):
+
+- [ ] `~/.cache/<tool>` caches no rule reports: `codex-runtimes` 1.5 GB, `kilo` 424 MB, `github-copilot` 274 MB, `hyperframes` 198 MB
+- [ ] ML model weights (`*.safetensors`, `*.gguf`, `*.pth`), e.g. `Application Support/tts` 1.7 GB, Hugging Face
+- [ ] Large old archives in Downloads (> 200 MB, > 90 days); never `.safe` for `.gpg`, `.age` or backup-named files
+- [ ] Stale home dot-folders (e.g. `~/.9router` 2.1 GB, untouched > 90 days)
+- [ ] VM disks: minikube (11 GB seen), lima, colima
+- [ ] Partial downloads and updater payloads (`*.tmp-*`, `.partial`, stuck `com.docker.install/in_progress`)
+- [ ] `.app` bundles outside `/Applications`, old Chrome `Versions`, extra Go toolchains, version managers, Homebrew `Library/Taps`, database dumps (`*.rdb`, `*.aof`, `*.sql`), duplicate clones
+- [ ] A large-file rule (`largeFileThresholdBytes` only filters the detail list today)
+- [ ] Discovery: skip folders named in MCP configs (`uv run --directory`), `actions-runner/externals` and a custom `GOMODCACHE`; collapse empty `.turbo` / `node_modules` rows
+- [ ] Suggest `.metadata_never_index` for dependency trees (95 % of indexed `.js` files sat in `node_modules`)
+- [ ] An "unaccounted space" line in the disk header; `--json` output for the CLI
+
+## Long-term direction: machine-wide storage inventory
+
+Not started. One inventory of the whole machine with several persona views, instead of more
+special-case rules. Decisions so far: persona detection is automatic and non-exclusive; unknown
+hotspots are shown but never cleanable; descriptors for repeated patterns, Swift code for complex
+stores; no big-bang rewrite.
+
+## Field notes
+
+Measured facts that shaped the rules. Keep them in mind before changing a gate.
+
+- **Trust `df`, not `du`.** pnpm hard links: deleting 152 artifact folders freed 7.26 GB by `df` against 8.0 GB by `du`. uv clonefiles: `du` showed 27 GB in uv's cache, `uv cache clean` freed about 1 GB. Most of it (19 GB in `archive-v0`) was 43 tool environments each carrying a 350 MB tree-sitter pack.
+- **Deleted-but-open files can beat any cache.** On 2026-10-02, 18 `claude` processes held 3.85 GB of deleted binaries; swap was 10 GB.
+- **Go caches are a working set.** `go-build` was trashed at 6.93 GB and was back to 1.3 GB three hours later.
+- **WAL-unsafe VACUUM backfires.** One vacuum reclaimed 8 MB and left a 1.3 GB `-wal`. Messages `chat.db` is never vacuumed: a daemon keeps it open.
+- **Google identity caches** (`GIPPseudonymousID`, `CCTClearcutLogger`) are rewritten at about 50 MB/s after deletion.
+- **OpenCode `storage` is live:** `session_diff/` is still written even though `message/` and `part/` are legacy.
+- **`Docker.raw` sizes lie.** 28 GB allocated against 60 GB apparent; reading the logical size once produced a 1.13 TB total on a 256 GB disk. Use allocated size and keep `.advanced` out of totals.
+- **Reconstructible caches carry no multi-day gate** because the big ones are hot anyway: Chrome Cache about 600 MB, Service Worker 455 MB, `~/.npm/_npx` 1.18 GB, OpenCode cache 864 MB (2026-07).
+- **Folder age:** `atime` is unreliable on APFS, and a dependency folder's mtime is its install date.
+- **Speed:** one `git ls-files` per candidate blew the scan budget, so git evidence is one query per scan. Parallel rules with nested `withTaskGroup` plus actors returned empty results.
+- **Project discovery:** the root store once held 495 roots, 356 under `go/pkg/mod`. Spotlight finds no `.git` folders at all.
+- **Deliberately not artifacts:** `.swiftpm` (committed schemes), `.terraform` (backend state, needs credentials to rebuild).
+
+## Won't build
+
+Malware scanning, a menu-bar monitor, cloud-provider cleanup, photo or AI duplicate finders, macOS
+update installation. An AI auto-approver for agent waves (Jev AI) was evaluated on 2026-09-27 and
+rejected: labels with no reasoning, self-reported benchmarks, and code sent to a third party.
