@@ -41,10 +41,9 @@ extension ScanPolicy {
         }
     }
 
-    /// Returns `true` for installer files sitting inside `~/Downloads`, `~/Desktop`, or
-    /// iCloud Drive (`~/Library/Mobile Documents/`). ZIP files are included so that
-    /// installer ZIPs found by `InstallerFileRule` (which performs binary verification
-    /// at scan time) can be cleaned by `CleanupEngine` after user confirmation.
+    /// Returns `true` for installer files sitting inside `~/Downloads` or `~/Desktop`. ZIP files
+    /// are included so that installer ZIPs found by `InstallerFileRule` (which performs binary
+    /// verification at scan time) can be cleaned by `CleanupEngine` after user confirmation.
     public static func isInstallerFile(_ url: URL) -> Bool {
         let ext = url.pathExtension.lowercased()
         guard installerExtensions.contains(ext) || ext == "zip" else { return false }
@@ -52,7 +51,6 @@ extension ScanPolicy {
         let home = FileManager.default.homeDirectoryForCurrentUser.path.lowercased()
         return path.hasPrefix(home + "/downloads/")
             || path.hasPrefix(home + "/desktop/")
-            || path.hasPrefix(home + "/library/mobile documents/")
     }
 
     /// True for a top-level `Library/Caches` entry `UserCachesRule` must skip, folder or file.

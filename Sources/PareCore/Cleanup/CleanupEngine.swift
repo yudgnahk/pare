@@ -50,7 +50,7 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "Docker VM disk/volume data blocked: \(path). Use docker system prune (never --volumes)."
         case .workingSetProtected(let path):
             if ScanPolicy.isProtectedUserDataPath(URL(fileURLWithPath: path)) {
-                return "App data (sessions, sign-in or identity state) — Pare never deletes it: \(path)"
+                return "App or iCloud data (sessions, sign-in, identity or iCloud Drive) — Pare never deletes it: \(path)"
             }
             return "Go cache in active use — Go trims it itself and Pare never deletes it: \(path)"
         case .excludedByUser(let path):
