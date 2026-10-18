@@ -343,6 +343,11 @@ final class ScanDashboardViewModel: ObservableObject {
         FolderRollup.abbreviatePath(path)
     }
 
+    /// Explain-only diagnostics with their advice; nothing here can be selected or cleaned.
+    var diagnosticNotes: [DiagnosticNote] {
+        DiagnosticNote.notes(from: latestFindings)
+    }
+
     var deviceBackupFindings: [FindingItem] {
         latestFindings
             .filter { $0.category == .deviceBackups }

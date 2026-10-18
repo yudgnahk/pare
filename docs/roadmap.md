@@ -14,6 +14,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Phase 7 — Platform completeness.** Docker logs and build-cache actions, iOS backups, browser review data. Doc: `docs/features/phase-7-platform-completeness.md`.
 - **Phase 8 — Productivity and system health.** Productivity caches, orphaned launch agents (report-only), Maintenance tab. Doc: `docs/features/phase-8-productivity-system.md`.
 - **Phase 11 — UI redesign.** Adaptive light/dark tokens, category tiles, sidebar vibrancy, Disk Analyzer rewrite, "Tidewater" pass. Direction: `docs/design/ui-wow-audit.md`.
+- **iCloud stuck uploads (2026-10-18).** Explain-only warning when iCloud Drive cannot upload because storage is full; CloudDocs and iCloud Drive are never-clean; diagnostics now show their advice in the app.
 - **2026-10-07 wave (#38–#69).** Safety gates, explain-only diagnostics, scan coverage and reclaim reporting. See `CHANGELOG.md` and `docs/architecture/cleanup-safety.md`.
 
 ## Phase 9 — Distribution
@@ -100,6 +101,8 @@ Not built yet, from field scans of a 228 GB Mac mini (2026-09-28 to 2026-10-03):
 - [ ] Discovery: skip folders named in MCP configs (`uv run --directory`), `actions-runner/externals` and a custom `GOMODCACHE`; collapse empty `.turbo` / `node_modules` rows
 - [ ] Suggest `.metadata_never_index` for dependency trees (95 % of indexed `.js` files sat in `node_modules`)
 - [ ] An "unaccounted space" line in the disk header; `--json` output for the CLI
+- [ ] Large `.app` bundles or packages inside iCloud-synced Desktop/Documents (`brctl status` prints `Desktop & Documents: current=YES`); Finder's `FXICloudDriveDesktop` default is unreliable
+- [ ] Diagnostics with a non-zero size (`SwapUsageRule`, `DeletedOpenFilesRule`) still land in the large-file groups, which filter by size only
 
 ## Long-term direction: machine-wide storage inventory
 
@@ -123,6 +126,7 @@ Measured facts that shaped the rules. Keep them in mind before changing a gate.
 - **Folder age:** `atime` is unreliable on APFS, and a dependency folder's mtime is its install date.
 - **Speed:** one `git ls-files` per candidate blew the scan budget, so git evidence is one query per scan. Parallel rules with nested `withTaskGroup` plus actors returned empty results.
 - **Project discovery:** the root store once held 495 roots, 356 under `go/pkg/mod`. Spotlight finds no `.git` folders at all. 1,875 of 2,080 `package.json` hits sat inside `node_modules` (2026-10-07).
+- **iCloud's staged upload copy is not extra disk.** A 10 GB bundle stuck uploading for 57 days showed 10 GB in `CloudDocs`; moving it out dropped `CloudDocs` to 22 MB but free space did not rise. Treat stuck uploads as a backup problem, never as reclaimable space.
 - **Deliberately not artifacts:** `.swiftpm` (committed schemes), `.terraform` (backend state, needs credentials to rebuild).
 
 ## Won't build

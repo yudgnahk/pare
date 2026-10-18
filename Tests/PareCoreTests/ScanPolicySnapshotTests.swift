@@ -122,7 +122,7 @@ final class ScanPolicySnapshotTests: XCTestCase {
         "projectArtifactRequiredSiblingMarkers": "1148dc4920103d3e:11",
         "developerPackageCacheMarkers": "0a9650438f6953f4:21",
         "neverCleanComponentSequences": "5b8498f0d86a979c:2",
-        "neverCleanUserDataComponentSequences": "a6fb32cdbc69797b:4",
+        "neverCleanUserDataComponentSequences": "f48788ddc7cd7469:6",
         "neverCleanUserCacheFolderNames": "7399441f93c823aa:2",
         "userCacheProtectedFolderPrefixes": "34190fa0dfa8102d:2",
         "neverCleanUserDataFilePrefixes": "f4a58138e80adc0f:1",

@@ -8,8 +8,9 @@ gate that refuses wins. Order matters: an early refusal must never be undone by 
 1. **User exclusions** (`ExclusionList.blocksRemoval`). Exclusions added after the scan still apply.
 2. **Docker VM data** (`isDockerNeverDeletePath`): `Docker.raw` and `…/data/vms/…`. See `docs/features/docker-safety.md`.
 3. **Never-clean** (`isNeverCleanPath`): Go build and module caches (plus the `go env` locations),
-   OpenCode user data, Google identity caches. Runs before every allow-list, because project-artifact
-   evidence would otherwise admit paths such as `go/pkg/mod/…/build`.
+   OpenCode user data, Google identity caches, iCloud sync state (`CloudDocs`) and iCloud Drive
+   (`Mobile Documents`). Runs before every allow-list, because project-artifact evidence would
+   otherwise admit paths such as `go/pkg/mod/…/build`.
 4. **Search-index stores** (`isSearchIndexSensitivePath`): deleting them forces a costly reindex.
 5. **`.advanced` risk or the `.diagnostics` category**: report-only, whatever the label.
 6. **Exclusive routing.** The first class that matches decides. Each class passes only through its own

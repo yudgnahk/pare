@@ -292,24 +292,16 @@ final class InstallerFileRuleTests: XCTestCase {
         ))
     }
 
-    // MARK: iCloud Drive
-
-    func testOldDmgInICloudIncluded() {
-        XCTAssertTrue(rule.include(
-            fileURL: URL(fileURLWithPath: "\(home)/Library/Mobile Documents/com~apple~CloudDocs/App.dmg"),
-            resourceValues: oldValues()
-        ))
-    }
-
     // MARK: Target directories
 
     func testTargetDirectories() {
         let env = ScanEnvironment(homeDirectory: URL(fileURLWithPath: home))
         let dirs = rule.targetDirectories(environment: env)
-        XCTAssertEqual(dirs.count, 3)
+        XCTAssertEqual(dirs.count, 2)
         XCTAssertTrue(dirs.contains(where: { $0.path.hasSuffix("/Downloads") }))
         XCTAssertTrue(dirs.contains(where: { $0.path.hasSuffix("/Desktop") }))
-        XCTAssertTrue(dirs.contains(where: { $0.path.contains("Mobile Documents") }))
+        // Trashing an iCloud Drive file deletes it on every device.
+        XCTAssertFalse(dirs.contains(where: { $0.path.contains("Mobile Documents") }))
     }
 
     // MARK: ZIP binary builder (test helper)
@@ -404,14 +396,14 @@ final class ScanPolicyInstallerTests: XCTestCase {
         ))
     }
 
-    func testDmgInICloudIsInstallerFile() {
-        XCTAssertTrue(ScanPolicy.isInstallerFile(
+    func testDmgInICloudIsNotInstallerFile() {
+        XCTAssertFalse(ScanPolicy.isInstallerFile(
             URL(fileURLWithPath: "\(home)/Library/Mobile Documents/com~apple~CloudDocs/App.dmg")
         ))
     }
 
-    func testZipInICloudIsInstallerFile() {
-        XCTAssertTrue(ScanPolicy.isInstallerFile(
+    func testZipInICloudIsNotInstallerFile() {
+        XCTAssertFalse(ScanPolicy.isInstallerFile(
             URL(fileURLWithPath: "\(home)/Library/Mobile Documents/com~apple~CloudDocs/App.zip")
         ))
     }
