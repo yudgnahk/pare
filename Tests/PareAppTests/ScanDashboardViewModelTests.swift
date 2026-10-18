@@ -161,4 +161,22 @@ final class ScanDashboardViewModelTests: XCTestCase {
             "Project Local Build Caches: scan incomplete, results are partial. Stopped after 60 s, 3 of 9 project folders fully scanned."
         ])
     }
+
+    /// Explain-only diagnostics surface a short headline and their action in the app, not only in the CLI.
+    func testDiagnosticNotesComeFromDiagnosticsOnly() {
+        let diagnostic = ScanFinding(
+            category: .diagnostics, riskLevel: .advanced, reason: "Desktop isn't backed up: 9.8 GB stuck — iCloud storage is full",
+            path: "/Users/u/Library/Application Support/CloudDocs", sizeBytes: 0, lastUsed: nil, confidence: 0.8,
+            annotations: [.explainOnly(action: "Free up iCloud storage")]
+        )
+        let cache = ScanFinding(
+            category: .userCaches, riskLevel: .safe, reason: "cache",
+            path: "/Users/u/Library/Caches/x", sizeBytes: 1_000, lastUsed: nil, confidence: 1
+        )
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotResults(ScanReport(findings: [cache, diagnostic], summaries: []))
+
+        XCTAssertEqual(vm.diagnosticNotes.map(\.headline), ["Desktop isn't backed up: 9.8 GB stuck"])
+        XCTAssertEqual(vm.diagnosticNotes.first?.action, "Free up iCloud storage")
+    }
 }
