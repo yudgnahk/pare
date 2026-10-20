@@ -104,7 +104,10 @@ final class MemoryPressureRuleTests: XCTestCase {
         XCTAssertTrue(finding.reason.hasPrefix("The Mac ran out of memory on "), finding.reason)
         XCTAssertTrue(finding.reason.contains("largest process was Google Chrome (2 GB)"), finding.reason)
         XCTAssertFalse(finding.reason.contains("Low disk"), finding.reason)
-        XCTAssertEqual(finding.annotations, [.explainOnly(action: "Quit memory-heavy apps such as Google Chrome before memory runs out")])
+        XCTAssertEqual(finding.annotations, [
+            .explainOnly(action: "Quit memory-heavy apps such as Google Chrome before memory runs out"),
+            .noteAction(.showProcesses(pids: [])),
+        ])
     }
 
     func testNothingReportedForPerProcessLimitsStaleOrMissingReports() async throws {

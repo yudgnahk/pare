@@ -19,10 +19,14 @@ public struct DeletedOpenFilesRule: ScanRule {
 
     /// Returns `lsof +L1 -F` output, or nil when lsof is unavailable, failed or timed out.
     public typealias Listing = @Sendable () async -> String?
+    /// A process's executable path, or nil when unknown; used to tell macOS processes from apps.
+    public typealias ExecutablePath = @Sendable (Int32) -> String?
 
     private let listing: Listing
+    private let executablePath: ExecutablePath
 
-    public init(listing: Listing? = nil) {
+    public init(listing: Listing? = nil, executablePath: @escaping ExecutablePath = ProcessPolicy.executablePath(pid:)) {
+        self.executablePath = executablePath
         self.listing = listing ?? {
             await ToolCommandRunner(timeoutSeconds: Self.timeoutSeconds).capture(
                 executable: URL(fileURLWithPath: Self.lsofPath),
@@ -36,12 +40,13 @@ public struct DeletedOpenFilesRule: ScanRule {
 
     public func customScan(environment: ScanEnvironment) async -> [ScanFinding]? {
         guard let output = await listing() else { return [] }
-        return Self.findings(fromLsofOutput: output)
+        return Self.findings(fromLsofOutput: output, executablePath: executablePath)
     }
 
     // MARK: - Parsing
 
     private struct OpenDeletedFile {
+        let pid: Int32
         let command: String
         let key: String
         let size: Int64
@@ -49,6 +54,7 @@ public struct DeletedOpenFilesRule: ScanRule {
     }
 
     private struct Holder {
+        var pids = Set<Int32>()
         var bytes: Int64 = 0
         var keys: [String] = []
         var largestPath = ""
@@ -57,7 +63,7 @@ public struct DeletedOpenFilesRule: ScanRule {
 
     /// One finding per command holding at least `minimumReportedBytes`, largest first.
     /// Each deleted file counts once, for the first command seen holding it.
-    static func findings(fromLsofOutput output: String) -> [ScanFinding] {
+    static func findings(fromLsofOutput output: String, executablePath: ExecutablePath = { _ in nil }) -> [ScanFinding] {
         let files = parse(output)
         var commandsByKey: [String: Set<String>] = [:]
         for file in files { commandsByKey[file.key, default: []].insert(file.command) }
@@ -69,6 +75,7 @@ public struct DeletedOpenFilesRule: ScanRule {
             if holders[file.command] == nil { order.append(file.command) }
             var holder = holders[file.command] ?? Holder()
             holder.bytes += file.size
+            holder.pids.insert(file.pid)
             holder.keys.append(file.key)
             if file.size > holder.largestSize {
                 holder.largestSize = file.size
@@ -85,22 +92,31 @@ public struct DeletedOpenFilesRule: ScanRule {
             .sorted { $0.1.bytes > $1.1.bytes }
             .map { command, holder in
                 let others = Set(holder.keys.flatMap { commandsByKey[$0] ?? [] }).subtracting([command]).sorted()
-                return finding(command: command, holder: holder, otherCommands: others)
+                return finding(command: command, holder: holder, otherCommands: others, executablePath: executablePath)
             }
     }
 
-    private static func finding(command: String, holder: Holder, otherCommands: [String]) -> ScanFinding {
+    private static func finding(
+        command: String, holder: Holder, otherCommands: [String], executablePath: ExecutablePath
+    ) -> ScanFinding {
+        let pids = holder.pids.sorted()
+        let paths = pids.compactMap(executablePath)
+        // An unknown path counts as an app, so the holder is still named and offered.
+        let isSystem = !paths.isEmpty && paths.allSatisfy(ProcessPolicy.isSystemExecutable(path:))
+        let name = paths.lazy.compactMap(ProcessPolicy.appDisplayName(path:)).first ?? command
         let size = ByteCountFormatter.string(fromByteCount: holder.bytes, countStyle: .file)
         let shared = otherCommands.isEmpty ? "" : " (also held by \(otherCommands.joined(separator: ", ")))"
+        let identity = DeletedFilesHolder(command: command, displayName: name, pids: pids, isSystem: isSystem)
         return ScanFinding(
             category: .diagnostics,
             riskLevel: .advanced,
-            reason: "\(size) held by deleted files — restart \(command) to reclaim it\(shared)",
+            reason: "\(size) held by deleted files — restart \(name) to reclaim it\(shared)",
             path: holder.largestPath,
             sizeBytes: holder.bytes,
             lastUsed: nil,
             confidence: 0.9,
-            annotations: [.explainOnly(action: "Restart \(command) to reclaim the space"), .deletedFilesHolder(command: command)]
+            annotations: [.explainOnly(action: "Restart \(name) to reclaim the space"), .deletedFilesHolder(identity)]
+                + (isSystem ? [] : [.noteAction(.showProcesses(pids: pids))])
         )
     }
 
@@ -108,6 +124,7 @@ public struct DeletedOpenFilesRule: ScanRule {
     /// `i` inode, `s` size and `n` name. Files without a size are skipped.
     private static func parse(_ output: String) -> [OpenDeletedFile] {
         var files: [OpenDeletedFile] = []
+        var pid: Int32?
         var command: String?
         var device = ""
         var inode = ""
@@ -117,9 +134,9 @@ public struct DeletedOpenFilesRule: ScanRule {
 
         func flush() {
             defer { inFile = false; device = ""; inode = ""; size = nil; name = "" }
-            guard inFile, let command, let size, name.hasPrefix("/") else { return }
+            guard inFile, let pid, let command, let size, name.hasPrefix("/") else { return }
             let key = inode.isEmpty ? "path:\(name)" : "\(device):\(inode)"
-            files.append(OpenDeletedFile(command: command, key: key, size: size, path: name))
+            files.append(OpenDeletedFile(pid: pid, command: command, key: key, size: size, path: name))
         }
 
         for line in output.split(whereSeparator: \.isNewline) {
@@ -128,6 +145,7 @@ public struct DeletedOpenFilesRule: ScanRule {
             switch tag {
             case "p":
                 flush()
+                pid = Int32(value)
                 command = nil
             case "c":
                 command = value

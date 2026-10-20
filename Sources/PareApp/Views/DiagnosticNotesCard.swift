@@ -5,6 +5,7 @@ import PareCore
 struct DiagnosticNotesCard: View {
     @Environment(\.pareDisplayScale) private var scale
     let notes: [DiagnosticNote]
+    let onAction: (DiagnosticAction) -> Void
     @State private var isExpanded = true
 
     var body: some View {
@@ -47,21 +48,29 @@ struct DiagnosticNotesCard: View {
     }
 
     private func noteRow(_ note: DiagnosticNote) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 12) {
             Text(note.headline)
                 .font(scale.font(12, weight: .medium))
                 .foregroundStyle(AppTheme.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            if let action = note.action {
+                .help(note.detail)
+
+            Spacer(minLength: 8)
+
+            if let button = note.button {
+                Button(DiagnosticActionPerformer.title(for: button)) { onAction(button) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(CategoryStyle.tint(for: .diagnostics))
+                    .help(note.action ?? "")
+            } else if let action = note.action {
                 Text(action)
                     .font(scale.font(11, weight: .medium))
                     .foregroundStyle(AppTheme.textSecondary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
             }
         }
-        .help(note.detail)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 9)

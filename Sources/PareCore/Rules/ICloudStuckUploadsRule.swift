@@ -61,7 +61,7 @@ public struct ICloudStuckUploadsRule: ScanRule {
             sizeBytes: 0,
             lastUsed: nil,
             confidence: confidence,
-            annotations: [.explainOnly(action: Self.action)]
+            annotations: [.explainOnly(action: Self.action), .noteAction(.openICloudStorage)]
         )
     }
 

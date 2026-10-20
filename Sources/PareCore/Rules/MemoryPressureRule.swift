@@ -134,7 +134,10 @@ public struct MemoryPressureRule: ScanRule {
             sizeBytes: 0,
             lastUsed: event.date,
             confidence: confidence,
-            annotations: [.explainOnly(action: "Quit memory-heavy apps such as \(largest) before memory runs out")]
+            annotations: [
+                .explainOnly(action: "Quit memory-heavy apps such as \(largest) before memory runs out"),
+                .noteAction(.showProcesses(pids: [])),
+            ]
         )
     }
 

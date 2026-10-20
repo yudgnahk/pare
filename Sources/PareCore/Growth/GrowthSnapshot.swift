@@ -45,6 +45,7 @@ public struct GrowthSnapshot: Codable, Sendable, Equatable {
             && !finding.annotations.contains { annotation in
                 switch annotation {
                 case .explainOnly, .workingSet, .deletedFilesHolder: return true
+                case .noteAction: return false
                 }
             }
     }

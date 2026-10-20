@@ -36,7 +36,9 @@ final class TinyFileQueueRuleTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(finding.sizeBytes, 60 * 200 * 4, "size is the allocated, not logical, size")
         XCTAssertTrue(finding.reason.hasPrefix("60 tiny files (avg 200 bytes) use "), finding.reason)
         XCTAssertTrue(finding.reason.contains("com.example.agent queue; clear it from the app or contact its support"), finding.reason)
-        XCTAssertEqual(finding.annotations, [.explainOnly(action: "Clear it from com.example.agent or contact its support")])
+        XCTAssertEqual(finding.annotations, [
+            .explainOnly(action: "Clear it from com.example.agent or contact its support"), .noteAction(.revealInFinder(path: queue.path)),
+        ])
     }
 
     func testSignalTable() async throws {

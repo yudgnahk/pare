@@ -167,7 +167,7 @@ final class ScanDashboardViewModelTests: XCTestCase {
         let diagnostic = ScanFinding(
             category: .diagnostics, riskLevel: .advanced, reason: "Desktop isn't backed up: 9.8 GB stuck — iCloud storage is full",
             path: "/Users/u/Library/Application Support/CloudDocs", sizeBytes: 0, lastUsed: nil, confidence: 0.8,
-            annotations: [.explainOnly(action: "Free up iCloud storage")]
+            annotations: [.explainOnly(action: "Free up iCloud storage"), .noteAction(.openICloudStorage)]
         )
         let cache = ScanFinding(
             category: .userCaches, riskLevel: .safe, reason: "cache",
@@ -178,5 +178,6 @@ final class ScanDashboardViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.diagnosticNotes.map(\.headline), ["Desktop isn't backed up: 9.8 GB stuck"])
         XCTAssertEqual(vm.diagnosticNotes.first?.action, "Free up iCloud storage")
+        XCTAssertEqual(vm.diagnosticNotes.first?.button, .openICloudStorage)
     }
 }
