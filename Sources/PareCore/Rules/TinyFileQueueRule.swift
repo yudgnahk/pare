@@ -202,7 +202,7 @@ public struct TinyFileQueueRule: ScanRule {
             sizeBytes: stats.allocated,
             lastUsed: newest,
             confidence: confidence,
-            annotations: [.explainOnly(action: "Clear it from \(app) or contact its support")]
+            annotations: [.explainOnly(action: "Clear it from \(app) or contact its support"), .noteAction(.revealInFinder(path: url.path))]
         )
     }
 

@@ -88,8 +88,10 @@ public struct GoCachesRule: ScanRule {
             return "Go module cache shared by every Go project — clear with `go clean -modcache` if needed (report-only)"
         case .explainOnly(let action):
             return action
-        case .deletedFilesHolder(let command):
-            return "Restart \(command) to reclaim the space"
+        case .deletedFilesHolder(let holder):
+            return "Restart \(holder.displayName) to reclaim the space"
+        case .noteAction:
+            return ""
         }
     }
 }

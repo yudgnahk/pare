@@ -207,7 +207,9 @@ struct ScanDashboardView: View {
     @ViewBuilder
     private var diagnosticNotesSection: some View {
         if !viewModel.diagnosticNotes.isEmpty {
-            DiagnosticNotesCard(notes: viewModel.diagnosticNotes)
+            DiagnosticNotesCard(notes: viewModel.diagnosticNotes) { action in
+                DiagnosticActionPerformer(reveal: { viewModel.revealInFinder(path: $0) }).perform(action)
+            }
         }
     }
 

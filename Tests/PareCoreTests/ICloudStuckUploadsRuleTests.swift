@@ -33,7 +33,7 @@ final class ICloudStuckUploadsRuleTests: XCTestCase {
             "Desktop and Documents aren't backed up: iCloud hasn't uploaded \(size) (3 items) for at least 56 days — "
                 + "iCloud storage is full"
         )
-        XCTAssertEqual(finding.annotations, [.explainOnly(action: ICloudStuckUploadsRule.action)])
+        XCTAssertEqual(finding.annotations, [.explainOnly(action: ICloudStuckUploadsRule.action), .noteAction(.openICloudStorage)])
     }
 
     func testFindingNeverNamesFilesOrSubfolders() async throws {

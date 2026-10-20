@@ -99,13 +99,27 @@ final class LaunchdRestartLoopRuleTests: XCTestCase {
             daemon.reason,
             "dev.example.daemon restarted 38,971 times; last exit code 1 — check or remove the agent in /Users/u/Library/LaunchAgents/dev.example.daemon.plist"
         )
-        XCTAssertEqual(daemon.annotations, [.explainOnly(action: "Check or remove the agent in /Users/u/Library/LaunchAgents/dev.example.daemon.plist")])
+        XCTAssertEqual(daemon.annotations, [
+            .explainOnly(action: "Check or remove the agent in /Users/u/Library/LaunchAgents/dev.example.daemon.plist"),
+            .noteAction(.revealInFinder(path: "/Users/u/Library/LaunchAgents/dev.example.daemon.plist")),
+        ])
 
         let menu = try XCTUnwrap(findings.first { $0.reason.hasPrefix("com.example.Menu") })
         XCTAssertEqual(menu.path, "/Applications/Example.app/Contents/MacOS/Menu", "no plist: the program path names it")
         XCTAssertTrue(menu.reason.contains("last terminated by signal Bus error: 10"), menu.reason)
         XCTAssertTrue(menu.reason.contains("check the app that registered it"), menu.reason)
+        XCTAssertTrue(menu.annotations.contains(.noteAction(.openLoginItems)), "registered by an app: Login Items, not a file")
         XCTAssertEqual(Set(printer.targets), ["gui/501", "gui/501/dev.example.daemon", "gui/501/com.example.Menu"])
+    }
+
+    func testAgentPlistInsideAnAppOpensLoginItems() async throws {
+        let plist = "/Applications/Example.app/Contents/Library/LaunchAgents/dev.example.daemon.plist"
+        let printer = ScriptedLaunchctl(domain: Self.domain, services: ["dev.example.daemon": Self.service(path: plist)])
+
+        let findings = await LaunchdRestartLoopRule(uid: 501, print: printer.print).customScan(environment: .current()) ?? []
+
+        let daemon = try XCTUnwrap(findings.first { $0.path == plist })
+        XCTAssertTrue(daemon.annotations.contains(.noteAction(.openLoginItems)))
     }
 
     func testPerLabelCallsAreCapped() async {

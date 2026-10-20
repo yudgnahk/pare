@@ -69,8 +69,29 @@ final class DiagnosticsFindingsTests: XCTestCase {
         XCTAssertEqual(finding.category, .diagnostics)
         XCTAssertEqual(finding.riskLevel, .advanced)
         XCTAssertEqual(finding.annotations, [
-            .explainOnly(action: "Restart node to reclaim the space"), .deletedFilesHolder(command: "node"),
+            .explainOnly(action: "Restart node to reclaim the space"),
+            .deletedFilesHolder(DeletedFilesHolder(command: "node", displayName: "node", pids: [100, 101], isSystem: false)),
+            .noteAction(.showProcesses(pids: [100, 101])),
         ])
+    }
+
+    func testSystemHoldersGetNoButtonAndAppsUseTheirBundleName() throws {
+        let paths: [Int32: String] = [
+            100: "/Applications/Example.app/Contents/Frameworks/Helper.app/Contents/MacOS/node",
+            300: "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+        ]
+        let findings = DeletedOpenFilesRule.findings(fromLsofOutput: Self.lsofOutput, executablePath: { paths[$0] })
+
+        let app = try XCTUnwrap(findings.first)
+        XCTAssertTrue(app.reason.contains("restart Example"), app.reason)
+        XCTAssertTrue(app.annotations.contains(.deletedFilesHolder(DeletedFilesHolder(
+            command: "node", displayName: "Example", pids: [100, 101], isSystem: false
+        ))))
+        let system = try XCTUnwrap(findings.last)
+        XCTAssertTrue(system.annotations.contains(.deletedFilesHolder(DeletedFilesHolder(
+            command: "WindowServer", displayName: "WindowServer", pids: [300], isSystem: true
+        ))))
+        XCTAssertFalse(system.annotations.contains { if case .noteAction = $0 { return true }; return false })
     }
 
     func testLsofEscapedNamesAreDecoded() {
@@ -145,7 +166,9 @@ final class DiagnosticsFindingsTests: XCTestCase {
         XCTAssertEqual(finding.category, .diagnostics)
         XCTAssertEqual(finding.riskLevel, .advanced)
         XCTAssertTrue(finding.reason.contains("close memory-heavy apps or restart"), finding.reason)
-        XCTAssertEqual(finding.annotations, [.explainOnly(action: "Close memory-heavy apps or restart to release swap")])
+        XCTAssertEqual(finding.annotations, [
+            .explainOnly(action: "Close memory-heavy apps or restart to release swap"), .noteAction(.showProcesses(pids: [])),
+        ])
     }
 
     // MARK: - Never reclaimable, never cleanable

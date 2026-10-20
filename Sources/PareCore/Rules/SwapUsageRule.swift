@@ -54,7 +54,9 @@ public struct SwapUsageRule: ScanRule {
             sizeBytes: used,
             lastUsed: nil,
             confidence: confidence,
-            annotations: [.explainOnly(action: "Close memory-heavy apps or restart to release swap")]
+            annotations: [
+                .explainOnly(action: "Close memory-heavy apps or restart to release swap"), .noteAction(.showProcesses(pids: [])),
+            ]
         )]
     }
 

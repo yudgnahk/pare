@@ -119,6 +119,9 @@ public struct LaunchdRestartLoopRule: ScanRule {
             ?? "Check the app that registered it, or remove it from Login Items"
         let advice = service.plistPath.map { "check or remove the agent in \($0)" }
             ?? "check the app that registered it, or remove it from Login Items"
+        // An agent shipped inside an app is managed through Login Items, not by editing its plist.
+        let button: DiagnosticAction = service.plistPath.flatMap { $0.contains(".app/") ? nil : .revealInFinder(path: $0) }
+            ?? .openLoginItems
         return ScanFinding(
             category: category,
             riskLevel: riskLevel,
@@ -127,7 +130,7 @@ public struct LaunchdRestartLoopRule: ScanRule {
             sizeBytes: 0,
             lastUsed: nil,
             confidence: confidence,
-            annotations: [.explainOnly(action: action)]
+            annotations: [.explainOnly(action: action), .noteAction(button)]
         )
     }
 
