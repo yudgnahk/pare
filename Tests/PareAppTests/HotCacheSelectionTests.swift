@@ -317,4 +317,71 @@ final class HotCacheSelectionTests: XCTestCase {
         XCTAssertEqual(vm.quickCleanCandidatesBytes, 35)
         XCTAssertNotNil(vm.heldOutHotNotice(includeReview: false))
     }
+
+    // MARK: - Cleaning before labels land
+
+    private func pendingKind(after request: (ScanDashboardViewModel) -> Void, in vm: ScanDashboardViewModel) -> PendingCleanup? {
+        request(vm)
+        let kind = vm.pendingCleanup
+        vm.cancelPendingCleanup()
+        return kind
+    }
+
+    func testCleanActionsAreRefusedUntilLabelsLand() {
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotResults(report)
+        vm.applySnapshotLabelingCacheActivity()
+
+        XCTAssertFalse(vm.canRequestCleanup)
+        XCTAssertNil(pendingKind(after: { $0.requestQuickClean() }, in: vm))
+        XCTAssertNil(pendingKind(after: { $0.requestDeepClean() }, in: vm))
+        XCTAssertNil(pendingKind(after: { $0.requestCleanSelected() }, in: vm))
+        for kind in [PendingCleanup.quick, .deep, .selected] {
+            XCTAssertNil(vm.findingsToClean(for: kind), "\(kind)")
+        }
+
+        vm.applyCacheActivity([solo: hot], generation: vm.currentScanGeneration)
+
+        XCTAssertTrue(vm.canRequestCleanup)
+        XCTAssertEqual(pendingKind(after: { $0.requestQuickClean() }, in: vm), .quick)
+        XCTAssertEqual(pendingKind(after: { $0.requestDeepClean() }, in: vm), .deep)
+        XCTAssertEqual(pendingKind(after: { $0.requestCleanSelected() }, in: vm), .selected)
+    }
+
+    func testFindingsSentToCleanupNeverContainHotRows() {
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotResults(report)
+        vm.applySnapshotLabelingCacheActivity()
+        vm.applyCacheActivity([solo: hot], generation: vm.currentScanGeneration)
+
+        for kind in [PendingCleanup.quick, .deep, .selected] {
+            let paths = vm.findingsToClean(for: kind)?.map(\.path)
+            XCTAssertEqual(Set(paths ?? []), [mixedOne, mixedTwo, other], "\(kind)")
+        }
+    }
+
+    func testLabelsFromAnOlderScanKeepTheNewScanWaiting() {
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotResults(report)
+        let staleGeneration = vm.currentScanGeneration
+        vm.cancelScan()
+        vm.applySnapshotResults(report)
+        vm.applySnapshotLabelingCacheActivity()
+
+        vm.applyCacheActivity([solo: hot], generation: staleGeneration)
+
+        XCTAssertFalse(vm.canRequestCleanup)
+        XCTAssertNil(vm.findingsToClean(for: .quick))
+    }
+
+    func testCancellingAScanDoesNotLeaveCleanActionsWaiting() {
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotResults(report)
+        vm.applySnapshotLabelingCacheActivity()
+
+        vm.cancelScan()
+        vm.applySnapshotResults(report)
+
+        XCTAssertTrue(vm.canRequestCleanup)
+    }
 }

@@ -104,16 +104,18 @@ final class ScanDashboardViewModelTests: XCTestCase {
 
     /// The floating action bar must not look clickable while a (re)scan makes its requests no-ops.
     func testCleanupActionsEnabledOnlyAfterSuccessfulScanWhenIdle() {
-        let cases: [(name: String, state: ScanDashboardViewModel.ScanState, cleaning: Bool, undoing: Bool, expected: Bool)] = [
-            ("success", .success, false, false, true),
-            ("scanning", .scanning, false, false, false),
-            ("idle", .idle, false, false, false),
-            ("success while cleaning", .success, true, false, false),
-            ("success while undoing", .success, false, true, false),
+        let cases: [(name: String, state: ScanDashboardViewModel.ScanState, cleaning: Bool, undoing: Bool, labeling: Bool, expected: Bool)] = [
+            ("success", .success, false, false, false, true),
+            ("scanning", .scanning, false, false, false, false),
+            ("idle", .idle, false, false, false, false),
+            ("success while cleaning", .success, true, false, false, false),
+            ("success while undoing", .success, false, true, false, false),
+            ("success while labeling cache activity", .success, false, false, true, false),
         ]
         for testCase in cases {
             let result = ScanDashboardViewModel.cleanupActionsEnabled(
-                state: testCase.state, isCleaning: testCase.cleaning, isUndoing: testCase.undoing
+                state: testCase.state, isCleaning: testCase.cleaning, isUndoing: testCase.undoing,
+                isLabelingCacheActivity: testCase.labeling
             )
             XCTAssertEqual(result, testCase.expected, testCase.name)
         }

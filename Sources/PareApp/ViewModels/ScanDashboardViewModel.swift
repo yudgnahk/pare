@@ -46,6 +46,8 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var scanWarnings: [String] = []
     /// Cache activity by finding path, filled after results appear; hot rows the user has not clicked get unticked.
     @Published private(set) var cacheActivity: [String: CacheActivityLabel] = [:]
+    /// True from results appearing until the labels land; clean actions wait so no hot row slips through.
+    @Published private(set) var isLabelingCacheActivity = false
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
     @Published private(set) var perToolRollups: [ToolRollup] = []
@@ -130,12 +132,17 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Whether clean actions may be requested; the request methods silently ignore clicks otherwise.
     var canRequestCleanup: Bool {
-        Self.cleanupActionsEnabled(state: state, isCleaning: cleanup.isCleaning, isUndoing: cleanup.isUndoing)
+        Self.cleanupActionsEnabled(
+            state: state, isCleaning: cleanup.isCleaning, isUndoing: cleanup.isUndoing,
+            isLabelingCacheActivity: isLabelingCacheActivity
+        )
     }
 
-    /// Mirrors the `state == .success` guard in `requestQuickClean`/`requestDeepClean`/`requestCleanSelected`.
-    static func cleanupActionsEnabled(state: ScanState, isCleaning: Bool, isUndoing: Bool) -> Bool {
-        state == .success && !isCleaning && !isUndoing
+    /// Mirrors the guard in `requestQuickClean`/`requestDeepClean`/`requestCleanSelected`.
+    static func cleanupActionsEnabled(
+        state: ScanState, isCleaning: Bool, isUndoing: Bool, isLabelingCacheActivity: Bool
+    ) -> Bool {
+        state == .success && !isCleaning && !isUndoing && !isLabelingCacheActivity
     }
     var isCleaning: Bool { cleanup.isCleaning }
     var isUndoing: Bool { cleanup.isUndoing }
@@ -355,6 +362,7 @@ final class ScanDashboardViewModel: ObservableObject {
         scanGeneration += 1
         scanTask?.cancel()
         scanTask = nil
+        isLabelingCacheActivity = false
         state = .idle
         scanRulesCompleted = 0
         scanRulesTotal = 0
@@ -416,6 +424,7 @@ final class ScanDashboardViewModel: ObservableObject {
         scanGeneration += 1
         let generation = scanGeneration
         growthSinceLastScan = nil
+        isLabelingCacheActivity = false
         state = .scanning
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
@@ -467,6 +476,7 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Growth recording and cache-activity labeling run side by side; each lands only while its scan is current.
     private func publishPostScanDetails(report: ScanReport, generation: Int) async {
         cacheActivity = [:]
+        isLabelingCacheActivity = true
         let store = growthStore
         // Only the rows "Largest items" shows can display a label.
         let shown = largestItems.compactMap { findingsByPath[$0.path] }
@@ -475,6 +485,7 @@ final class ScanDashboardViewModel: ObservableObject {
 
         let activity = await activityJob.value
         if !Task.isCancelled { applyCacheActivity(activity, generation: generation) }
+        if generation == scanGeneration { isLabelingCacheActivity = false }
         let growth = await growthJob.value
         if generation == scanGeneration, !Task.isCancelled { growthSinceLastScan = growth }
     }
@@ -482,6 +493,7 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Labels from an older scan are dropped so they cannot change a newer scan's selection.
     func applyCacheActivity(_ labels: [String: CacheActivityLabel], generation: Int) {
         guard generation == scanGeneration else { return }
+        isLabelingCacheActivity = false
         cacheActivity = labels
         selection.applyHotPaths(Set(labels.filter { $0.value.activity == .hot }.keys))
         candidateStats = CandidateStats.compute(from: bulkCleanFindings)
@@ -680,19 +692,21 @@ final class ScanDashboardViewModel: ObservableObject {
     // MARK: - Cleanup actions
 
     func requestQuickClean() {
-        guard !latestFindings.isEmpty, state == .success else { return }
+        guard !latestFindings.isEmpty, canRequestScanCleanup else { return }
         cleanup.request(.quick)
     }
 
     func requestDeepClean() {
-        guard !latestFindings.isEmpty, state == .success else { return }
+        guard !latestFindings.isEmpty, canRequestScanCleanup else { return }
         cleanup.request(.deep)
     }
 
     func requestCleanSelected() {
-        guard selectedCandidatesCount > 0, state == .success else { return }
+        guard selectedCandidatesCount > 0, canRequestScanCleanup else { return }
         cleanup.request(.selected)
     }
+
+    private var canRequestScanCleanup: Bool { state == .success && !isLabelingCacheActivity }
 
     /// One confirm path for all three cleanup kinds (was three duplicate bodies).
     func confirmPendingCleanup() {
@@ -701,17 +715,22 @@ final class ScanDashboardViewModel: ObservableObject {
             cleanup.pending = nil
             return
         }
-        let findings: [ScanFinding]
+        guard let findings = findingsToClean(for: kind) else { return }
+        cleanup.confirm(kind, findings: findings)
+    }
+
+    /// What `confirmPendingCleanup` sends the engine; nil while labels are pending, so no hot row is sent unlabeled.
+    func findingsToClean(for kind: PendingCleanup) -> [ScanFinding]? {
+        guard !isLabelingCacheActivity else { return nil }
         switch kind {
         case .quick, .deep:
-            findings = bulkCleanFindings
+            return bulkCleanFindings
         case .selected:
             // Expand folder ids → paths only here (background-friendly), not during UI scroll.
-            findings = selectedFindingsForClean()
+            return selectedFindingsForClean()
         case .diskReview:
-            return
+            return nil
         }
-        cleanup.confirm(kind, findings: findings)
     }
 
     func cancelPendingCleanup() {
@@ -823,6 +842,11 @@ extension ScanDashboardViewModel {
         let finishedAt = Date()
         applyPreparedScanResults(prepared, startedAt: finishedAt.addingTimeInterval(-duration), finishedAt: finishedAt)
         if !cacheActivity.isEmpty { applyCacheActivity(cacheActivity, generation: scanGeneration) }
+    }
+
+    /// Holds results in the window between the scan finishing and its labels landing.
+    func applySnapshotLabelingCacheActivity() {
+        isLabelingCacheActivity = true
     }
 
     /// Freezes the hero in its finalize state (all rules done, results being prepared).

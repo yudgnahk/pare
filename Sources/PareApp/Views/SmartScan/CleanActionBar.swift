@@ -33,6 +33,12 @@ struct CleanActionBar: View {
         .shadow(color: AppTheme.Shadow.card.opacity(AppTheme.Elevation.floating.opacity), radius: AppTheme.Elevation.floating.radius, y: AppTheme.Elevation.floating.y)
     }
 
+    private var subtitle: String {
+        if viewModel.isScanning { return "Scanning… clean actions return when it finishes" }
+        if viewModel.isLabelingCacheActivity { return "Checking recent cache activity…" }
+        return "Everything goes to the Trash first"
+    }
+
     private var selectionSummary: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
@@ -47,7 +53,7 @@ struct CleanActionBar: View {
             .font(scale.font(14, weight: .semibold))
             .lineLimit(1)
 
-            Text(viewModel.isScanning ? "Scanning… clean actions return when it finishes" : "Everything goes to the Trash first")
+            Text(subtitle)
                 .font(scale.font(11, weight: .medium))
                 .foregroundStyle(AppTheme.textTertiary)
                 .lineLimit(1)
