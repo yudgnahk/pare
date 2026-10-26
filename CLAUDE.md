@@ -85,7 +85,9 @@ make run-app      # launch the SwiftUI app and exercise the changed feature manu
 - SwiftUI previews use `struct <Name>_Previews: PreviewProvider`, never the `#Preview` macro. The macro needs the `PreviewsMacros` compiler plugin that only ships inside Xcode.app, so `swift build` breaks on Command Line Tools-only machines. The same applies to any other SwiftUI macro (`@Entry`, `@Animatable`) — avoid them.
 - Wrap preview structs — and any helper type that exists only to back a preview — in `#if DEBUG` / `#endif` so they stay out of release builds.
 - SPM resource bundles go in `Contents/Resources/` when assembling the `.app` (both `make run-app` and `scripts/release.sh`). `Contents/MacOS/` is **not** a path `ResourceBundle` searches.
-- Find external tools (uv, pnpm, go, git) through `ToolSearchPath` / `ToolCommandRunner.resolveExecutable`, never the bare inherited PATH: a Finder-launched app gets only `/usr/bin:/bin:/usr/sbin:/sbin`.
+- Find external tools (uv, pnpm, go) through `ToolSearchPath` / `ToolCommandRunner.resolveExecutable`, never the bare inherited PATH: a Finder-launched app gets only `/usr/bin:/bin:/usr/sbin:/sbin`.
+- git comes only from `GitLocator`: Apple's git in a root-controlled developer directory (`RootControlledExecutable`), never Homebrew's or another user-writable one, which same-user code could swap to borrow Pare's Full Disk Access.
+- `ToolCommandRunner`'s timeout is hard: the child runs in its own process group, gets SIGTERM then SIGKILL, and the call answers nil without waiting for EOF.
 - Read PareCore resources through `ResourceBundle.pareCore`, never `Bundle.module` — the generated accessor calls `fatalError` when the bundle is missing, which crashes a scan instead of degrading.
 
 ## Known State

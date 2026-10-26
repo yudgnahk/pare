@@ -1,9 +1,10 @@
 import Foundation
 
-/// Finds a real git binary without ever launching the `/usr/bin/git` shim, which opens
-/// the "install developer tools" dialog on machines without Command Line Tools.
+/// Finds Apple's git in a root-controlled developer directory. Never the `/usr/bin/git` shim, which opens
+/// the "install developer tools" dialog without Command Line Tools, and never a user-writable install
+/// such as Homebrew's, which other code running as the user could replace to borrow Pare's access.
 public struct GitLocator: Sendable {
-    static let shimDirectory = "/usr/bin"
+    static let commandLineToolsDirectory = "/Library/Developer/CommandLineTools"
 
     /// `xcode-select -p`, or nil when no developer directory is selected.
     public static let selectedDeveloperDirectory: @Sendable () async -> String? = {
@@ -13,28 +14,26 @@ public struct GitLocator: Sendable {
         )
     }
 
-    private let environment: [String: String]
-    private let isExecutable: @Sendable (String) -> Bool
+    private let rootControlledPath: @Sendable (String) -> String?
     private let developerDirectory: @Sendable () async -> String?
 
     public init(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        isExecutable: @escaping @Sendable (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) },
+        rootControlledPath: @escaping @Sendable (String) -> String? = { RootControlledExecutable.resolve($0) },
         developerDirectory: @escaping @Sendable () async -> String? = GitLocator.selectedDeveloperDirectory
     ) {
-        self.environment = environment
-        self.isExecutable = isExecutable
+        self.rootControlledPath = rootControlledPath
         self.developerDirectory = developerDirectory
     }
 
-    /// `ToolSearchPath` (minus `/usr/bin`), then the selected developer directory.
+    /// Command Line Tools first (no launch needed), then the selected developer directory.
     public func locate() async -> URL? {
-        for directory in ToolSearchPath.directories(environment: environment) where directory != Self.shimDirectory {
-            let candidate = directory + "/git"
-            if isExecutable(candidate) { return URL(fileURLWithPath: candidate) }
-        }
+        if let git = rootControlledGit(in: Self.commandLineToolsDirectory) { return git }
         guard let developer = await developerDirectory(), !developer.isEmpty else { return nil }
-        let candidate = URL(fileURLWithPath: developer).appending(path: "usr/bin/git").path
-        return isExecutable(candidate) ? URL(fileURLWithPath: candidate) : nil
+        return rootControlledGit(in: developer)
+    }
+
+    private func rootControlledGit(in developerDirectory: String) -> URL? {
+        let candidate = URL(fileURLWithPath: developerDirectory).appending(path: "usr/bin/git").path
+        return rootControlledPath(candidate).map { URL(fileURLWithPath: $0) }
     }
 }

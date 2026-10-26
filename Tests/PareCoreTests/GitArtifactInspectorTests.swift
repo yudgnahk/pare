@@ -213,38 +213,13 @@ final class GitArtifactInspectorFailureTests: XCTestCase {
 
 final class GitLocatorTests: XCTestCase {
 
-    private let cltDirectory = "/Library/Developer/CommandLineTools"
+    private let cltGit = "/Library/Developer/CommandLineTools/usr/bin/git"
+    private let xcodeDeveloper = "/Library/Developer/Xcode-root.app/Contents/Developer"
 
-    func testNeverReturnsUsrBinShimWhenDeveloperToolsAreMissing() async {
-        let locator = GitLocator(
-            environment: ["PATH": "/usr/bin:/bin"],
-            isExecutable: { $0 == "/usr/bin/git" },
-            developerDirectory: { nil }
-        )
-
-        let located = await locator.locate()
-
-        XCTAssertNil(located)
-    }
-
-    func testUsesDeveloperDirectoryGitWhenXcodeSelectSucceeds() async {
-        let cltGit = cltDirectory + "/usr/bin/git"
-        let locator = GitLocator(
-            environment: ["PATH": "/usr/bin:/bin"],
-            isExecutable: { $0 == "/usr/bin/git" || $0 == cltGit },
-            developerDirectory: { [cltDirectory] in cltDirectory }
-        )
-
-        let located = await locator.locate()
-
-        XCTAssertEqual(located?.path, cltGit)
-    }
-
-    func testPrefersPathEntryAndSkipsXcodeSelect() async {
+    func testUsesCommandLineToolsGitWithoutAskingXcodeSelect() async {
         let asked = LockedCounter()
         let locator = GitLocator(
-            environment: ["PATH": "/usr/bin:/custom/bin"],
-            isExecutable: { $0 == "/usr/bin/git" || $0 == "/custom/bin/git" },
+            rootControlledPath: { [cltGit] in $0 == cltGit ? $0 : nil },
             developerDirectory: {
                 asked.increment()
                 return nil
@@ -253,20 +228,112 @@ final class GitLocatorTests: XCTestCase {
 
         let located = await locator.locate()
 
-        XCTAssertEqual(located?.path, "/custom/bin/git")
+        XCTAssertEqual(located?.path, cltGit)
         XCTAssertEqual(asked.value, 0)
     }
 
-    func testFallsBackToHomebrewLocations() async {
+    func testFallsBackToRootControlledSelectedDeveloperDirectory() async {
+        let xcodeGit = xcodeDeveloper + "/usr/bin/git"
         let locator = GitLocator(
-            environment: [:],
-            isExecutable: { $0 == "/opt/homebrew/bin/git" },
+            rootControlledPath: { $0 == xcodeGit ? $0 : nil },
+            developerDirectory: { [xcodeDeveloper] in xcodeDeveloper }
+        )
+
+        let located = await locator.locate()
+
+        XCTAssertEqual(located?.path, xcodeGit)
+    }
+
+    func testRejectsDeveloperDirectoryGitOthersCouldReplace() async {
+        let locator = GitLocator(
+            rootControlledPath: { _ in nil },
+            developerDirectory: { "/Applications/Xcode.app/Contents/Developer" }
+        )
+
+        let located = await locator.locate()
+
+        XCTAssertNil(located, "a git outside a root-controlled tree must never run")
+    }
+
+    func testNeverLooksAtUsrBinShimOrSearchPath() async {
+        let probed = LockedPaths()
+        let locator = GitLocator(
+            rootControlledPath: { path in
+                probed.append(path)
+                return nil
+            },
+            developerDirectory: { nil }
+        )
+
+        _ = await locator.locate()
+
+        XCTAssertEqual(probed.values, [cltGit], "only developer-directory gits are candidates")
+    }
+
+    func testLaunchesTheResolvedPath() async {
+        let locator = GitLocator(
+            rootControlledPath: { [cltGit] in $0 == cltGit ? "/Library/Developer/CommandLineTools/real/git" : nil },
             developerDirectory: { nil }
         )
 
         let located = await locator.locate()
 
-        XCTAssertEqual(located?.path, "/opt/homebrew/bin/git")
+        XCTAssertEqual(located?.path, "/Library/Developer/CommandLineTools/real/git")
+    }
+}
+
+final class RootControlledExecutableTests: XCTestCase {
+
+    func testSystemBinaryIsRootControlled() {
+        XCTAssertEqual(RootControlledExecutable.resolve("/bin/sh"), "/bin/sh")
+    }
+
+    func testUserOwnedExecutableIsRejected() throws {
+        let tool = try makeUserTool()
+        defer { try? FileManager.default.removeItem(at: tool.deletingLastPathComponent()) }
+
+        XCTAssertNil(RootControlledExecutable.resolve(tool.path))
+    }
+
+    func testSymlinkInUserDirectoryResolvesToItsRootControlledTarget() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "pare-rootctl-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let link = directory.appending(path: "sh")
+        try FileManager.default.createSymbolicLink(atPath: link.path, withDestinationPath: "/bin/sh")
+
+        XCTAssertEqual(RootControlledExecutable.resolve(link.path), "/bin/sh",
+                       "the resolved target is what launches, so only its chain matters")
+    }
+
+    func testMissingFileIsRejected() {
+        XCTAssertNil(RootControlledExecutable.resolve("/definitely/not/here/\(UUID().uuidString)"))
+    }
+
+    private func makeUserTool() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "pare-rootctl-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let tool = directory.appending(path: "git")
+        try Data("#!/bin/sh\necho planted\n".utf8).write(to: tool)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tool.path)
+        return tool
+    }
+}
+
+final class LockedPaths: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    var values: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ path: String) {
+        lock.lock()
+        storage.append(path)
+        lock.unlock()
     }
 }
 

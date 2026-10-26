@@ -50,18 +50,6 @@ final class ToolSearchPathTests: XCTestCase {
         XCTAssertEqual(runner.resolveExecutable(named: "pare-fake-cargo-tool", environmentVariables: environment)?.path, cargoTool.path)
     }
 
-    func testFinderPathStillFindsGitOutsideUsrBin() async {
-        let locator = GitLocator(
-            environment: ["PATH": finderPath, "HOME": home.path],
-            isExecutable: { $0 == "/usr/bin/git" || $0 == "/opt/homebrew/bin/git" },
-            developerDirectory: { nil }
-        )
-
-        let located = await locator.locate()
-
-        XCTAssertEqual(located?.path, "/opt/homebrew/bin/git")
-    }
-
     func testLaunchedToolSeesWidenedPath() async throws {
         try makeTool(".local/bin/pare-fake-path-echo", script: "#!/bin/sh\necho \"$PATH\"\n")
 
