@@ -25,6 +25,14 @@ extension ScanPolicy {
         }
     }
 
+    /// False for IDs too generic for prefix or component matching: under three components, or Apple's
+    /// namespace on an app outside `/System`; such apps only get exact-name leftovers.
+    public static func allowsDerivedLeftovers(bundleID: String, appPath: String) -> Bool {
+        let id = bundleID.lowercased()
+        guard id.split(separator: ".").count >= 3 else { return false }
+        return !id.hasPrefix("com.apple.") || appPath.hasPrefix("/System/")
+    }
+
     /// Dot-boundary match of a Preferences or launchd file name (`.plist` stripped), case-insensitive.
     public static func bundleIDNameMatch(_ fileName: String, bundleID: String) -> BundleIDNameMatch {
         let id = bundleID.lowercased()

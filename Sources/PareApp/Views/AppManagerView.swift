@@ -194,11 +194,13 @@ struct AppManagerView: View {
                     color: AppTheme.warning
                 )
             }
-            if case .done(let trashed, let failed) = viewModel.uninstallState {
+            if case .done(let trashed, let failed, let undoSaved) = viewModel.uninstallState {
                 metricChip(
-                    label: "\(trashed) trashed\(failed > 0 ? ", \(failed) failed" : "")",
+                    label: undoSaved
+                        ? "\(trashed) trashed\(failed > 0 ? ", \(failed) failed" : "")"
+                        : "Moved to Trash, but Undo could not be saved",
                     sub: "last uninstall",
-                    color: failed > 0 ? AppTheme.review : AppTheme.success
+                    color: failed > 0 || !undoSaved ? AppTheme.review : AppTheme.success
                 )
             }
             Spacer(minLength: 0)
