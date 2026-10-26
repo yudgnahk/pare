@@ -1,7 +1,8 @@
 import Foundation
 
 public struct InstalledApp: Identifiable, Sendable {
-    public let id: String  // bundle ID, or path if bundle ID is missing
+    /// The bundle path: copies of one app share a bundle ID, and a shared row identity would act on the wrong copy.
+    public let id: String
     public let name: String
     public let bundleID: String?
     public let version: String
@@ -29,7 +30,7 @@ public struct InstalledApp: Identifiable, Sendable {
         isHomebrewManaged: Bool = false,
         updateInfo: UpdateInfo? = nil
     ) {
-        self.id = bundleID ?? path
+        self.id = path
         self.name = name
         self.bundleID = bundleID
         self.version = version
