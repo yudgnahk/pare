@@ -1,7 +1,8 @@
 import Foundation
 
 /// Old app versions kept side by side (e.g. `releases/0.9.0-…`, `0.10.0-…`, `0.10.1-…`): offered for review,
-/// keeping the newest two and any version a running process executes from. No process snapshot, no findings.
+/// keeping the newest two and any version a running process executes from. Only app installs are offered,
+/// never versioned user data (launcher instances, saves); no process snapshot, no findings.
 public struct VersionSiblingsRule: ScanRule {
     public let id = "version-siblings"
     public let title = "Old App Versions"
@@ -21,7 +22,7 @@ public struct VersionSiblingsRule: ScanRule {
 
     private let runningExecutables: any RunningExecutablesProviding
 
-    public init(runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider()) {
+    public init(runningExecutables: any RunningExecutablesProviding = LibprocRunningExecutablesProvider()) {
         self.runningExecutables = runningExecutables
     }
 
@@ -111,7 +112,8 @@ public struct VersionSiblingsRule: ScanRule {
         let appName = Self.appName(for: group[0].url)
         return newestFirst.dropFirst(kept.count).compactMap { (candidate: (url: URL, name: VersionedName)) -> ScanFinding? in
             guard !ScanPolicy.isExecutedFrom(candidate.url, runningExecutables: executables),
-                  !ScanPolicy.containsSensitiveDataMarker(candidate.url) else { return nil }
+                  !ScanPolicy.containsSensitiveDataMarker(candidate.url),
+                  ScanPolicy.isVersionInstall(candidate.url) else { return nil }
             let size = sizeIndex.directorySize(url: candidate.url)
             guard size > 0 else { return nil }
             return ScanFinding(

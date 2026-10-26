@@ -220,9 +220,9 @@ final class VersionSiblingTests: XCTestCase {
             try FileManager.default.createDirectory(at: manager.deletingLastPathComponent().appending(path: "Library"),
                                                     withIntermediateDirectories: true)
             let versions = manager.appending(path: "node-versions")
-            let oldest = try makeVersion(versions, "v1.0.0")
-            try makeVersion(versions, "v1.1.0")
-            try makeVersion(versions, "v1.2.0")
+            let oldest = try makeVersion(versions, "v1.0.0", machO: true)
+            try makeVersion(versions, "v1.1.0", machO: true)
+            try makeVersion(versions, "v1.2.0", machO: true)
             try testCase.pin(manager, oldest)
             let members = ["v1.0.0", "v1.1.0", "v1.2.0"].map { versions.appending(path: $0) }
 
@@ -370,20 +370,124 @@ final class VersionSiblingTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: middle.path))
     }
 
-    // MARK: - Process snapshot
+    // MARK: - Install evidence
 
-    func testPsProviderParsesPathsAndFailsClosed() async {
-        let cases: [(name: String, script: String, expected: [String]?)] = [
-            ("paths", "printf '/usr/libexec/a\\n  /Applications/X.app/Contents/MacOS/X\\nkernel_task\\n'",
-             ["/usr/libexec/a", "/Applications/X.app/Contents/MacOS/X"]),
-            ("no paths", "echo kernel_task", nil),
-            ("non-zero exit", "printf '/usr/libexec/a\\n'\nexit 1", nil),
-            ("timeout", "exec sleep 5", nil),
+    func testVersionedUserDataIsNeverOffered() async throws {
+        // Prism Launcher names instances after the Minecraft version; each holds the user's worlds.
+        let instances = home.appending(path: "Library/Application Support/PrismLauncher/instances")
+        for version in ["1.20.1", "1.19.2", "1.18.2"] {
+            let instance = try makeVersion(instances, version, machO: true)
+            try FileManager.default.createDirectory(at: instance.appending(path: ".minecraft/saves/World"),
+                                                    withIntermediateDirectories: true)
+            try Data("level".utf8).write(to: instance.appending(path: ".minecraft/saves/World/level.dat"))
+        }
+        let oldest = instances.appending(path: "1.18.2")
+
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+        XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
+        XCTAssertEqual(ScanPolicy.versionSiblingRefusal(oldest, runningExecutables: [], customRoots: []), .notAnAppInstall)
+
+        let result = try await engine(StubExecutables([])).clean(findings: [finding(oldest)], profileName: "test")
+        XCTAssertTrue(result.succeeded.isEmpty)
+        guard case .some(.versionKept(_, let reason)) = result.skipped.first?.error else {
+            return XCTFail("expected .versionKept, got \(result.skipped.map(\.reason))")
+        }
+        XCTAssertEqual(reason, "not an app install")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: oldest.appending(path: ".minecraft/saves/World/level.dat").path))
+    }
+
+    func testInstallEvidence() throws {
+        let cases: [(name: String, parent: String, layout: (URL) throws -> Void, install: Bool)] = [
+            ("install parent", ".tool/versions", { _ in }, true),
+            ("install parent, any case", ".tool/Releases", { _ in }, true),
+            ("Mach-O executable", ".tool/daemon", { try self.writeMachO($0.appending(path: "bin/tool")) }, true),
+            ("universal executable", ".tool/daemon", { try self.writeMachO($0.appending(path: "tool"), fat: true) }, true),
+            ("app bundle", ".tool/daemon", {
+                try FileManager.default.createDirectory(at: $0.appending(path: "Tool.app/Contents"), withIntermediateDirectories: true)
+            }, true),
+            ("no program", ".tool/daemon", { _ in }, false),
+            ("Mach-O without the exec bit", ".tool/daemon", {
+                try self.writeMachO($0.appending(path: "bin/tool"), permissions: 0o644)
+            }, false),
+            ("dylib, not an executable", ".tool/daemon", {
+                try self.writeMachO($0.appending(path: "lib/libtool.dylib"), fileType: 6)
+            }, false),
+            ("Java class file", ".tool/daemon", {
+                try self.writeExecutable($0.appending(path: "Tool.class"), [0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 52])
+            }, false),
+            ("database beside the program", ".tool/versions", { try Data().write(to: $0.appending(path: "state.sqlite")) }, false),
+            ("saves under an install parent", ".game/versions", {
+                try FileManager.default.createDirectory(at: $0.appending(path: "saves"), withIntermediateDirectories: true)
+            }, false),
+            ("profiles above it", "Library/Application Support/Game/Profiles", {
+                try self.writeMachO($0.appending(path: "bin/tool"))
+            }, false),
         ]
         for testCase in cases {
-            let paths = await psProvider(testCase.script).runningExecutablePaths()
+            let member = try makeVersion(home.appending(path: "\(UUID().uuidString)/\(testCase.parent)"), "1.0.0")
+            try testCase.layout(member)
+            XCTAssertEqual(ScanPolicy.isVersionInstall(member), testCase.install, testCase.name)
+        }
+    }
+
+    func testExecutableUnderAPlainParentIsStillOffered() async throws {
+        let daemon = home.appending(path: ".tool/daemon")
+        for version in ["1.0.0", "1.1.0", "1.2.0"] {
+            try makeVersion(daemon, version, machO: true)
+        }
+        try makeVersion(home.appending(path: ".notes/drafts"), "1.0.0")
+        try makeVersion(home.appending(path: ".notes/drafts"), "1.1.0")
+        try makeVersion(home.appending(path: ".notes/drafts"), "1.2.0")
+
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+
+        XCTAssertEqual(findings.map(\.path), [daemon.appending(path: "1.0.0").path], "a folder with no program is not offered")
+    }
+
+    // MARK: - Process snapshot
+
+    func testOpenFileCheckUnavailableKeepsVersions() async throws {
+        let versions = home.appending(path: ".tool/versions")
+        for version in ["1.0.0", "1.1.0", "1.2.0"] {
+            try makeVersion(versions, version)
+        }
+        let oldest = versions.appending(path: "1.0.0")
+
+        let result = try await engine(StubExecutables([]), openFiles: CountingSnapshotProvider(snapshot: nil))
+            .clean(findings: [finding(oldest)], profileName: "test")
+
+        XCTAssertTrue(result.succeeded.isEmpty)
+        guard case .some(.inUse) = result.skipped.first?.error else {
+            return XCTFail("expected .inUse, got \(result.skipped.map(\.reason))")
+        }
+        XCTAssertTrue(result.inUseCheckUnavailable)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: oldest.path))
+    }
+
+    func testLibprocProviderKeepsAbsolutePathsAndFailsClosed() async {
+        let canned: [pid_t: String] = [1: "/usr/libexec/a", 2: "/usr/libexec/a", 3: "node", 5: "/opt/x/bin/x"]
+        let cases: [(name: String, pids: [pid_t]?, expected: [String]?)] = [
+            ("paths, deduplicated", [1, 2, 3, 4, 5], ["/opt/x/bin/x", "/usr/libexec/a"]),
+            ("no path at all", [3, 4], nil),
+            ("pid listing failed", nil, nil),
+        ]
+        for testCase in cases {
+            let provider = LibprocRunningExecutablesProvider(listPIDs: { testCase.pids }, pathForPID: { canned[$0] })
+            let paths = await provider.runningExecutablePaths()
             XCTAssertEqual(paths, testCase.expected, testCase.name)
         }
+    }
+
+    func testLibprocProviderSeesARunningProcessByItsRealPath() async throws {
+        let sleeper = Process()
+        sleeper.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        sleeper.arguments = ["10"]
+        try sleeper.run()
+        defer { sleeper.terminate() }
+
+        let paths = await LibprocRunningExecutablesProvider().runningExecutablePaths()
+
+        XCTAssertTrue(paths?.contains("/bin/sleep") == true, "\(paths ?? [])")
     }
 
     // MARK: - Helpers
@@ -412,12 +516,29 @@ final class VersionSiblingTests: XCTestCase {
         XCTAssertTrue(ScanPolicy.isReclaimableVersionSibling(oldest, runningExecutables: []), "control: inside a home dot directory")
     }
 
+    /// `machO` makes `bin/tool` a real executable, for parents that do not name an install folder.
     @discardableResult
-    private func makeVersion(_ parent: URL, _ name: String) throws -> URL {
+    private func makeVersion(_ parent: URL, _ name: String, machO: Bool = false) throws -> URL {
         let dir = parent.appending(path: name)
         try FileManager.default.createDirectory(at: dir.appending(path: "bin"), withIntermediateDirectories: true)
-        try Data(repeating: 0x42, count: 4096).write(to: dir.appending(path: "bin/tool"))
+        if machO {
+            try writeMachO(dir.appending(path: "bin/tool"))
+        } else {
+            try Data(repeating: 0x42, count: 4096).write(to: dir.appending(path: "bin/tool"))
+        }
         return URL(fileURLWithPath: dir.path)
+    }
+
+    private func writeMachO(_ url: URL, fileType: UInt32 = 2, fat: Bool = false, permissions: Int = 0o755) throws {
+        let thin = MachOFixture.header(fileType: fileType)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try (fat ? MachOFixture.universal(slice: thin) : thin).write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: url.path)
+    }
+
+    private func writeExecutable(_ url: URL, _ bytes: [UInt8]) throws {
+        try (Data(bytes) + Data(count: 64)).write(to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
     }
 
     private func finding(_ url: URL) -> ScanFinding {
@@ -425,7 +546,10 @@ final class VersionSiblingTests: XCTestCase {
                     sizeBytes: 4096, lastUsed: nil, confidence: 1.0)
     }
 
-    private func engine(_ executables: StubExecutables) -> CleanupEngine {
+    private func engine(
+        _ executables: StubExecutables,
+        openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen)
+    ) -> CleanupEngine {
         let trash = root.appending(path: "Trash")
         try? FileManager.default.createDirectory(at: trash, withIntermediateDirectories: true)
         return CleanupEngineFixture.make(
@@ -437,15 +561,9 @@ final class VersionSiblingTests: XCTestCase {
                 try FileManager.default.moveItem(at: url, to: destination)
                 return destination
             },
+            openFiles: openFiles,
             runningExecutables: executables
         )
-    }
-
-    private func psProvider(_ body: String) -> PsRunningExecutablesProvider {
-        let script = root.appending(path: "ps-\(UUID().uuidString).sh")
-        try? Data("#!/bin/sh\n\(body)\n".utf8).write(to: script)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
-        return PsRunningExecutablesProvider(executable: script, timeoutSeconds: 1)
     }
 }
 
@@ -468,5 +586,23 @@ private final class StubExecutables: RunningExecutablesProviding, @unchecked Sen
 
     private func recordCall() {
         lock.withLock { count += 1 }
+    }
+}
+
+/// Mach-O headers for fixtures: a thin arm64 image of any file type, or a universal wrapper around one.
+enum MachOFixture {
+    static func header(fileType: UInt32) -> Data {
+        var data = Data([0xCF, 0xFA, 0xED, 0xFE, 0x0C, 0x00, 0x00, 0x01, 0, 0, 0, 0])
+        withUnsafeBytes(of: fileType.littleEndian) { data.append(contentsOf: $0) }
+        return data + Data(count: 4096 - data.count)
+    }
+
+    static func universal(slice: Data) -> Data {
+        let sliceOffset: UInt32 = 4096
+        var data = Data([0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 1, 0x01, 0x00, 0x00, 0x0C, 0, 0, 0, 0])
+        for word in [sliceOffset, UInt32(slice.count), 14] {
+            withUnsafeBytes(of: word.bigEndian) { data.append(contentsOf: $0) }
+        }
+        return data + Data(count: Int(sliceOffset) - data.count) + slice
     }
 }
