@@ -192,7 +192,7 @@ public actor CleanupEngine {
         openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
         runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider(),
         freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace(),
-        runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider(),
+        runningExecutables: any RunningExecutablesProviding = LibprocRunningExecutablesProvider(),
         isCodexRunning: (@Sendable () async -> Bool)? = nil,
         pnpmActiveStore: (@Sendable () async -> URL?)? = nil
     ) {
@@ -429,6 +429,8 @@ public actor CleanupEngine {
 
             // Set when the dependency gate decides: project activity then replaces the folder's own age.
             var isProjectDependency = false
+            // A version a process runs from must not go when the open-file check cannot see it.
+            var isVersionSibling = false
 
             if ScanPolicy.hasUpgradeBackupSignal(url.lastPathComponent) {
                 // Backup-named paths pass only through the upgrade-backup gate, never the generic allow-lists.
@@ -438,6 +440,7 @@ public actor CleanupEngine {
                 }
             } else if ScanPolicy.isVersionSiblingMember(url) {
                 // Version siblings pass only their own re-verification, never a broader allow-list.
+                isVersionSibling = true
                 if executablesSnapshot == nil {
                     executablesSnapshot = .some(await runningExecutables.runningExecutablePaths())
                 }
@@ -528,7 +531,8 @@ public actor CleanupEngine {
             // Last gate before trashing, so the batch's single snapshot is only taken when needed.
             // A dependency folder is in use when anything inside its project is, e.g. a dev server's cwd.
             let inUsePath = isProjectDependency ? url.deletingLastPathComponent().path : finding.path
-            if let holder = await inUse.holder(forPath: inUsePath, failClosedWithoutSnapshot: isProjectDependency) {
+            if let holder = await inUse.holder(
+                forPath: inUsePath, failClosedWithoutSnapshot: isProjectDependency || isVersionSibling) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .inUse(finding.path, holder: holder)))
                 continue
             }
