@@ -52,106 +52,22 @@ public struct ToolCommandRunner: Sendable {
     }
 
     /// Runs the executable with a bounded timeout and returns its exit code and raw stdout.
-    /// `environment` is layered over the inherited one. Nil only on launch failure or timeout.
+    /// `environment` is layered over the inherited one. Nil on launch failure, timeout or task
+    /// cancellation, returned no later than the timeout even if the child or its children linger.
     public func run(
         executable: URL,
         arguments: [String],
         environment: [String: String] = [:]
     ) async -> (exitCode: Int32, stdout: Data)? {
-        let timeout = timeoutSeconds
-        return await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = executable
-            process.arguments = arguments
-            process.standardInput = FileHandle.nullDevice
-            if !environment.isEmpty {
-                process.environment = ProcessInfo.processInfo.environment
-                    .merging(environment) { _, override in override }
-            }
-
-            let stdoutPipe = Pipe()
-            process.standardOutput = stdoutPipe
-            process.standardError = FileHandle.nullDevice
-
-            // Register completion before launch so an immediately exiting child
-            // cannot terminate before its handler exists. The setup gate keeps
-            // completion behind pipe-reader installation after a successful run.
-            let drainGroup = DispatchGroup()
-            let buffer = LockedOutputBuffer()
-            let timedOut = LockedFlag()
-            drainGroup.enter()
-
-            process.terminationHandler = { proc in
-                drainGroup.wait()
-                guard !timedOut.value else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                continuation.resume(returning: (proc.terminationStatus, buffer.data))
-            }
-
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                drainGroup.leave()
-                continuation.resume(returning: nil)
-                return
-            }
-
-            // Drain stdout on an OS-managed thread (not the cooperative pool)
-            // so a blocking read can never starve the concurrency runtime.
-            drainGroup.enter()
-            DispatchQueue.global(qos: .utility).async {
-                buffer.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
-                drainGroup.leave()
-            }
-            drainGroup.leave()
-
-            // Timeout: terminate the process; terminationHandler resolves nil.
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
-                if process.isRunning {
-                    timedOut.value = true
-                    process.terminate()
-                }
-            }
-        }
+        let merged = environment.isEmpty
+            ? nil
+            : ProcessInfo.processInfo.environment.merging(environment) { _, override in override }
+        return await BoundedChildProcess.run(
+            executable: executable,
+            arguments: arguments,
+            environment: merged,
+            timeout: timeoutSeconds
+        )
     }
 }
 
-// MARK: - Locked helpers
-
-private final class LockedOutputBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage = Data()
-
-    func append(_ data: Data) {
-        lock.lock()
-        defer { lock.unlock() }
-        storage.append(data)
-    }
-
-    var data: Data {
-        lock.lock()
-        defer { lock.unlock() }
-        return storage
-    }
-}
-
-private final class LockedFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage = false
-
-    var value: Bool {
-        get {
-            lock.lock()
-            defer { lock.unlock() }
-            return storage
-        }
-        set {
-            lock.lock()
-            defer { lock.unlock() }
-            storage = newValue
-        }
-    }
-}
