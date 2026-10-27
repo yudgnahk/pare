@@ -95,13 +95,21 @@ final class ScanDashboardViewModel: ObservableObject {
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
     private let growthStore: GrowthSnapshotStore
+    private let cacheActivityLabeler: @Sendable ([ScanFinding]) async -> [String: CacheActivityLabel]
     /// Bumped per scan so growth lines or labels computed for an older scan cannot land after a newer one started.
     private var scanGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
-    init(cleanup: CleanupCoordinator = CleanupCoordinator(), growthStore: GrowthSnapshotStore = GrowthSnapshotStore()) {
+    init(
+        cleanup: CleanupCoordinator = CleanupCoordinator(),
+        growthStore: GrowthSnapshotStore = GrowthSnapshotStore(),
+        cacheActivityLabeler: @escaping @Sendable ([ScanFinding]) async -> [String: CacheActivityLabel] = {
+            CacheActivityLabeler.labels(for: $0)
+        }
+    ) {
         self.cleanup = cleanup
         self.growthStore = growthStore
+        self.cacheActivityLabeler = cacheActivityLabeler
         // Child observable objects publish through the dashboard so existing
         // `@ObservedObject var viewModel` views keep re-rendering.
         permissions.objectWillChange
@@ -474,14 +482,15 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     /// Growth recording and cache-activity labeling run side by side; each lands only while its scan is current.
-    private func publishPostScanDetails(report: ScanReport, generation: Int) async {
+    func publishPostScanDetails(report: ScanReport, generation: Int) async {
         cacheActivity = [:]
         isLabelingCacheActivity = true
         let store = growthStore
         // Only the rows "Largest items" shows can display a label.
         let shown = largestItems.compactMap { findingsByPath[$0.path] }
         let growthJob = Task.detached(priority: .utility) { Self.recordGrowth(report: report, store: store) }
-        let activityJob = Task.detached(priority: .utility) { CacheActivityLabeler.labels(for: shown) }
+        let labeler = cacheActivityLabeler
+        let activityJob = Task.detached(priority: .utility) { await labeler(shown) }
 
         let activity = await activityJob.value
         if !Task.isCancelled { applyCacheActivity(activity, generation: generation) }

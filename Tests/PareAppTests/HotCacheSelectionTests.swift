@@ -384,4 +384,68 @@ final class HotCacheSelectionTests: XCTestCase {
 
         XCTAssertTrue(vm.canRequestCleanup)
     }
+
+    // MARK: - Real labeling path
+
+    func testCleanWaitsOnASlowLabelerThenExcludesHotRows() async throws {
+        let gate = LabelerGate()
+        let hotLabel = hot
+        let solo = solo
+        let growthDir = FileManager.default.temporaryDirectory.appendingPathComponent("pare-hot-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: growthDir) }
+        let vm = ScanDashboardViewModel(
+            growthStore: GrowthSnapshotStore(directory: growthDir),
+            cacheActivityLabeler: { _ in
+                await gate.holdUntilReleased()
+                return [solo: hotLabel]
+            }
+        )
+        vm.applySnapshotResults(report)
+        XCTAssertTrue(vm.canRequestCleanup)
+
+        let generation = vm.currentScanGeneration
+        let post = Task { await vm.publishPostScanDetails(report: report, generation: generation) }
+        await gate.waitUntilHeld()
+
+        XCTAssertFalse(vm.canRequestCleanup)
+        XCTAssertNil(pendingKind(after: { $0.requestQuickClean() }, in: vm))
+        XCTAssertNil(pendingKind(after: { $0.requestDeepClean() }, in: vm))
+        XCTAssertNil(pendingKind(after: { $0.requestCleanSelected() }, in: vm))
+        for kind in [PendingCleanup.quick, .deep, .selected] {
+            XCTAssertNil(vm.findingsToClean(for: kind), "\(kind)")
+        }
+
+        await gate.release()
+        await post.value
+
+        XCTAssertTrue(vm.canRequestCleanup)
+        XCTAssertEqual(pendingKind(after: { $0.requestQuickClean() }, in: vm), .quick)
+        for kind in [PendingCleanup.quick, .deep, .selected] {
+            let paths = vm.findingsToClean(for: kind)?.map(\.path)
+            XCTAssertEqual(Set(paths ?? []), [mixedOne, mixedTwo, other], "\(kind)")
+        }
+    }
+}
+
+/// Suspends a stub labeler until the test releases it.
+private actor LabelerGate {
+    private var isHeld = false
+    private var isReleased = false
+    private var waiter: CheckedContinuation<Void, Never>?
+
+    func holdUntilReleased() async {
+        isHeld = true
+        guard !isReleased else { return }
+        await withCheckedContinuation { waiter = $0 }
+    }
+
+    func waitUntilHeld() async {
+        while !isHeld { await Task.yield() }
+    }
+
+    func release() {
+        isReleased = true
+        waiter?.resume()
+        waiter = nil
+    }
 }
