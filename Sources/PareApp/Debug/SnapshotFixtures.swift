@@ -34,6 +34,16 @@ enum SnapshotFixtures {
         return ScanReport(findings: findings, summaries: summaries)
     }
 
+    /// One hot row (npm, written today) so results show it unticked, plus a cold and a warm label.
+    static var cacheActivity: [String: CacheActivityLabel] {
+        let now = Date()
+        return [
+            home + "/.npm/_cacache": CacheActivityLabel(activity: .hot, newestEntryDate: now.addingTimeInterval(-3_600)),
+            home + "/Library/Caches/Homebrew": CacheActivityLabel(activity: .cold, newestEntryDate: now.addingTimeInterval(-86_400 * 58)),
+            home + "/Library/Caches/com.spotify.client": CacheActivityLabel(activity: .warm, newestEntryDate: now.addingTimeInterval(-86_400 * 9)),
+        ]
+    }
+
     private struct Row {
         let category: ScanCategory
         let risk: RiskLevel
