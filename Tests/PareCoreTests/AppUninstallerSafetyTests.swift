@@ -28,6 +28,12 @@ final class AppUninstallerSafetyTests: XCTestCase {
         func runningApps() -> [RunningApp] { apps }
     }
 
+    /// Returns what LaunchServices does: every registered copy, including the one being removed.
+    private struct StubAppCopies: AppCopyLocating {
+        let urls: [URL]
+        func appURLs(forBundleID bundleID: String) -> [URL] { urls }
+    }
+
     private actor StubUnloader: LaunchAgentUnloading {
         let outcome: LaunchAgentUnloadOutcome
         private(set) var unloaded: [String] = []
@@ -43,8 +49,14 @@ final class AppUninstallerSafetyTests: XCTestCase {
         func append(_ call: [String]) { calls.append(call) }
     }
 
-    private func makeApp(bundleID: String? = "com.google.Chrome", name: String = "Google Chrome") throws -> InstalledApp {
-        let appURL = root.appendingPathComponent("Applications/\(name).app")
+    private var transactionsDir: URL { root.appendingPathComponent("transactions") }
+
+    private func makeApp(
+        bundleID: String? = "com.google.Chrome",
+        name: String = "Google Chrome",
+        folder: String = "Applications"
+    ) throws -> InstalledApp {
+        let appURL = root.appendingPathComponent("\(folder)/\(name).app")
         try FileManager.default.createDirectory(at: appURL, withIntermediateDirectories: true)
         return InstalledApp(
             name: name,
@@ -78,7 +90,9 @@ final class AppUninstallerSafetyTests: XCTestCase {
         unloader: any LaunchAgentUnloading = StubUnloader(outcome: .notLoaded),
         running: [RunningApp] = [],
         exclusions: ExclusionList? = .empty,
-        openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen)
+        openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen),
+        appCopies: [URL] = [],
+        beforeMove: (@Sendable (URL) -> Void)? = nil
     ) -> AppUninstaller {
         let trashDir = self.trashDir
         return AppUninstaller(
@@ -87,14 +101,22 @@ final class AppUninstallerSafetyTests: XCTestCase {
             launchAgents: unloader,
             runningApps: StubRunningApps(apps: running),
             openFiles: openFiles,
+            appCopies: StubAppCopies(urls: appCopies),
             exclusions: { exclusions },
             trashItem: { url in
+                beforeMove?(url)
                 let destination = trashDir.appendingPathComponent(UUID().uuidString + "-" + url.lastPathComponent)
                 try FileManager.default.moveItem(at: url, to: destination)
                 return destination
             },
-            transactionStore: CleanupTransactionStore(directory: root.appendingPathComponent("transactions"))
+            transactionStore: CleanupTransactionStore(directory: transactionsDir)
         )
+    }
+
+    /// Turns the transactions folder into a plain file so every later save throws.
+    private static func breakStore(at directory: URL) {
+        try? FileManager.default.removeItem(at: directory)
+        try? Data("x".utf8).write(to: directory)
     }
 
     private func names(_ leftovers: [AppLeftover]) -> Set<String> {
@@ -203,12 +225,12 @@ final class AppUninstallerSafetyTests: XCTestCase {
 
     func testGroupContainersMatchOnBoundaryAndStartUnselected() throws {
         let groups = library.appendingPathComponent("Group Containers")
-        try makeDirectory(groups.appendingPathComponent("ABCDE12345.com.foo"))
-        try makeDirectory(groups.appendingPathComponent("ABCDE12345.com.foobar"))
+        try makeDirectory(groups.appendingPathComponent("ABCDE12345.com.foo.app"))
+        try makeDirectory(groups.appendingPathComponent("ABCDE12345.com.foo.appbar"))
 
-        let leftovers = makeUninstaller().findLeftovers(for: try makeApp(bundleID: "com.foo", name: "Foo"))
+        let leftovers = makeUninstaller().findLeftovers(for: try makeApp(bundleID: "com.foo.app", name: "Foo"))
 
-        XCTAssertEqual(names(leftovers), ["ABCDE12345.com.foo"])
+        XCTAssertEqual(names(leftovers), ["ABCDE12345.com.foo.app"])
         XCTAssertTrue(leftovers[0].isGroupContainer)
         XCTAssertFalse(leftovers[0].isSelectedByDefault)
     }
@@ -406,6 +428,194 @@ final class AppUninstallerSafetyTests: XCTestCase {
         XCTAssertTrue(result.trashed.contains(support.path))
         XCTAssertTrue(result.trashed.contains(agent.path))
         XCTAssertEqual(provider.calls, 2, "a stopped agent may have held files in the first listing")
+    }
+
+    // MARK: - Other copies, bundle in use, generic IDs
+
+    func testOtherCopiesMatchBundleIDCaseInsensitivelyAndSkipSelf() throws {
+        let app = try makeApp()
+        let copy = try makeApp(bundleID: "COM.GOOGLE.CHROME", folder: "Downloads")
+        let canary = try makeApp(bundleID: "com.google.Chrome.canary", name: "Canary")
+        let orphan = try makeApp(bundleID: nil, name: "Orphan")
+
+        XCTAssertEqual(AppUninstaller.otherCopies(of: app, in: [app, copy, canary, orphan]), [copy.path])
+        XCTAssertEqual(AppUninstaller.otherCopies(of: orphan, in: [app, orphan]), [])
+    }
+
+    func testAnotherInstalledCopyMakesEveryLeftoverReportOnly() throws {
+        try makeDirectory(library.appendingPathComponent("Application Support/\(chromeID)"))
+        try makeDirectory(library.appendingPathComponent("Containers/\(chromeID)"))
+        try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let kept = try makeApp()
+        let copy = try makeApp(folder: "Downloads")
+
+        let leftovers = makeUninstaller().findLeftovers(for: copy, otherCopyPaths: [kept.path])
+
+        XCTAssertEqual(leftovers.count, 3)
+        XCTAssertTrue(leftovers.allSatisfy { $0.isReportOnly && !$0.isSelectedByDefault })
+        XCTAssertEqual(leftovers.first?.reportOnlyReason, "Another copy of Google Chrome at \(kept.path) still uses this")
+    }
+
+    func testUninstallWithAnotherCopyTrashesOnlyTheBundle() async throws {
+        let kept = try makeApp()
+        let copy = try makeApp(folder: "Downloads")
+        let support = try makeDirectory(library.appendingPathComponent("Application Support/\(chromeID)"))
+        let prefs = try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+
+        // Built without report-only reasons, as if discovery had not known about the other copy.
+        let result = try await makeUninstaller().uninstall(app: copy, leftovers: [
+            AppLeftover(path: support.path, sizeBytes: 1, category: .support),
+            AppLeftover(path: prefs.path, sizeBytes: 1, category: .preferences),
+        ], otherCopyPaths: [kept.path])
+
+        XCTAssertEqual(result.trashed, [copy.path])
+        XCTAssertEqual(Set(result.skipped.map(\.path)), [support.path, prefs.path])
+        for path in [kept.path, support.path, prefs.path] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: path), path)
+        }
+    }
+
+    func testCopyOnlyLaunchServicesKnowsMakesLeftoversReportOnly() throws {
+        try makeDirectory(library.appendingPathComponent("Containers/\(chromeID)"))
+        try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let app = try makeApp()
+        let nested = try makeApp(folder: "Applications/Old")
+
+        let leftovers = makeUninstaller(appCopies: [URL(fileURLWithPath: app.path), URL(fileURLWithPath: nested.path)])
+            .findLeftovers(for: app)
+
+        XCTAssertEqual(leftovers.count, 2)
+        XCTAssertTrue(leftovers.allSatisfy { $0.isReportOnly && !$0.isSelectedByDefault })
+        XCTAssertEqual(leftovers.first?.reportOnlyReason, "Another copy of Google Chrome at \(nested.path) still uses this")
+    }
+
+    func testLaunchServicesSelfTrashedAndMissingCopiesDoNotBlock() throws {
+        let prefs = try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let app = try makeApp()
+        let link = root.appendingPathComponent("Linked")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appendingPathComponent("Applications"))
+        let trashed = try makeApp(folder: "home/.Trash")
+        let volumeTrash = try makeApp(folder: "Volume/.Trashes/501")
+
+        let leftovers = makeUninstaller(appCopies: [
+            link.appendingPathComponent("Google Chrome.app"),
+            URL(fileURLWithPath: trashed.path),
+            URL(fileURLWithPath: volumeTrash.path),
+            root.appendingPathComponent("Gone/Google Chrome.app"),
+        ]).findLeftovers(for: app)
+
+        XCTAssertEqual(leftovers.map(\.path), [prefs.path])
+        XCTAssertEqual(leftovers.first?.isReportOnly, false)
+        XCTAssertEqual(leftovers.first?.isSelectedByDefault, true)
+    }
+
+    func testUninstallRechecksLaunchServicesCopiesAtTrashTime() async throws {
+        let app = try makeApp()
+        let nested = try makeApp(folder: "Applications/Old")
+        let support = try makeDirectory(library.appendingPathComponent("Application Support/\(chromeID)"))
+
+        // Discovery saw no other copy; one is registered by the time the user confirms.
+        let result = try await makeUninstaller(appCopies: [URL(fileURLWithPath: app.path), URL(fileURLWithPath: nested.path)])
+            .uninstall(app: app, leftovers: [AppLeftover(path: support.path, sizeBytes: 1, category: .support)])
+
+        XCTAssertEqual(result.trashed, [app.path])
+        XCTAssertEqual(result.skipped.map(\.path), [support.path])
+        XCTAssertEqual(result.skipped.first?.reason, "Another copy of Google Chrome at \(nested.path) still uses this")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: support.path))
+    }
+
+    func testUninstallRefusesWhileSomethingRunsFromTheBundle() async throws {
+        let app = try makeApp(bundleID: nil, name: "Foo")
+        let helper = URL(fileURLWithPath: app.path)
+            .appendingPathComponent("Contents/Library/LoginItems/FooHelper.app/Contents/MacOS/FooHelper").path
+        let snapshot = OpenFileSnapshot(lsofFieldOutput: "p7\ncFooHelper\nn\(helper)\n")
+
+        do {
+            _ = try await makeUninstaller(openFiles: CountingSnapshotProvider(snapshot: snapshot)).uninstall(app: app, leftovers: [])
+            XCTFail("expected appInUse")
+        } catch let error as AppUninstallError {
+            XCTAssertEqual(error, .appInUse(app: "Foo", holder: "FooHelper (pid 7)"))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: app.path))
+        XCTAssertTrue(try CleanupTransactionStore(directory: transactionsDir).loadAll().isEmpty)
+    }
+
+    func testGenericBundleIDsOnlyGetExactLeftovers() throws {
+        let cases: [(id: String, path: String, expected: Bool)] = [
+            ("com", "/Applications/Foo.app", false),
+            ("com.foo", "/Applications/Foo.app", false),
+            ("com.foo.app", "/Applications/Foo.app", true),
+            ("com.apple.dt.Xcode", "/Applications/Xcode.app", false),
+            ("com.apple.Notes", "/System/Applications/Notes.app", true),
+        ]
+        for (id, path, expected) in cases {
+            XCTAssertEqual(ScanPolicy.allowsDerivedLeftovers(bundleID: id, appPath: path), expected, id)
+        }
+
+        let prefs = library.appendingPathComponent("Preferences")
+        try makeFile(prefs.appendingPathComponent("com.foo.plist"))
+        try makeFile(prefs.appendingPathComponent("com.foo.helper.plist"))
+        try makeFile(library.appendingPathComponent("LaunchAgents/com.foo.agent.plist"))
+        try makeDirectory(library.appendingPathComponent("Group Containers/ABCDE12345.com.foo"))
+
+        let leftovers = makeUninstaller().findLeftovers(for: try makeApp(bundleID: "com.foo", name: "Foo"))
+
+        XCTAssertEqual(names(leftovers), ["com.foo.plist"])
+    }
+
+    // MARK: - Undo record
+
+    private final class StoreProbe: @unchecked Sendable {
+        private let lock = NSLock()
+        private var counts: [Int?] = []
+        func note(_ count: Int?) { lock.withLock { counts.append(count) } }
+        var seen: [Int?] { lock.withLock { counts } }
+    }
+
+    func testUndoRecordIsOnDiskBeforeEachMove() async throws {
+        let app = try makeApp()
+        let cache = try makeDirectory(library.appendingPathComponent("Caches/\(chromeID)"))
+        let directory = transactionsDir
+        let probe = StoreProbe()
+        let uninstaller = makeUninstaller(beforeMove: { _ in
+            probe.note((try? CleanupTransactionStore(directory: directory).loadAll())?.first?.items.count)
+        })
+
+        let result = try await uninstaller.uninstall(app: app, leftovers: [
+            AppLeftover(path: cache.path, sizeBytes: 1, category: .caches),
+        ])
+
+        XCTAssertEqual(probe.seen, [0, 1], "written before the bundle moves, and holding it before the next move")
+        XCTAssertNil(result.undoSaveError)
+        let saved = try XCTUnwrap(try CleanupTransactionStore(directory: directory).load(id: XCTUnwrap(result.transactionID)))
+        XCTAssertEqual(saved.items.map(\.originalPath), [app.path, cache.path])
+    }
+
+    func testUnsavableUndoRecordRefusesBeforeAnythingMoves() async throws {
+        let app = try makeApp()
+        Self.breakStore(at: transactionsDir)
+
+        do {
+            _ = try await makeUninstaller().uninstall(app: app, leftovers: [])
+            XCTFail("expected undoRecordUnavailable")
+        } catch let error as AppUninstallError {
+            XCTAssertEqual(error, .undoRecordUnavailable)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: app.path))
+    }
+
+    func testHistoryFailureAfterMovesIsReportedOnTheResult() async throws {
+        let app = try makeApp()
+        let cache = try makeDirectory(library.appendingPathComponent("Caches/\(chromeID)"))
+        let directory = transactionsDir
+
+        let result = try await makeUninstaller(beforeMove: { _ in Self.breakStore(at: directory) }).uninstall(
+            app: app,
+            leftovers: [AppLeftover(path: cache.path, sizeBytes: 1, category: .caches)]
+        )
+
+        XCTAssertEqual(result.trashed, [app.path, cache.path])
+        XCTAssertNotNil(result.undoSaveError)
     }
 
     // MARK: - launchctl

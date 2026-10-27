@@ -17,13 +17,13 @@ final class AppManagerViewModel: ObservableObject {
         case idle
         case confirming
         case uninstalling
-        case done(trashed: Int, failed: Int)
+        case done(trashed: Int, failed: Int, undoSaved: Bool = true)
         case error(String)
 
         static func == (lhs: UninstallState, rhs: UninstallState) -> Bool {
             switch (lhs, rhs) {
             case (.idle, .idle), (.confirming, .confirming), (.uninstalling, .uninstalling): return true
-            case (.done(let t1, let f1), .done(let t2, let f2)): return t1 == t2 && f1 == f2
+            case (.done(let t1, let f1, let u1), .done(let t2, let f2, let u2)): return t1 == t2 && f1 == f2 && u1 == u2
             case (.error(let a), .error(let b)): return a == b
             default: return false
             }
@@ -212,7 +212,11 @@ final class AppManagerViewModel: ObservableObject {
         selectedApp = app
         // Other installed IDs keep e.g. Chrome Canary's files out of Chrome's uninstall.
         let otherBundleIDs = Set(apps.compactMap(\.bundleID)).subtracting([app.bundleID].compactMap { $0 })
-        pendingLeftovers = uninstaller.findLeftovers(for: app, otherBundleIDs: otherBundleIDs)
+        pendingLeftovers = uninstaller.findLeftovers(
+            for: app,
+            otherBundleIDs: otherBundleIDs,
+            otherCopyPaths: AppUninstaller.otherCopies(of: app, in: apps)
+        )
         selectedLeftoverIDs = Set(pendingLeftovers.filter(\.isSelectedByDefault).map(\.id))
         uninstallState = .confirming
         showUninstallSheet = true
@@ -236,16 +240,18 @@ final class AppManagerViewModel: ObservableObject {
     func confirmUninstall() {
         guard let app = selectedApp else { return }
         let chosen = selectedLeftovers
+        let otherCopies = AppUninstaller.otherCopies(of: app, in: apps)
         uninstallState = .uninstalling
         Task {
             do {
-                let result = try await uninstaller.uninstall(app: app, leftovers: chosen)
+                let result = try await uninstaller.uninstall(app: app, leftovers: chosen, otherCopyPaths: otherCopies)
                 if result.trashed.contains(app.path) {
                     self.apps.removeAll { $0.path == app.path }
                 }
                 self.uninstallState = .done(
                     trashed: result.trashed.count,
-                    failed: result.failed.count + result.skipped.count
+                    failed: result.failed.count + result.skipped.count,
+                    undoSaved: result.undoSaveError == nil
                 )
                 self.resetUninstallFlow()
             } catch {

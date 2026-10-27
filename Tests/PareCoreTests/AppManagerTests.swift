@@ -5,7 +5,7 @@ final class AppManagerTests: XCTestCase {
 
     // MARK: - InstalledApp
 
-    func testInstalledAppIDUsesBundleID() {
+    func testInstalledAppIDIsPathEvenWithBundleID() {
         let app = InstalledApp(
             name: "Test App",
             bundleID: "com.example.test",
@@ -18,7 +18,7 @@ final class AppManagerTests: XCTestCase {
             isMAS: false,
             isSystemApp: false
         )
-        XCTAssertEqual(app.id, "com.example.test")
+        XCTAssertEqual(app.id, "/Applications/TestApp.app")
     }
 
     func testInstalledAppIDFallsBackToPath() {
