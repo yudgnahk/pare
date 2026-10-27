@@ -55,10 +55,10 @@ public final class GoCacheLocations: @unchecked Sendable {
         return GoCachePaths(build: path(at: 0), module: path(at: 1))
     }
 
-    private static let defaultQuery: Query = {
-        let runner = ToolCommandRunner()
-        let environment = ProcessInfo.processInfo.environment
-        guard let go = runner.resolveExecutable(named: "go", environmentVariables: environment) else { return nil }
-        return await runner.capture(executable: go, arguments: ["env", "GOCACHE", "GOMODCACHE"])
+    private static let defaultQuery: Query = { await confirmedQuery(registry: .shared)() }
+
+    /// Runs only the user-confirmed go; unconfirmed behaves as go being absent.
+    static func confirmedQuery(registry: ConfirmedToolRegistry) -> Query {
+        { await ToolCommandRunner().captureConfirmed(.go, arguments: ["env", "GOCACHE", "GOMODCACHE"], registry: registry) }
     }
 }

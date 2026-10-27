@@ -15,31 +15,25 @@ public struct ToolCommandRunner: Sendable {
         self.timeoutSeconds = timeoutSeconds
     }
 
-    /// Resolves an executable name against `ToolSearchPath` for the given environment.
-    /// Returns nil when not installed.
-    public func resolveExecutable(named name: String, environmentVariables: [String: String]) -> URL? {
-        guard !name.isEmpty, !name.contains("/") else { return nil }
-        for directory in ToolSearchPath.directories(environment: environmentVariables) {
-            let candidate = URL(fileURLWithPath: directory).appending(path: name)
-            if FileManager.default.isExecutableFile(atPath: candidate.path) {
-                return candidate
-            }
-        }
-        return nil
-    }
-
-    /// Runs a descriptor's native discovery command and returns trimmed stdout,
-    /// or nil when the tool is absent or the command fails/times out.
-    public func captureOutput(
-        of command: ToolCacheCommand,
-        environmentVariables: [String: String]
+    /// Runs a confirmed, unchanged third-party tool with a sanitized environment and returns trimmed stdout;
+    /// nil when the tool is unconfirmed or changed (treated as absent) or the command fails.
+    public func captureConfirmed(
+        _ tool: ConfirmableTool,
+        arguments: [String],
+        registry: ConfirmedToolRegistry = .shared,
+        environment: [String: String] = [:],
+        baseEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) async -> String? {
-        guard let executable = resolveExecutable(
-            named: command.executableName,
-            environmentVariables: environmentVariables
-        ) else { return nil }
-        let path = ToolSearchPath.pathValue(environment: environmentVariables)
-        return await capture(executable: executable, arguments: command.arguments, environment: ["PATH": path])
+        guard let executable = await registry.launchURL(for: tool) else { return nil }
+        let merged = baseEnvironment.merging(environment) { _, override in override }
+        guard let result = await BoundedChildProcess.run(
+            executable: executable,
+            arguments: arguments,
+            environment: ToolSpawnEnvironment.sanitized(merged),
+            timeout: timeoutSeconds
+        ), result.exitCode == 0 else { return nil }
+        return String(data: result.stdout, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Runs the executable with a bounded timeout and returns trimmed stdout on
@@ -52,106 +46,22 @@ public struct ToolCommandRunner: Sendable {
     }
 
     /// Runs the executable with a bounded timeout and returns its exit code and raw stdout.
-    /// `environment` is layered over the inherited one. Nil only on launch failure or timeout.
+    /// `environment` is layered over the inherited one. Nil on launch failure, timeout or task
+    /// cancellation, returned no later than the timeout even if the child or its children linger.
     public func run(
         executable: URL,
         arguments: [String],
         environment: [String: String] = [:]
     ) async -> (exitCode: Int32, stdout: Data)? {
-        let timeout = timeoutSeconds
-        return await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = executable
-            process.arguments = arguments
-            process.standardInput = FileHandle.nullDevice
-            if !environment.isEmpty {
-                process.environment = ProcessInfo.processInfo.environment
-                    .merging(environment) { _, override in override }
-            }
-
-            let stdoutPipe = Pipe()
-            process.standardOutput = stdoutPipe
-            process.standardError = FileHandle.nullDevice
-
-            // Register completion before launch so an immediately exiting child
-            // cannot terminate before its handler exists. The setup gate keeps
-            // completion behind pipe-reader installation after a successful run.
-            let drainGroup = DispatchGroup()
-            let buffer = LockedOutputBuffer()
-            let timedOut = LockedFlag()
-            drainGroup.enter()
-
-            process.terminationHandler = { proc in
-                drainGroup.wait()
-                guard !timedOut.value else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-                continuation.resume(returning: (proc.terminationStatus, buffer.data))
-            }
-
-            do {
-                try process.run()
-            } catch {
-                process.terminationHandler = nil
-                drainGroup.leave()
-                continuation.resume(returning: nil)
-                return
-            }
-
-            // Drain stdout on an OS-managed thread (not the cooperative pool)
-            // so a blocking read can never starve the concurrency runtime.
-            drainGroup.enter()
-            DispatchQueue.global(qos: .utility).async {
-                buffer.append(stdoutPipe.fileHandleForReading.readDataToEndOfFile())
-                drainGroup.leave()
-            }
-            drainGroup.leave()
-
-            // Timeout: terminate the process; terminationHandler resolves nil.
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
-                if process.isRunning {
-                    timedOut.value = true
-                    process.terminate()
-                }
-            }
-        }
+        let merged = environment.isEmpty
+            ? nil
+            : ProcessInfo.processInfo.environment.merging(environment) { _, override in override }
+        return await BoundedChildProcess.run(
+            executable: executable,
+            arguments: arguments,
+            environment: merged,
+            timeout: timeoutSeconds
+        )
     }
 }
 
-// MARK: - Locked helpers
-
-private final class LockedOutputBuffer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage = Data()
-
-    func append(_ data: Data) {
-        lock.lock()
-        defer { lock.unlock() }
-        storage.append(data)
-    }
-
-    var data: Data {
-        lock.lock()
-        defer { lock.unlock() }
-        return storage
-    }
-}
-
-private final class LockedFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var storage = false
-
-    var value: Bool {
-        get {
-            lock.lock()
-            defer { lock.unlock() }
-            return storage
-        }
-        set {
-            lock.lock()
-            defer { lock.unlock() }
-            storage = newValue
-        }
-    }
-}

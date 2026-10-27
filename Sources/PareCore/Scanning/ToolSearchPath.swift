@@ -1,6 +1,7 @@
 import Foundation
 
-/// Where to look for developer tools. A Finder-launched app inherits only `/usr/bin:/bin:/usr/sbin:/sbin`,
+/// Where to look for developer tools, only to suggest candidates in Settings: nothing found here is launched
+/// until the user confirms it (`ConfirmedToolRegistry`). A Finder-launched app inherits only `/usr/bin:/bin:/usr/sbin:/sbin`,
 /// so well-known install directories go after the inherited PATH; no shell or dotfile is ever read.
 public enum ToolSearchPath {
     /// Homebrew on Apple silicon and Intel, and the official Go installer.
@@ -33,8 +34,11 @@ public enum ToolSearchPath {
         }
     }
 
-    /// `directories(environment:)` as a PATH value, for a launched tool whose own scripts look up `node` etc.
-    public static func pathValue(environment: [String: String]) -> String {
-        directories(environment: environment).joined(separator: ":")
+    /// The first executable file named `name` in `directories(environment:)`, or nil when not installed.
+    public static func firstExecutable(named name: String, environment: [String: String]) -> URL? {
+        guard !name.isEmpty, !name.contains("/") else { return nil }
+        return directories(environment: environment)
+            .map { URL(fileURLWithPath: $0).appending(path: name) }
+            .first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 }
