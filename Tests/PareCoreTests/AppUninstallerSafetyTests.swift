@@ -28,6 +28,12 @@ final class AppUninstallerSafetyTests: XCTestCase {
         func runningApps() -> [RunningApp] { apps }
     }
 
+    /// Returns what LaunchServices does: every registered copy, including the one being removed.
+    private struct StubAppCopies: AppCopyLocating {
+        let urls: [URL]
+        func appURLs(forBundleID bundleID: String) -> [URL] { urls }
+    }
+
     private actor StubUnloader: LaunchAgentUnloading {
         let outcome: LaunchAgentUnloadOutcome
         private(set) var unloaded: [String] = []
@@ -85,6 +91,7 @@ final class AppUninstallerSafetyTests: XCTestCase {
         running: [RunningApp] = [],
         exclusions: ExclusionList? = .empty,
         openFiles: any OpenFileSnapshotProviding = CountingSnapshotProvider(snapshot: .nothingOpen),
+        appCopies: [URL] = [],
         beforeMove: (@Sendable (URL) -> Void)? = nil
     ) -> AppUninstaller {
         let trashDir = self.trashDir
@@ -94,6 +101,7 @@ final class AppUninstallerSafetyTests: XCTestCase {
             launchAgents: unloader,
             runningApps: StubRunningApps(apps: running),
             openFiles: openFiles,
+            appCopies: StubAppCopies(urls: appCopies),
             exclusions: { exclusions },
             trashItem: { url in
                 beforeMove?(url)
@@ -465,6 +473,55 @@ final class AppUninstallerSafetyTests: XCTestCase {
         for path in [kept.path, support.path, prefs.path] {
             XCTAssertTrue(FileManager.default.fileExists(atPath: path), path)
         }
+    }
+
+    func testCopyOnlyLaunchServicesKnowsMakesLeftoversReportOnly() throws {
+        try makeDirectory(library.appendingPathComponent("Containers/\(chromeID)"))
+        try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let app = try makeApp()
+        let nested = try makeApp(folder: "Applications/Old")
+
+        let leftovers = makeUninstaller(appCopies: [URL(fileURLWithPath: app.path), URL(fileURLWithPath: nested.path)])
+            .findLeftovers(for: app)
+
+        XCTAssertEqual(leftovers.count, 2)
+        XCTAssertTrue(leftovers.allSatisfy { $0.isReportOnly && !$0.isSelectedByDefault })
+        XCTAssertEqual(leftovers.first?.reportOnlyReason, "Another copy of Google Chrome at \(nested.path) still uses this")
+    }
+
+    func testLaunchServicesSelfTrashedAndMissingCopiesDoNotBlock() throws {
+        let prefs = try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let app = try makeApp()
+        let link = root.appendingPathComponent("Linked")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appendingPathComponent("Applications"))
+        let trashed = try makeApp(folder: "home/.Trash")
+        let volumeTrash = try makeApp(folder: "Volume/.Trashes/501")
+
+        let leftovers = makeUninstaller(appCopies: [
+            link.appendingPathComponent("Google Chrome.app"),
+            URL(fileURLWithPath: trashed.path),
+            URL(fileURLWithPath: volumeTrash.path),
+            root.appendingPathComponent("Gone/Google Chrome.app"),
+        ]).findLeftovers(for: app)
+
+        XCTAssertEqual(leftovers.map(\.path), [prefs.path])
+        XCTAssertEqual(leftovers.first?.isReportOnly, false)
+        XCTAssertEqual(leftovers.first?.isSelectedByDefault, true)
+    }
+
+    func testUninstallRechecksLaunchServicesCopiesAtTrashTime() async throws {
+        let app = try makeApp()
+        let nested = try makeApp(folder: "Applications/Old")
+        let support = try makeDirectory(library.appendingPathComponent("Application Support/\(chromeID)"))
+
+        // Discovery saw no other copy; one is registered by the time the user confirms.
+        let result = try await makeUninstaller(appCopies: [URL(fileURLWithPath: app.path), URL(fileURLWithPath: nested.path)])
+            .uninstall(app: app, leftovers: [AppLeftover(path: support.path, sizeBytes: 1, category: .support)])
+
+        XCTAssertEqual(result.trashed, [app.path])
+        XCTAssertEqual(result.skipped.map(\.path), [support.path])
+        XCTAssertEqual(result.skipped.first?.reason, "Another copy of Google Chrome at \(nested.path) still uses this")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: support.path))
     }
 
     func testUninstallRefusesWhileSomethingRunsFromTheBundle() async throws {

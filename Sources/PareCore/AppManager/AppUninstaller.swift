@@ -55,6 +55,7 @@ public struct AppUninstaller: Sendable {
     private let launchAgents: any LaunchAgentUnloading
     private let runningApps: any RunningAppsProviding
     private let openFiles: any OpenFileSnapshotProviding
+    private let appCopies: any AppCopyLocating
     private let exclusions: @Sendable () -> ExclusionList?
     private let trashItem: @Sendable (URL) throws -> URL?
     private let transactionStore: CleanupTransactionStore
@@ -65,6 +66,7 @@ public struct AppUninstaller: Sendable {
         launchAgents: any LaunchAgentUnloading = LaunchctlAgentUnloader(),
         runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider(),
         openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
+        appCopies: any AppCopyLocating = LaunchServicesAppCopyLocator(),
         exclusions: (@Sendable () -> ExclusionList?)? = nil,
         trashItem: (@Sendable (URL) throws -> URL?)? = nil,
         transactionStore: CleanupTransactionStore = .shared
@@ -74,6 +76,7 @@ public struct AppUninstaller: Sendable {
         self.launchAgents = launchAgents
         self.runningApps = runningApps
         self.openFiles = openFiles
+        self.appCopies = appCopies
         self.exclusions = exclusions ?? { try? ExclusionStore.shared.load() }
         self.trashItem = trashItem ?? Self.moveToSystemTrash
         self.transactionStore = transactionStore
@@ -95,13 +98,39 @@ public struct AppUninstaller: Sendable {
         return apps.filter { $0.path != app.path && $0.bundleID?.lowercased() == id }.map(\.path)
     }
 
+    /// `inventoryCopies` plus copies LaunchServices knows of, minus `app` itself, missing paths and Trash.
+    func mergedOtherCopies(of app: InstalledApp, inventoryCopies: [String]) -> [String] {
+        guard let bundleID = app.bundleID else { return inventoryCopies }
+        // Case-sensitive on purpose: a mismatch only over-blocks, a false match would trash shared data.
+        var seen: Set<String> = [Self.copyKey(app.path)]
+        var merged: [String] = []
+        for path in inventoryCopies where seen.insert(Self.copyKey(path)).inserted {
+            merged.append(path)
+        }
+        for url in appCopies.appURLs(forBundleID: bundleID) {
+            let path = url.standardizedFileURL.path
+            guard FileManager.default.fileExists(atPath: path), !Self.isInTrash(path),
+                  seen.insert(Self.copyKey(path)).inserted else { continue }
+            merged.append(path)
+        }
+        return merged
+    }
+
+    private static func copyKey(_ path: String) -> String {
+        ScanPolicy.canonicalPathURL(URL(fileURLWithPath: path).resolvingSymlinksInPath()).path
+    }
+
+    private static func isInTrash(_ path: String) -> Bool {
+        URL(fileURLWithPath: path).pathComponents.contains { $0 == ".Trash" || $0 == ".Trashes" }
+    }
+
     static func sharedCopyReason(appName: String, otherCopyPaths: [String]) -> String? {
         otherCopyPaths.first.map { "Another copy of \(appName) at \($0) still uses this" }
     }
 
     /// Leftovers for `app`, matched on bundle-ID dot boundaries. Files a more specific bundle ID in
-    /// `otherBundleIDs` also claims are dropped, everything is report-only while `otherCopyPaths`
-    /// is non-empty, and symlinks are never offered.
+    /// `otherBundleIDs` also claims are dropped, everything is report-only while another copy
+    /// (from `otherCopyPaths` or LaunchServices) exists, and symlinks are never offered.
     public func findLeftovers(
         for app: InstalledApp,
         otherBundleIDs: Set<String> = [],
@@ -109,7 +138,8 @@ public struct AppUninstaller: Sendable {
     ) -> [AppLeftover] {
         guard let bundleID = app.bundleID, ScanPolicy.isUsableLeftoverBundleID(bundleID) else { return [] }
         let excluded = exclusions() ?? .empty
-        let shared = Self.sharedCopyReason(appName: app.name, otherCopyPaths: otherCopyPaths)
+        let copies = mergedOtherCopies(of: app, inventoryCopies: otherCopyPaths)
+        let shared = Self.sharedCopyReason(appName: app.name, otherCopyPaths: copies)
         let allowDerived = ScanPolicy.allowsDerivedLeftovers(bundleID: bundleID, appPath: app.path)
         var leftovers: [AppLeftover] = []
 
@@ -220,7 +250,7 @@ public struct AppUninstaller: Sendable {
     // MARK: - Uninstall
 
     /// Moves the app bundle, then each of `leftovers` the user kept ticked, to Trash.
-    /// Every leftover is re-checked here and refused while `otherCopyPaths` is non-empty; a running or
+    /// Every leftover is re-checked here and refused while another copy exists; a running or
     /// in-use app, unreadable exclusion list, missing open-file listing or unsaved undo record refuses
     /// the whole uninstall, and a leftover with anything open at or under it is skipped.
     public func uninstall(
@@ -229,6 +259,11 @@ public struct AppUninstaller: Sendable {
         otherCopyPaths: [String] = []
     ) async throws -> AppUninstallResult {
         let (excluded, firstSnapshot) = try await preflight(app)
+        // Looked up before the bundle moves, while LaunchServices still lists it as itself.
+        let shared = Self.sharedCopyReason(
+            appName: app.name,
+            otherCopyPaths: mergedOtherCopies(of: app, inventoryCopies: otherCopyPaths)
+        )
         var history = UninstallHistory(appName: app.name, store: transactionStore)
         do { try history.begin() } catch { throw AppUninstallError.undoRecordUnavailable }
 
@@ -249,7 +284,6 @@ public struct AppUninstaller: Sendable {
         }
         history.record(items)
 
-        let shared = Self.sharedCopyReason(appName: app.name, otherCopyPaths: otherCopyPaths)
         let screened = await screen(leftovers, excluded: excluded, shared: shared)
         var skipped = screened.skipped
         var failed: [AppUninstallSkip] = []
