@@ -15,31 +15,25 @@ public struct ToolCommandRunner: Sendable {
         self.timeoutSeconds = timeoutSeconds
     }
 
-    /// Resolves an executable name against `ToolSearchPath` for the given environment.
-    /// Returns nil when not installed.
-    public func resolveExecutable(named name: String, environmentVariables: [String: String]) -> URL? {
-        guard !name.isEmpty, !name.contains("/") else { return nil }
-        for directory in ToolSearchPath.directories(environment: environmentVariables) {
-            let candidate = URL(fileURLWithPath: directory).appending(path: name)
-            if FileManager.default.isExecutableFile(atPath: candidate.path) {
-                return candidate
-            }
-        }
-        return nil
-    }
-
-    /// Runs a descriptor's native discovery command and returns trimmed stdout,
-    /// or nil when the tool is absent or the command fails/times out.
-    public func captureOutput(
-        of command: ToolCacheCommand,
-        environmentVariables: [String: String]
+    /// Runs a confirmed, unchanged third-party tool with a sanitized environment and returns trimmed stdout;
+    /// nil when the tool is unconfirmed or changed (treated as absent) or the command fails.
+    public func captureConfirmed(
+        _ tool: ConfirmableTool,
+        arguments: [String],
+        registry: ConfirmedToolRegistry = .shared,
+        environment: [String: String] = [:],
+        baseEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) async -> String? {
-        guard let executable = resolveExecutable(
-            named: command.executableName,
-            environmentVariables: environmentVariables
-        ) else { return nil }
-        let path = ToolSearchPath.pathValue(environment: environmentVariables)
-        return await capture(executable: executable, arguments: command.arguments, environment: ["PATH": path])
+        guard let executable = await registry.launchURL(for: tool) else { return nil }
+        let merged = baseEnvironment.merging(environment) { _, override in override }
+        guard let result = await BoundedChildProcess.run(
+            executable: executable,
+            arguments: arguments,
+            environment: ToolSpawnEnvironment.sanitized(merged),
+            timeout: timeoutSeconds
+        ), result.exitCode == 0 else { return nil }
+        return String(data: result.stdout, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Runs the executable with a bounded timeout and returns trimmed stdout on

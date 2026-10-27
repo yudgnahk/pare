@@ -43,23 +43,14 @@ final class ToolSearchPathTests: XCTestCase {
     func testFinderPathStillFindsToolInWellKnownHomeDirectory() throws {
         let tool = try makeTool(".local/bin/pare-fake-uv")
         let cargoTool = try makeTool(".cargo/bin/pare-fake-cargo-tool")
-        let runner = ToolCommandRunner()
         let environment = ["PATH": finderPath, "HOME": home.path]
 
-        XCTAssertEqual(runner.resolveExecutable(named: "pare-fake-uv", environmentVariables: environment)?.path, tool.path)
-        XCTAssertEqual(runner.resolveExecutable(named: "pare-fake-cargo-tool", environmentVariables: environment)?.path, cargoTool.path)
+        XCTAssertEqual(ToolSearchPath.firstExecutable(named: "pare-fake-uv", environment: environment)?.path, tool.path)
+        XCTAssertEqual(ToolSearchPath.firstExecutable(named: "pare-fake-cargo-tool", environment: environment)?.path,
+                       cargoTool.path)
     }
 
-    func testLaunchedToolSeesWidenedPath() async throws {
-        try makeTool(".local/bin/pare-fake-path-echo", script: "#!/bin/sh\necho \"$PATH\"\n")
-
-        let output = await ToolCommandRunner().captureOutput(
-            of: ToolCacheCommand(executableName: "pare-fake-path-echo", arguments: []),
-            environmentVariables: ["PATH": finderPath, "HOME": home.path]
-        )
-
-        let entries = try XCTUnwrap(output).split(separator: ":").map(String.init)
-        XCTAssertEqual(Array(entries.prefix(4)), ["/usr/bin", "/bin", "/usr/sbin", "/sbin"])
-        XCTAssertTrue(entries.contains(home.appending(path: ".local/bin").path), "a script tool must find its interpreter")
+    func testNameWithSlashIsNeverResolved() {
+        XCTAssertNil(ToolSearchPath.firstExecutable(named: "bin/ls", environment: ["PATH": "/"]))
     }
 }

@@ -94,17 +94,20 @@ public struct UvCacheRule: ScanRule {
 
     // MARK: - Default tool discovery
 
-    /// Default provider runs `uv cache dir` with a short timeout and null stdin.
-    /// Skipped entirely (returns nil) when uv is not installed. Never fatal.
-    private static func makeDefaultProvider(
-        environmentVariables: [String: String]
+    /// Default provider runs the user-confirmed uv's `uv cache dir` with a short timeout and null stdin.
+    /// Returns nil when uv is unconfirmed or changed (treated as absent). Never fatal.
+    static func makeDefaultProvider(
+        environmentVariables: [String: String],
+        registry: ConfirmedToolRegistry = .shared
     ) -> ToolCacheDirProvider {
         let command = ToolCacheDescriptor.uv.nativeDiscovery
         return {
-            guard let command else { return nil }
-            return await ToolCommandRunner().captureOutput(
-                of: command,
-                environmentVariables: environmentVariables
+            guard let command, let tool = ConfirmableTool(rawValue: command.executableName) else { return nil }
+            return await ToolCommandRunner().captureConfirmed(
+                tool,
+                arguments: command.arguments,
+                registry: registry,
+                baseEnvironment: environmentVariables
             )
         }
     }
