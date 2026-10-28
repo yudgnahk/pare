@@ -1,0 +1,537 @@
+{
+  "formulae": [
+    {
+      "name": "ada-url",
+      "installed_versions": [
+        "4.0.0"
+      ],
+      "current_version": "4.0.0_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "brotli",
+      "installed_versions": [
+        "1.2.0"
+      ],
+      "current_version": "1.2.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "c-ares",
+      "installed_versions": [
+        "1.34.8"
+      ],
+      "current_version": "1.34.9",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "cffi",
+      "installed_versions": [
+        "2.1.1"
+      ],
+      "current_version": "2.1.1_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "cmake",
+      "installed_versions": [
+        "4.4.3"
+      ],
+      "current_version": "4.4.4",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "cmake-docs",
+      "installed_versions": [
+        "4.4.3"
+      ],
+      "current_version": "4.4.4",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "coreutils",
+      "installed_versions": [
+        "9.12"
+      ],
+      "current_version": "9.12_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "cryptography",
+      "installed_versions": [
+        "50.0.1"
+      ],
+      "current_version": "50.0.2_2",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "git",
+      "installed_versions": [
+        "2.56.0"
+      ],
+      "current_version": "2.56.0_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "glab",
+      "installed_versions": [
+        "1.124.0"
+      ],
+      "current_version": "1.125.0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "gnupg",
+      "installed_versions": [
+        "2.5.24"
+      ],
+      "current_version": "2.5.24_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "go@1.26",
+      "installed_versions": [
+        "1.26.8"
+      ],
+      "current_version": "1.26.10",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "hdrhistogram_c",
+      "installed_versions": [
+        "0.11.10"
+      ],
+      "current_version": "0.12.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "icu4c@78",
+      "installed_versions": [
+        "78.3"
+      ],
+      "current_version": "78.3_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "krb5",
+      "installed_versions": [
+        "1.22.2"
+      ],
+      "current_version": "1.22.2_2",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "kubernetes-cli",
+      "installed_versions": [
+        "1.37.0"
+      ],
+      "current_version": "1.37.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "libevent",
+      "installed_versions": [
+        "2.1.13"
+      ],
+      "current_version": "2.1.13_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "libgit2",
+      "installed_versions": [
+        "1.9.7"
+      ],
+      "current_version": "1.9.7_2",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "libngtcp2",
+      "installed_versions": [
+        "1.25.0"
+      ],
+      "current_version": "1.25.0_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "libssh2",
+      "installed_versions": [
+        "1.11.1_6"
+      ],
+      "current_version": "1.11.1_7",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "libunistring",
+      "installed_versions": [
+        "1.4.2"
+      ],
+      "current_version": "1.5",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "luajit",
+      "installed_versions": [
+        "2.1.1788856981"
+      ],
+      "current_version": "2.1.1792588164",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "luv",
+      "installed_versions": [
+        "1.52.1-0"
+      ],
+      "current_version": "1.53.0-0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "magic-wormhole",
+      "installed_versions": [
+        "0.24.0_3"
+      ],
+      "current_version": "0.24.0_4",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "merve",
+      "installed_versions": [
+        "1.2.2_3"
+      ],
+      "current_version": "1.2.2_4",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "mole",
+      "installed_versions": [
+        "1.64.0"
+      ],
+      "current_version": "1.65.0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "neon",
+      "installed_versions": [
+        "0.37.1"
+      ],
+      "current_version": "0.37.1_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "neonctl",
+      "installed_versions": [
+        "6.0.0"
+      ],
+      "current_version": "8.11.4",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "neovim",
+      "installed_versions": [
+        "0.12.5_1"
+      ],
+      "current_version": "0.12.6",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "node",
+      "installed_versions": [
+        "26.7.0"
+      ],
+      "current_version": "26.12.1_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "anomalyco/tap/opencode-v2",
+      "installed_versions": [
+        "2.1.4"
+      ],
+      "current_version": "2.2.0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "openssl@3",
+      "installed_versions": [
+        "3.6.5"
+      ],
+      "current_version": "3.5.9",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "steipete/tap/oracle",
+      "installed_versions": [
+        "0.21.1"
+      ],
+      "current_version": "0.22.2",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "pkgconf",
+      "installed_versions": [
+        "3.0.7"
+      ],
+      "current_version": "3.0.10",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "pnpm",
+      "installed_versions": [
+        "12.5.1"
+      ],
+      "current_version": "12.15.0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "postgresql@16",
+      "installed_versions": [
+        "16.15"
+      ],
+      "current_version": "16.15_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "pre-commit",
+      "installed_versions": [
+        "4.6.2"
+      ],
+      "current_version": "4.7.0_2",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "prometheus",
+      "installed_versions": [
+        "3.14.0"
+      ],
+      "current_version": "3.15.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "pycparser",
+      "installed_versions": [
+        "3.0"
+      ],
+      "current_version": "3.12",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "python-setuptools",
+      "installed_versions": [
+        "84.0.0"
+      ],
+      "current_version": "84.2.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "python@3.13",
+      "installed_versions": [
+        "3.13.15"
+      ],
+      "current_version": "3.13.18",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "python@3.14",
+      "installed_versions": [
+        "3.14.7"
+      ],
+      "current_version": "3.14.10",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "rust",
+      "installed_versions": [
+        "1.98.0"
+      ],
+      "current_version": "1.99.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "simdjson",
+      "installed_versions": [
+        "4.6.11"
+      ],
+      "current_version": "5.0.6",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "simdutf",
+      "installed_versions": [
+        "9.2.1_1"
+      ],
+      "current_version": "9.3.3",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "sphinx-doc",
+      "installed_versions": [
+        "9.1.0_4"
+      ],
+      "current_version": "9.2.0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "sqlite",
+      "installed_versions": [
+        "3.53.4"
+      ],
+      "current_version": "3.54.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "tor",
+      "installed_versions": [
+        "0.4.9.13"
+      ],
+      "current_version": "0.4.9.14_1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "tree-sitter",
+      "installed_versions": [
+        "0.27.0"
+      ],
+      "current_version": "0.27.1",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "utf8proc",
+      "installed_versions": [
+        "2.11.3"
+      ],
+      "current_version": "2.12.0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "uv",
+      "installed_versions": [
+        "0.12.17"
+      ],
+      "current_version": "0.13.6",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "vite",
+      "installed_versions": [
+        "8.3.0"
+      ],
+      "current_version": "8.3.5",
+      "pinned": false,
+      "pinned_version": null
+    }
+  ],
+  "casks": [
+    {
+      "name": "antigravity",
+      "installed_versions": [
+        "2.26.0,6546645232517120"
+      ],
+      "current_version": "2.27.0,4933976025071616",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "cloudflare-warp",
+      "installed_versions": [
+        "2026.4.1390.0"
+      ],
+      "current_version": "2026.8.2115.0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "codex",
+      "installed_versions": [
+        "0.164.0"
+      ],
+      "current_version": "0.165.0",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "google-chrome",
+      "installed_versions": [
+        "150.0.7871.182"
+      ],
+      "current_version": "156.0.8078.74",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "slack",
+      "installed_versions": [
+        "4.52.171"
+      ],
+      "current_version": "4.53.269",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "tailscale-app",
+      "installed_versions": [
+        "1.102.2"
+      ],
+      "current_version": "1.104.2",
+      "pinned": false,
+      "pinned_version": null
+    },
+    {
+      "name": "whatsapp",
+      "installed_versions": [
+        "26.42.19"
+      ],
+      "current_version": "26.43.20",
+      "pinned": false,
+      "pinned_version": null
+    }
+  ]
+}

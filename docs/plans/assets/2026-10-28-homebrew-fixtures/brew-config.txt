@@ -1,0 +1,18 @@
+HOMEBREW_VERSION: 7.0.11-14-ga59d9fc
+ORIGIN: https://github.com/Homebrew/brew.git
+HEAD: a59d9fc5f8361dccde817ce1c066fdf365c8df3e
+Last commit: 13 hours ago
+Branch: main
+Core tap: N/A
+Core cask tap: N/A
+HOMEBREW_PREFIX: /usr/local
+HOMEBREW_NO_AUTO_UPDATE: set
+HOMEBREW_NO_ENV_HINTS: set
+Homebrew Ruby: 4.0.9 => /usr/local/Homebrew/Library/Homebrew/vendor/portable-ruby/4.0.9/bin/ruby
+CPU: octa-core 64-bit kabylake
+Clang: 17.0.0 build 1700
+Git: 2.56.0 => /usr/local/opt/git/bin/git
+Curl: 8.7.1 => /usr/bin/curl
+macOS: 15.8.1-x86_64
+CLT: 26.3.0.0.1.1771626560
+Xcode: N/A

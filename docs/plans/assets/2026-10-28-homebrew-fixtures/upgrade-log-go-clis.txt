@@ -1,0 +1,62 @@
+
+This is a Tier 3 configuration:
+  https://docs.brew.sh/Support-Tiers#tier-3
+You can report issues with Tier 3 configurations to Homebrew/* repositories!
+  
+Read the above document before opening any issues or PRs.
+🍺  /usr/local/Cellar/mole/1.64.0: 68 files, 12.1MB, built in 10 seconds
+==> Cleanup
+Removing: /usr/local/Cellar/ca-certificates/2026-09-25... (5 files, 203KB)
+Removing: /usr/local/Cellar/docker-compose/5.6.0... (8 files, 29.3MB)
+Removing: /usr/local/Cellar/glab/1.120.0... (10 files, 52.5MB)
+Removing: /usr/local/Cellar/bun/1.4.2... (8 files, 69.4MB)
+Removing: /usr/local/Cellar/mockery/3.8.0... (10 files, 16.4MB)
+Removing: /usr/local/Cellar/k6/2.2.0... (10 files, 46.7MB)
+Removing: /usr/local/Cellar/helm/4.3.0... (69 files, 67.6MB)
+Removing: /usr/local/Cellar/certifi/2026.7.22... (44 files, 19.4KB)
+Removing: /usr/local/Cellar/mole/1.56.0... (64 files, 11.5MB)
+Removing: /usr/local/Cellar/gh/2.102.0... (238 files, 42.2MB)
+Removing: /Users/USER/Library/Caches/Homebrew/docker-compose--5.6.0.tar.gz... (748.7KB)
+Removing: /Users/USER/Library/Caches/Homebrew/gh--2.102.0.tar.gz... (15.3MB)
+Removing: /usr/local/Cellar/go/1.27.1... (15,577 files, 245.2MB)
+Removing: /Users/USER/Library/Caches/Homebrew/go--gobootstrap--1.24.13.tar.gz... (80.1MB)
+Disable this behaviour by setting `HOMEBREW_NO_INSTALL_CLEANUP=1`.
+Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
+==> Caveats
+zsh completions have been installed to:
+  /usr/local/share/zsh/site-functions
+==> docker-compose
+Compose is a Docker plugin. For Docker to find the plugin, add "cliPluginsExtraDirs" to ~/.docker/config.json:
+  "cliPluginsExtraDirs": [
+      "/usr/local/lib/docker/cli-plugins"
+  ]
+
+The following docker-compose executables are shadowed by commands in /usr/local/bin:
+docker-compose
+Running these by name will not invoke the version provided by Homebrew
+because the shadowing commands come earlier in your PATH.
+Disable this behaviour by setting `HOMEBREW_NO_PATH_SHADOW_CHECK=1`.
+Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
+==> Upgraded 11 requested outdated packages
+ca-certificates  2026-09-25 -> 2026-10-20
+certifi          2026.7.22  -> 2026.10.23
+oven-sh/bun/bun  1.4.2      -> 1.4.4
+go               1.27.1     -> 1.27.3
+gh               2.102.0    -> 2.103.3
+glab             1.120.0    -> 1.124.0
+docker-compose   5.6.0      -> 5.6.1
+helm             4.3.0      -> 4.3.1
+k6               2.2.0      -> 2.3.0
+mockery          3.8.0      -> 3.8.1
+mole             1.56.0     -> 1.64.0
+==> 8 homebrew/core formulae built from source
+go
+gh
+glab
+docker-compose
+helm
+k6
+mockery
+mole
+
+[exited with code 0]

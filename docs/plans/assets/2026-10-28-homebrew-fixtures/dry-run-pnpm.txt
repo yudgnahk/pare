@@ -1,0 +1,45 @@
+Warning: You are using macOS on Intel x86_64.
+We do not provide support for this platform (as-of September 2026, announced August 2025).
+
+Apple have dropped Intel x86_64 support in macOS Golden Gate (27).
+GitHub Actions are dropping macOS Intel x86_64 runners in 2027.
+Homebrew is a non-profit project run entirely by volunteers, not employees.
+If the biggest companies in the world cannot support macOS Intel x86_64
+any longer, sadly neither can we.
+
+Homebrew no longer builds bottles for this configuration.
+Consider MacPorts, which provides binary packages for this macOS version:
+  https://www.macports.org
+
+This is a Tier 3 configuration:
+  https://docs.brew.sh/Support-Tiers#tier-3
+You can report issues with Tier 3 configurations to Homebrew/* repositories!
+  
+Read the above document before opening any issues or PRs.
+==> Would install 7 dependencies:
+icu4c@79     79.1
+cxxopts      3.3.1
+openssl@4    4.1.0
+python@3.15  3.15.2
+z3           5.3.2
+ninja        1.13.2
+llvm         23.1.4
+==> Would upgrade 14 dependencies:
+cmake           4.4.3    -> 4.4.4
+simdutf         9.2.1_1  -> 9.3.3
+ada-url         4.0.0    -> 4.0.0_1
+brotli          1.2.0    -> 1.2.1
+c-ares          1.34.8   -> 1.34.9
+hdrhistogram_c  0.11.10  -> 0.12.1
+merve           1.2.2_3  -> 1.2.2_4
+simdjson        4.6.11   -> 5.0.6
+sqlite          3.53.4   -> 3.54.1
+libssh2         1.11.1_6 -> 1.11.1_7
+libgit2         1.9.7    -> 1.9.7_2
+pkgconf         3.0.7    -> 3.0.10
+rust            1.98.0   -> 1.99.1
+node            26.7.0   -> 26.12.1_1
+==> Would upgrade 1 requested outdated package
+pnpm 12.5.1 -> 12.15.0
+==> 1 homebrew/core formula that would build from source
+pnpm

@@ -1,0 +1,1007 @@
+{
+  "formulae": [
+    {
+      "name": "openssl@3",
+      "full_name": "openssl@3",
+      "tap": "homebrew/core",
+      "oldnames": [],
+      "aliases": [
+        "openssl@3.5"
+      ],
+      "versioned_formulae": [
+        "openssl@4",
+        "openssl@3.6",
+        "openssl@3.0"
+      ],
+      "desc": "Cryptography and SSL/TLS Toolkit",
+      "license": "Apache-2.0",
+      "homepage": "https://openssl-library.org",
+      "versions": {
+        "stable": "3.5.9",
+        "head": null,
+        "bottle": false
+      },
+      "urls": {
+        "stable": {
+          "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
+        }
+      },
+      "patches": [],
+      "local_patch_checksums": {},
+      "revision": 0,
+      "version_scheme": 1,
+      "compatibility_version": 1,
+      "autobump": true,
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "bottle": {},
+      "pour_bottle_only_if": null,
+      "keg_only": true,
+      "keg_only_reason": {
+        "reason": ":versioned_formula",
+        "explanation": ""
+      },
+      "options": [],
+      "build_dependencies": [],
+      "dependencies": [
+        "ca-certificates"
+      ],
+      "test_dependencies": [],
+      "recommended_dependencies": [],
+      "optional_dependencies": [],
+      "no_linkage_dependencies": [
+        "ca-certificates"
+      ],
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "requirements": [],
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "link_overwrite": [],
+      "caveats": "To add additional certificates, place .pem files in\n  $HOMEBREW_PREFIX/etc/openssl@3/certs\n\nand run\n  $HOMEBREW_PREFIX/opt/openssl@3/bin/c_rehash\n",
+      "installed": [
+        {
+          "sbom": "/usr/local/Cellar/openssl@3/3.6.5/sbom.spdx.json",
+          "version": "3.6.5",
+          "used_options": [],
+          "built_as_bottle": false,
+          "poured_from_bottle": false,
+          "time": 1791163525,
+          "runtime_dependencies": [
+            {
+              "full_name": "ca-certificates",
+              "version": "2026-09-25",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "2026-09-25",
+              "declared_directly": true
+            }
+          ],
+          "installed_on_request": false
+        }
+      ],
+      "linked_keg": "3.6.5",
+      "pinned": false,
+      "outdated": true,
+      "deprecated": false,
+      "deprecation_date": "2030-04-08",
+      "deprecation_reason": null,
+      "deprecation_replacement_formula": null,
+      "deprecation_replacement_cask": null,
+      "deprecate_args": {
+        "date": "2030-04-08",
+        "because": "unmaintained",
+        "replacement_formula": null,
+        "replacement_cask": null
+      },
+      "disabled": false,
+      "disable_date": "2031-04-08",
+      "disable_reason": null,
+      "disable_replacement_formula": null,
+      "disable_replacement_cask": null,
+      "disable_args": {
+        "date": "2031-04-08",
+        "because": "unmaintained",
+        "replacement_formula": null,
+        "replacement_cask": null
+      },
+      "post_install_steps": [
+        {
+          "source": {
+            "path": "{{etc}}/ca-certificates/cert.pem"
+          },
+          "target": {
+            "path": "{{pkgetc}}/cert.pem"
+          },
+          "force": true,
+          "type": "symlink"
+        }
+      ],
+      "post_install_defined": false,
+      "service": null,
+      "tap_git_head": "8bfaa03c6f64cc9de7f0e90e8b6a9ea88b7cfb8b",
+      "ruby_source_path": "Formula/o/openssl@3.rb",
+      "ruby_source_checksum": {
+        "sha256": "ff38ac43aa86a0484a12bace87feca515c745b3caf38a5b0738288b56fb86c97"
+      }
+    },
+    {
+      "name": "openssl@3.6",
+      "full_name": "openssl@3.6",
+      "tap": "homebrew/core",
+      "oldnames": [],
+      "aliases": [],
+      "versioned_formulae": [
+        "openssl@4",
+        "openssl@3",
+        "openssl@3.0"
+      ],
+      "desc": "Cryptography and SSL/TLS Toolkit",
+      "license": "Apache-2.0",
+      "homepage": "https://openssl-library.org",
+      "versions": {
+        "stable": "3.6.5",
+        "head": null,
+        "bottle": false
+      },
+      "urls": {
+        "stable": {
+          "url": "https://github.com/openssl/openssl/releases/download/openssl-3.6.5/openssl-3.6.5.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+        }
+      },
+      "patches": [],
+      "local_patch_checksums": {},
+      "revision": 0,
+      "version_scheme": 0,
+      "compatibility_version": null,
+      "autobump": true,
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "bottle": {},
+      "pour_bottle_only_if": null,
+      "keg_only": true,
+      "keg_only_reason": {
+        "reason": ":versioned_formula",
+        "explanation": ""
+      },
+      "options": [],
+      "build_dependencies": [],
+      "dependencies": [
+        "ca-certificates"
+      ],
+      "test_dependencies": [],
+      "recommended_dependencies": [],
+      "optional_dependencies": [],
+      "no_linkage_dependencies": [
+        "ca-certificates"
+      ],
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "requirements": [],
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "link_overwrite": [],
+      "caveats": "To add additional certificates, place .pem files in\n  $HOMEBREW_PREFIX/etc/openssl@3.6/certs\n\nand run\n  $HOMEBREW_PREFIX/opt/openssl@3.6/bin/c_rehash\n",
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "deprecated": false,
+      "deprecation_date": "2026-11-01",
+      "deprecation_reason": null,
+      "deprecation_replacement_formula": null,
+      "deprecation_replacement_cask": null,
+      "deprecate_args": {
+        "date": "2026-11-01",
+        "because": "unmaintained",
+        "replacement_formula": null,
+        "replacement_cask": null
+      },
+      "disabled": false,
+      "disable_date": "2027-11-01",
+      "disable_reason": null,
+      "disable_replacement_formula": null,
+      "disable_replacement_cask": null,
+      "disable_args": {
+        "date": "2027-11-01",
+        "because": "unmaintained",
+        "replacement_formula": null,
+        "replacement_cask": null
+      },
+      "post_install_steps": [
+        {
+          "source": {
+            "path": "{{etc}}/ca-certificates/cert.pem"
+          },
+          "target": {
+            "path": "{{pkgetc}}/cert.pem"
+          },
+          "force": true,
+          "type": "symlink"
+        }
+      ],
+      "post_install_defined": false,
+      "service": null,
+      "tap_git_head": "8bfaa03c6f64cc9de7f0e90e8b6a9ea88b7cfb8b",
+      "ruby_source_path": "Formula/o/openssl@3.6.rb",
+      "ruby_source_checksum": {
+        "sha256": "3a5f330d1fd095a88490c8cca66886b0b974e1773c2303a09621884b33327e0f"
+      }
+    },
+    {
+      "name": "brotli",
+      "full_name": "brotli",
+      "tap": "homebrew/core",
+      "oldnames": [],
+      "aliases": [],
+      "versioned_formulae": [],
+      "desc": "Generic-purpose lossless compression algorithm by Google",
+      "license": "MIT",
+      "homepage": "https://github.com/google/brotli",
+      "versions": {
+        "stable": "1.2.1",
+        "head": "HEAD",
+        "bottle": false
+      },
+      "urls": {
+        "stable": {
+          "url": "https://github.com/google/brotli/archive/refs/tags/v1.2.1.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f"
+        },
+        "head": {
+          "url": "https://github.com/google/brotli.git",
+          "branch": "master",
+          "using": null
+        }
+      },
+      "patches": [],
+      "local_patch_checksums": {},
+      "revision": 0,
+      "version_scheme": 0,
+      "compatibility_version": 1,
+      "autobump": true,
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "bottle": {},
+      "pour_bottle_only_if": null,
+      "keg_only": false,
+      "keg_only_reason": null,
+      "options": [],
+      "build_dependencies": [
+        "cmake"
+      ],
+      "dependencies": [],
+      "test_dependencies": [],
+      "recommended_dependencies": [],
+      "optional_dependencies": [],
+      "no_linkage_dependencies": [],
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "requirements": [],
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "link_overwrite": [],
+      "caveats": null,
+      "installed": [
+        {
+          "sbom": "/usr/local/Cellar/brotli/1.2.0/sbom.spdx.json",
+          "version": "1.2.0",
+          "used_options": [],
+          "built_as_bottle": true,
+          "poured_from_bottle": true,
+          "time": 1774496265,
+          "runtime_dependencies": [],
+          "installed_on_request": false
+        }
+      ],
+      "linked_keg": "1.2.0",
+      "pinned": false,
+      "outdated": true,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_formula": null,
+      "deprecation_replacement_cask": null,
+      "deprecate_args": null,
+      "disabled": false,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_formula": null,
+      "disable_replacement_cask": null,
+      "disable_args": null,
+      "post_install_steps": [],
+      "post_install_defined": false,
+      "service": null,
+      "tap_git_head": "8bfaa03c6f64cc9de7f0e90e8b6a9ea88b7cfb8b",
+      "ruby_source_path": "Formula/b/brotli.rb",
+      "ruby_source_checksum": {
+        "sha256": "dd52c7983ad63e4f322a3d44f610dec3ada3448583c3c66e35030ebbaee3433c"
+      }
+    },
+    {
+      "name": "pnpm",
+      "full_name": "pnpm",
+      "tap": "homebrew/core",
+      "oldnames": [],
+      "aliases": [
+        "pnpm@12"
+      ],
+      "versioned_formulae": [
+        "pnpm@11",
+        "pnpm@10",
+        "pnpm@9"
+      ],
+      "desc": "Fast, disk space efficient package manager",
+      "license": "MIT",
+      "homepage": "https://pnpm.io/",
+      "versions": {
+        "stable": "12.15.0",
+        "head": "HEAD",
+        "bottle": false
+      },
+      "urls": {
+        "stable": {
+          "url": "https://github.com/pnpm/pnpm/archive/refs/tags/v12.15.0.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "a4e58c4bc5113d4539463a7f65708032f7dc8b8b6c4106675c8e2a7e08c754b8"
+        },
+        "head": {
+          "url": "https://github.com/pnpm/pnpm.git",
+          "branch": "main",
+          "using": null
+        }
+      },
+      "patches": [],
+      "local_patch_checksums": {},
+      "revision": 0,
+      "version_scheme": 0,
+      "compatibility_version": 1,
+      "autobump": true,
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "bottle": {},
+      "pour_bottle_only_if": null,
+      "keg_only": false,
+      "keg_only_reason": null,
+      "options": [],
+      "build_dependencies": [
+        "esbuild",
+        "node",
+        "rust"
+      ],
+      "dependencies": [],
+      "test_dependencies": [],
+      "recommended_dependencies": [],
+      "optional_dependencies": [],
+      "no_linkage_dependencies": [],
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "requirements": [],
+      "conflicts_with": [
+        "corepack"
+      ],
+      "conflicts_with_reasons": [
+        "both install `pnpm` and `pnpx` binaries"
+      ],
+      "link_overwrite": [],
+      "caveats": null,
+      "installed": [
+        {
+          "sbom": "/usr/local/Cellar/pnpm/12.5.1/sbom.spdx.json",
+          "version": "12.5.1",
+          "used_options": [],
+          "built_as_bottle": false,
+          "poured_from_bottle": false,
+          "time": 1789987799,
+          "runtime_dependencies": [],
+          "installed_on_request": false
+        }
+      ],
+      "linked_keg": "12.5.1",
+      "pinned": false,
+      "outdated": true,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_formula": null,
+      "deprecation_replacement_cask": null,
+      "deprecate_args": null,
+      "disabled": false,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_formula": null,
+      "disable_replacement_cask": null,
+      "disable_args": null,
+      "post_install_steps": [],
+      "post_install_defined": false,
+      "service": null,
+      "tap_git_head": "8bfaa03c6f64cc9de7f0e90e8b6a9ea88b7cfb8b",
+      "ruby_source_path": "Formula/p/pnpm.rb",
+      "ruby_source_checksum": {
+        "sha256": "7d5503f1466709bc0ea900de2733caf9f0dd4648be567bccd082f6e0031a47c7"
+      }
+    },
+    {
+      "name": "node",
+      "full_name": "node",
+      "tap": "homebrew/core",
+      "oldnames": [],
+      "aliases": [
+        "node.js",
+        "node@26",
+        "nodejs",
+        "npm"
+      ],
+      "versioned_formulae": [
+        "node@24",
+        "node@22",
+        "node@20",
+        "node@18"
+      ],
+      "desc": "Open-source, cross-platform JavaScript runtime environment",
+      "license": "MIT",
+      "homepage": "https://nodejs.org/",
+      "versions": {
+        "stable": "26.12.1",
+        "head": "HEAD",
+        "bottle": false
+      },
+      "urls": {
+        "stable": {
+          "url": "https://nodejs.org/dist/v26.12.1/node-v26.12.1.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "053e3b296859b6d8d93f99ef97fa9cec1c4ee171c72968100c649978c1dbd38c"
+        },
+        "head": {
+          "url": "https://github.com/nodejs/node.git",
+          "branch": "main",
+          "using": null
+        }
+      },
+      "patches": [
+        {
+          "strip": "p1",
+          "file": "Patches/node/icu4c-79.patch"
+        }
+      ],
+      "local_patch_checksums": {
+        "Patches/node/icu4c-79.patch": "7e6c50808fe8b9406fd2464b66814a9bf2c8d892268374ac9bcb7ec8039a65e9"
+      },
+      "revision": 1,
+      "version_scheme": 0,
+      "compatibility_version": null,
+      "autobump": true,
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "bottle": {},
+      "pour_bottle_only_if": null,
+      "keg_only": false,
+      "keg_only_reason": null,
+      "options": [],
+      "build_dependencies": [
+        "pkgconf",
+        "python@3.15",
+        "rust"
+      ],
+      "dependencies": [
+        "abseil",
+        "ada-url",
+        "brotli",
+        "c-ares",
+        "hdrhistogram_c",
+        "icu4c@79",
+        "libffi",
+        "libnghttp2",
+        "libuv",
+        "llhttp",
+        "merve",
+        "nbytes",
+        "openssl@4",
+        "simdjson",
+        "simdutf",
+        "sqlite",
+        "uvwasi",
+        "zstd",
+        "highway"
+      ],
+      "test_dependencies": [],
+      "recommended_dependencies": [],
+      "optional_dependencies": [],
+      "no_linkage_dependencies": [],
+      "uses_from_macos": [
+        "python"
+      ],
+      "uses_from_macos_bounds": [
+        {}
+      ],
+      "requirements": [],
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "link_overwrite": [
+        "bin/npm",
+        "bin/npx"
+      ],
+      "caveats": "Single Executable Application is disabled as it doesn't work with shared libnode.\n",
+      "installed": [
+        {
+          "sbom": "/usr/local/Cellar/node/26.7.0/sbom.spdx.json",
+          "version": "26.7.0",
+          "used_options": [],
+          "built_as_bottle": true,
+          "poured_from_bottle": true,
+          "time": 1786381501,
+          "runtime_dependencies": [
+            {
+              "full_name": "fmt",
+              "version": "12.2.0",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "12.2.0",
+              "declared_directly": false
+            },
+            {
+              "full_name": "ada-url",
+              "version": "4.0.0",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "4.0.0",
+              "declared_directly": true
+            },
+            {
+              "full_name": "brotli",
+              "version": "1.2.0",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "1.2.0",
+              "declared_directly": true
+            },
+            {
+              "full_name": "c-ares",
+              "version": "1.34.8",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "1.34.8",
+              "declared_directly": true
+            },
+            {
+              "full_name": "hdrhistogram_c",
+              "version": "0.11.10",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "0.11.10",
+              "declared_directly": true
+            },
+            {
+              "full_name": "icu4c@78",
+              "version": "78.3",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "78.3",
+              "declared_directly": true
+            },
+            {
+              "full_name": "libffi",
+              "version": "3.8.0",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "3.8.0",
+              "declared_directly": true
+            },
+            {
+              "full_name": "libnghttp2",
+              "version": "1.70.0",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "1.70.0",
+              "declared_directly": true
+            },
+            {
+              "full_name": "libnghttp3",
+              "version": "1.18.0",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "1.18.0",
+              "declared_directly": true
+            },
+            {
+              "full_name": "ca-certificates",
+              "version": "2026-07-16",
+              "revision": 0,
+              "bottle_rebuild": 2,
+              "pkg_version": "2026-07-16",
+              "declared_directly": false
+            },
+            {
+              "full_name": "openssl@3",
+              "version": "3.6.3",
+              "revision": 0,
+              "bottle_rebuild": 1,
+              "pkg_version": "3.6.3",
+              "declared_directly": true
+            },
+            {
+              "full_name": "libngtcp2",
+              "version": "1.25.0",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "1.25.0",
+              "declared_directly": true
+            },
+            {
+              "full_name": "libuv",
+              "version": "1.52.1",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "1.52.1",
+              "declared_directly": true
+            },
+            {
+              "full_name": "llhttp",
+              "version": "9.4.3",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "9.4.3",
+              "declared_directly": true
+            },
+            {
+              "full_name": "simdutf",
+              "version": "9.0.0",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "9.0.0",
+              "declared_directly": false
+            },
+            {
+              "full_name": "merve",
+              "version": "1.2.2",
+              "revision": 1,
+              "bottle_rebuild": 0,
+              "pkg_version": "1.2.2_1",
+              "declared_directly": true
+            },
+            {
+              "full_name": "nbytes",
+              "version": "0.1.4",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "0.1.4",
+              "declared_directly": true
+            },
+            {
+              "full_name": "simdjson",
+              "version": "4.6.6",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "4.6.6",
+              "declared_directly": true
+            },
+            {
+              "full_name": "readline",
+              "version": "8.3.3",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "8.3.3",
+              "declared_directly": false
+            },
+            {
+              "full_name": "sqlite",
+              "version": "3.53.4",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "3.53.4",
+              "declared_directly": true
+            },
+            {
+              "full_name": "uvwasi",
+              "version": "0.0.23",
+              "revision": 0,
+              "bottle_rebuild": 1,
+              "pkg_version": "0.0.23",
+              "declared_directly": true
+            },
+            {
+              "full_name": "lz4",
+              "version": "1.10.0",
+              "revision": 0,
+              "bottle_rebuild": 1,
+              "pkg_version": "1.10.0",
+              "declared_directly": false
+            },
+            {
+              "full_name": "xz",
+              "version": "5.8.3",
+              "revision": 0,
+              "bottle_rebuild": 0,
+              "pkg_version": "5.8.3",
+              "declared_directly": false
+            },
+            {
+              "full_name": "zstd",
+              "version": "1.5.7",
+              "revision": 1,
+              "bottle_rebuild": 0,
+              "pkg_version": "1.5.7_1",
+              "declared_directly": true
+            }
+          ],
+          "installed_on_request": true
+        }
+      ],
+      "linked_keg": "26.7.0",
+      "pinned": false,
+      "outdated": true,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_formula": null,
+      "deprecation_replacement_cask": null,
+      "deprecate_args": null,
+      "disabled": false,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_formula": null,
+      "disable_replacement_cask": null,
+      "disable_args": null,
+      "post_install_steps": [
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/lib/node_modules"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/share/man/man1"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/share/man/man5"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "path": {
+            "path": "{{HOMEBREW_PREFIX}}/share/man/man7"
+          },
+          "type": "mkdir_p"
+        },
+        {
+          "paths": [
+            {
+              "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm"
+            }
+          ],
+          "recursive": true,
+          "guards": [
+            {
+              "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm",
+              "condition": "if_exists",
+              "id": "1"
+            }
+          ],
+          "type": "remove"
+        },
+        {
+          "source": {
+            "path": "{{libexec}}/lib/node_modules/npm"
+          },
+          "target": {
+            "path": "{{HOMEBREW_PREFIX}}/lib/node_modules"
+          },
+          "recursive": true,
+          "type": "copy"
+        },
+        {
+          "source": {
+            "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/bin/npm-cli.js"
+          },
+          "target": {
+            "path": "{{bin}}/npm"
+          },
+          "force": true,
+          "type": "symlink"
+        },
+        {
+          "source": {
+            "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/bin/npx-cli.js"
+          },
+          "target": {
+            "path": "{{bin}}/npx"
+          },
+          "force": true,
+          "type": "symlink"
+        },
+        {
+          "source": {
+            "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/man/man1/{npm,npx,package-}*"
+          },
+          "target": {
+            "path": "{{HOMEBREW_PREFIX}}/share/man/man1"
+          },
+          "force": true,
+          "source_glob": true,
+          "type": "symlink"
+        },
+        {
+          "source": {
+            "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/man/man5/{npm,npx,package-}*"
+          },
+          "target": {
+            "path": "{{HOMEBREW_PREFIX}}/share/man/man5"
+          },
+          "force": true,
+          "source_glob": true,
+          "type": "symlink"
+        },
+        {
+          "source": {
+            "path": "{{HOMEBREW_PREFIX}}/lib/node_modules/npm/man/man7/{npm,npx,package-}*"
+          },
+          "target": {
+            "path": "{{HOMEBREW_PREFIX}}/share/man/man7"
+          },
+          "force": true,
+          "source_glob": true,
+          "type": "symlink"
+        }
+      ],
+      "post_install_defined": false,
+      "service": null,
+      "tap_git_head": "8bfaa03c6f64cc9de7f0e90e8b6a9ea88b7cfb8b",
+      "ruby_source_path": "Formula/n/node.rb",
+      "ruby_source_checksum": {
+        "sha256": "8e9e81072d51b298ee96207bff65092003342863f2179b0cc300dbfabb2b4b7a"
+      }
+    },
+    {
+      "name": "git",
+      "full_name": "git",
+      "tap": "homebrew/core",
+      "oldnames": [],
+      "aliases": [],
+      "versioned_formulae": [],
+      "desc": "Distributed revision control system",
+      "license": "GPL-2.0-only AND GPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-3-Clause AND MIT",
+      "homepage": "https://git-scm.com",
+      "versions": {
+        "stable": "2.56.0",
+        "head": "HEAD",
+        "bottle": false
+      },
+      "urls": {
+        "stable": {
+          "url": "https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3"
+        },
+        "head": {
+          "url": "https://github.com/git/git.git",
+          "branch": "master",
+          "using": null
+        }
+      },
+      "patches": [],
+      "local_patch_checksums": {},
+      "revision": 1,
+      "version_scheme": 0,
+      "compatibility_version": 1,
+      "autobump": true,
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "bottle": {},
+      "pour_bottle_only_if": null,
+      "keg_only": false,
+      "keg_only_reason": null,
+      "options": [],
+      "build_dependencies": [
+        "gettext",
+        "pkgconf"
+      ],
+      "dependencies": [
+        "pcre2",
+        "gettext"
+      ],
+      "test_dependencies": [],
+      "recommended_dependencies": [],
+      "optional_dependencies": [],
+      "no_linkage_dependencies": [],
+      "uses_from_macos": [
+        "curl",
+        "expat"
+      ],
+      "uses_from_macos_bounds": [
+        {},
+        {}
+      ],
+      "requirements": [],
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "link_overwrite": [],
+      "caveats": "The Tcl/Tk GUIs (e.g. gitk, git-gui) are now in the `git-gui` formula.\nSubversion interoperability (git-svn) is now in the `git-svn` formula.\n",
+      "installed": [
+        {
+          "sbom": "/usr/local/Cellar/git/2.56.0/sbom.spdx.json",
+          "version": "2.56.0",
+          "used_options": [],
+          "built_as_bottle": false,
+          "poured_from_bottle": false,
+          "time": 1791163647,
+          "runtime_dependencies": [
+            {
+              "full_name": "pcre2",
+              "version": "10.49",
+              "revision": 0,
+              "pkg_version": "10.49",
+              "declared_directly": true
+            },
+            {
+              "full_name": "json-c",
+              "version": "0.19",
+              "revision": 0,
+              "pkg_version": "0.19",
+              "declared_directly": false
+            },
+            {
+              "full_name": "libunistring",
+              "version": "1.4.2",
+              "revision": 0,
+              "pkg_version": "1.4.2",
+              "declared_directly": false
+            },
+            {
+              "full_name": "gettext",
+              "version": "1.0",
+              "revision": 0,
+              "pkg_version": "1.0",
+              "declared_directly": true
+            }
+          ],
+          "installed_on_request": true
+        }
+      ],
+      "linked_keg": "2.56.0",
+      "pinned": false,
+      "outdated": true,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_formula": null,
+      "deprecation_replacement_cask": null,
+      "deprecate_args": null,
+      "disabled": false,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_formula": null,
+      "disable_replacement_cask": null,
+      "disable_args": null,
+      "post_install_steps": [],
+      "post_install_defined": false,
+      "service": null,
+      "tap_git_head": "8bfaa03c6f64cc9de7f0e90e8b6a9ea88b7cfb8b",
+      "ruby_source_path": "Formula/g/git.rb",
+      "ruby_source_checksum": {
+        "sha256": "df39658f97fd2bb62ab681628d14c7e41b6c2dfbe220778c3d3b2712ff16b0a4"
+      }
+    }
+  ],
+  "casks": []
+}
