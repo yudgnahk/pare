@@ -218,7 +218,7 @@ final class AppManagerViewModel: ObservableObject {
             otherCopyPaths: AppUninstaller.otherCopies(of: app, in: apps)
         )
         selectedLeftoverIDs = Set(pendingLeftovers.filter(\.isSelectedByDefault).map(\.id))
-        uninstallState = .confirming
+        uninstallState = AppUninstaller.linkRefusal(for: app).map { .error($0.localizedDescription) } ?? .confirming
         showUninstallSheet = true
     }
 

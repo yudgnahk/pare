@@ -540,6 +540,129 @@ final class AppUninstallerSafetyTests: XCTestCase {
         XCTAssertTrue(try CleanupTransactionStore(directory: transactionsDir).loadAll().isEmpty)
     }
 
+    // MARK: - Symlinked rows
+
+    /// The spelling `lsof` prints: `/private/var/…`, every link resolved.
+    private func kernelPath(_ path: String) -> String {
+        guard let resolved = realpath(path, nil) else { return path }
+        defer { free(resolved) }
+        return String(cString: resolved)
+    }
+
+    private func appRow(_ app: InstalledApp, at path: URL) -> InstalledApp {
+        InstalledApp(
+            name: app.name,
+            bundleID: app.bundleID,
+            version: app.version,
+            buildVersion: app.buildVersion,
+            path: path.path,
+            sizeBytes: app.sizeBytes,
+            installDate: nil,
+            lastUsed: nil,
+            isMAS: false,
+            isSystemApp: false
+        )
+    }
+
+    /// `Foo.app -> Foo/Foo.app`: the inventory lists the link, LaunchServices only the real bundle.
+    private func makeLinkedRow() throws -> (row: InstalledApp, real: URL) {
+        let bundle = try makeApp(folder: "Applications/Google Chrome")
+        let real = URL(fileURLWithPath: bundle.path)
+        let link = root.appendingPathComponent("Applications/Google Chrome.app")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        return (appRow(bundle, at: link), real)
+    }
+
+    /// The row sits under a linked folder, so its path is not the one `lsof` prints.
+    private func makeRowInLinkedFolder(bundleID: String? = "com.google.Chrome") throws -> (row: InstalledApp, real: URL) {
+        let bundle = try makeApp(bundleID: bundleID, folder: "RealApps")
+        let folder = root.appendingPathComponent("Linked")
+        try FileManager.default.createSymbolicLink(at: folder, withDestinationURL: root.appendingPathComponent("RealApps"))
+        return (appRow(bundle, at: folder.appendingPathComponent("Google Chrome.app")), URL(fileURLWithPath: bundle.path))
+    }
+
+    func testLinkedBundleIsReportedOnlyWhenTheRowItselfIsALink() throws {
+        let linked = try makeLinkedRow()
+        let inFolder = try makeRowInLinkedFolder()
+        let target = kernelPath(linked.real.path)
+
+        XCTAssertEqual(ScanPolicy.linkedAppBundle(forRow: linked.row.path), target)
+        XCTAssertEqual(ScanPolicy.linkedAppBundle(forRow: linked.row.path + "/"), target)
+        XCTAssertNil(ScanPolicy.linkedAppBundle(forRow: linked.real.path))
+        XCTAssertNil(ScanPolicy.linkedAppBundle(forRow: inFolder.row.path))
+        XCTAssertNil(ScanPolicy.linkedAppBundle(forRow: root.appendingPathComponent("Gone.app").path))
+        XCTAssertEqual(ScanPolicy.physicalAppPath(inFolder.row.path), kernelPath(inFolder.real.path))
+    }
+
+    func testLinkedRowMakesEveryLeftoverReportOnly() throws {
+        let (row, real) = try makeLinkedRow()
+        let prefs = try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let reason = "Google Chrome stays installed at \(kernelPath(real.path))"
+
+        for copies in [[real], []] {
+            let leftovers = makeUninstaller(appCopies: copies).findLeftovers(for: row)
+            XCTAssertEqual(leftovers.map(\.path), [prefs.path])
+            XCTAssertEqual(leftovers.first?.reportOnlyReason, reason)
+            XCTAssertEqual(leftovers.first?.isSelectedByDefault, false)
+        }
+    }
+
+    func testUninstallThroughLinkedRowRefusesAndMovesNothing() async throws {
+        let (row, real) = try makeLinkedRow()
+        let prefs = try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let ticked = AppLeftover(path: prefs.path, sizeBytes: 1, category: .preferences)
+
+        do {
+            _ = try await makeUninstaller(appCopies: [real]).uninstall(app: row, leftovers: [ticked])
+            XCTFail("expected appIsLink")
+        } catch let error as AppUninstallError {
+            XCTAssertEqual(error, .appIsLink(app: "Google Chrome", target: kernelPath(real.path)))
+        }
+        XCTAssertTrue(ScanPolicy.isSymbolicLink(atPath: row.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: real.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: prefs.path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: trashDir.path), [])
+        XCTAssertTrue(try CleanupTransactionStore(directory: transactionsDir).loadAll().isEmpty)
+    }
+
+    func testOpenFileCheckSeesTheRealBundleBehindALinkedFolder() async throws {
+        let (row, real) = try makeRowInLinkedFolder(bundleID: nil)
+        let helper = kernelPath(real.path) + "/Contents/MacOS/Helper"
+        let snapshot = OpenFileSnapshot(lsofFieldOutput: "p7\ncHelper\nn\(helper)\n")
+
+        do {
+            _ = try await makeUninstaller(openFiles: CountingSnapshotProvider(snapshot: snapshot)).uninstall(app: row, leftovers: [])
+            XCTFail("expected appInUse")
+        } catch let error as AppUninstallError {
+            XCTAssertEqual(error, .appInUse(app: "Google Chrome", holder: "Helper (pid 7)"))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: real.path))
+    }
+
+    func testBundleBehindALinkedFolderIsStillUninstalled() async throws {
+        let (row, real) = try makeRowInLinkedFolder()
+        let prefs = try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let uninstaller = makeUninstaller(appCopies: [real])
+
+        let leftovers = uninstaller.findLeftovers(for: row)
+        XCTAssertEqual(leftovers.first?.isSelectedByDefault, true)
+
+        let result = try await uninstaller.uninstall(app: row, leftovers: leftovers)
+        XCTAssertEqual(result.trashed, [row.path, prefs.path])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: real.path))
+    }
+
+    func testRealRowDoesNotTreatItsOwnLinkAsAnotherCopy() throws {
+        let (row, real) = try makeLinkedRow()
+        try makeFile(library.appendingPathComponent("Preferences/\(chromeID).plist"))
+        let realRow = appRow(row, at: real)
+
+        let leftovers = makeUninstaller(appCopies: [real]).findLeftovers(for: realRow, otherCopyPaths: [row.path])
+
+        XCTAssertEqual(leftovers.first?.isReportOnly, false)
+        XCTAssertEqual(leftovers.first?.isSelectedByDefault, true)
+    }
+
     func testGenericBundleIDsOnlyGetExactLeftovers() throws {
         let cases: [(id: String, path: String, expected: Bool)] = [
             ("com", "/Applications/Foo.app", false),

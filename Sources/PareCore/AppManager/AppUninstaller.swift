@@ -20,6 +20,7 @@ public struct AppUninstallResult: Sendable {
 public enum AppUninstallError: Error, LocalizedError, Equatable {
     case appRunning(String)
     case appInUse(app: String, holder: String)
+    case appIsLink(app: String, target: String)
     case appExcluded(String)
     case exclusionsUnreadable
     case openFileCheckUnavailable
@@ -31,6 +32,8 @@ public enum AppUninstallError: Error, LocalizedError, Equatable {
             return "Quit \(name) before uninstalling it."
         case .appInUse(let name, let holder):
             return "\(holder) is using \(name). Quit it before uninstalling."
+        case .appIsLink(let name, let target):
+            return "\(name) here is only a link to \(target), so nothing was removed."
         case .undoRecordUnavailable:
             return "Pare couldn't save an Undo record, so nothing was removed."
         case .appExcluded(let name):
@@ -102,22 +105,18 @@ public struct AppUninstaller: Sendable {
     func mergedOtherCopies(of app: InstalledApp, inventoryCopies: [String]) -> [String] {
         guard let bundleID = app.bundleID else { return inventoryCopies }
         // Case-sensitive on purpose: a mismatch only over-blocks, a false match would trash shared data.
-        var seen: Set<String> = [Self.copyKey(app.path)]
+        var seen: Set<String> = [ScanPolicy.physicalAppPath(app.path)]
         var merged: [String] = []
-        for path in inventoryCopies where seen.insert(Self.copyKey(path)).inserted {
+        for path in inventoryCopies where seen.insert(ScanPolicy.physicalAppPath(path)).inserted {
             merged.append(path)
         }
         for url in appCopies.appURLs(forBundleID: bundleID) {
             let path = url.standardizedFileURL.path
             guard FileManager.default.fileExists(atPath: path), !Self.isInTrash(path),
-                  seen.insert(Self.copyKey(path)).inserted else { continue }
+                  seen.insert(ScanPolicy.physicalAppPath(path)).inserted else { continue }
             merged.append(path)
         }
         return merged
-    }
-
-    private static func copyKey(_ path: String) -> String {
-        ScanPolicy.canonicalPathURL(URL(fileURLWithPath: path).resolvingSymlinksInPath()).path
     }
 
     private static func isInTrash(_ path: String) -> Bool {
@@ -128,9 +127,14 @@ public struct AppUninstaller: Sendable {
         otherCopyPaths.first.map { "Another copy of \(appName) at \($0) still uses this" }
     }
 
+    /// Set when `app`'s row is only a symlink, so uninstalling it would leave the real bundle installed.
+    public static func linkRefusal(for app: InstalledApp) -> AppUninstallError? {
+        ScanPolicy.linkedAppBundle(forRow: app.path).map { .appIsLink(app: app.name, target: $0) }
+    }
+
     /// Leftovers for `app`, matched on bundle-ID dot boundaries. Files a more specific bundle ID in
     /// `otherBundleIDs` also claims are dropped, everything is report-only while another copy
-    /// (from `otherCopyPaths` or LaunchServices) exists, and symlinks are never offered.
+    /// (from `otherCopyPaths` or LaunchServices) exists or the row is only a symlink, and symlinks are never offered.
     public func findLeftovers(
         for app: InstalledApp,
         otherBundleIDs: Set<String> = [],
@@ -139,7 +143,8 @@ public struct AppUninstaller: Sendable {
         guard let bundleID = app.bundleID, ScanPolicy.isUsableLeftoverBundleID(bundleID) else { return [] }
         let excluded = exclusions() ?? .empty
         let copies = mergedOtherCopies(of: app, inventoryCopies: otherCopyPaths)
-        let shared = Self.sharedCopyReason(appName: app.name, otherCopyPaths: copies)
+        let linked = ScanPolicy.linkedAppBundle(forRow: app.path).map { "\(app.name) stays installed at \($0)" }
+        let shared = linked ?? Self.sharedCopyReason(appName: app.name, otherCopyPaths: copies)
         let allowDerived = ScanPolicy.allowsDerivedLeftovers(bundleID: bundleID, appPath: app.path)
         var leftovers: [AppLeftover] = []
 
@@ -250,7 +255,7 @@ public struct AppUninstaller: Sendable {
     // MARK: - Uninstall
 
     /// Moves the app bundle, then each of `leftovers` the user kept ticked, to Trash.
-    /// Every leftover is re-checked here and refused while another copy exists; a running or
+    /// Every leftover is re-checked here and refused while another copy exists; a symlinked row, running or
     /// in-use app, unreadable exclusion list, missing open-file listing or unsaved undo record refuses
     /// the whole uninstall, and a leftover with anything open at or under it is skipped.
     public func uninstall(
@@ -313,6 +318,7 @@ public struct AppUninstaller: Sendable {
 
     /// Checks that refuse the whole uninstall before anything moves.
     private func preflight(_ app: InstalledApp) async throws -> (ExclusionList, OpenFileSnapshot) {
+        if let refusal = Self.linkRefusal(for: app) { throw refusal }
         if let bundleID = app.bundleID?.lowercased(),
            runningApps.runningApps().contains(where: { $0.bundleIdentifier.lowercased() == bundleID }) {
             throw AppUninstallError.appRunning(app.name)
@@ -321,8 +327,8 @@ public struct AppUninstaller: Sendable {
         guard !excluded.blocksRemoval(of: app.path) else { throw AppUninstallError.appExcluded(app.name) }
         // Taken before anything moves: without it an open database would be trashed under its writer.
         guard let snapshot = await openFiles.snapshot() else { throw AppUninstallError.openFileCheckUnavailable }
-        // Helpers and CLI tools inside the bundle run under other bundle IDs, or none.
-        if let holder = snapshot.holder(atOrUnder: app.path) {
+        // Helpers and CLI tools inside the bundle run under other bundle IDs, or none; lsof prints physical paths.
+        if let holder = snapshot.holder(atOrUnder: ScanPolicy.physicalAppPath(app.path)) {
             throw AppUninstallError.appInUse(app: app.name, holder: holder)
         }
         return (excluded, snapshot)

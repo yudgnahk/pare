@@ -70,6 +70,17 @@ extension ScanPolicy {
         }
     }
 
+    /// Where an app row physically lives, spelled as `lsof` prints it.
+    public static func physicalAppPath(_ appPath: String) -> String {
+        canonicalPathURL(URL(fileURLWithPath: appPath).resolvingSymlinksInPath()).path
+    }
+
+    /// The real bundle when the row itself is a symlink: Trash would move only the link. Linked parent folders don't count.
+    public static func linkedAppBundle(forRow appPath: String) -> String? {
+        let path = URL(fileURLWithPath: appPath).path
+        return isSymbolicLink(atPath: path) ? physicalAppPath(path) : nil
+    }
+
     /// True when `path` is a direct child of a per-user Library folder the App Manager scans.
     public static func isAppLeftoverLocation(_ path: String, home: URL) -> Bool {
         let url = URL(fileURLWithPath: path).standardizedFileURL
