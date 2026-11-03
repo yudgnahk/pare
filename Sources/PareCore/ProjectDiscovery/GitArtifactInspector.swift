@@ -25,11 +25,18 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
     /// Budget for one `statuses(for:)` call; a git call already running may overrun it by its own 3 s timeout.
     public static let defaultTotalDeadlineSeconds: TimeInterval = 20
 
-    /// Read-only, non-interactive git: no index lock refresh, no credential prompts.
-    static let environment = [
-        "GIT_OPTIONAL_LOCKS": "0",
-        "GIT_TERMINAL_PROMPT": "0",
-    ]
+    /// Git's whole environment, nothing inherited: `GIT_DIR`, `GIT_CEILING_DIRECTORIES` or `GIT_EXEC_PATH` would redirect it.
+    /// No index lock refresh, no credential prompts, no transport. `HOME` keeps the user's global ignores and `safe.directory`.
+    static let environment: [String: String] = {
+        let fixed = [
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "LC_ALL": "C",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_ALLOW_PROTOCOL": "none",
+        ]
+        return NSHomeDirectoryForUser(NSUserName()).map { fixed.merging(["HOME": $0]) { current, _ in current } } ?? fixed
+    }()
 
     private struct Candidate {
         let key: String
@@ -57,7 +64,7 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
     ) {
         let runner = ToolCommandRunner()
         self.locateGit = locateGit
-        self.run = run ?? { await runner.run(executable: $0, arguments: $1, environment: $2) }
+        self.run = run ?? { await runner.run(executable: $0, arguments: $1, exactEnvironment: $2) }
         self.maxArgumentBytesPerCall = maxArgumentBytesPerCall
         self.totalDeadline = totalDeadline
         self.now = now
@@ -113,8 +120,9 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
     private func lookUpRepository(containing parent: String, git: URL) async -> RepositoryLookup {
         let arguments = Self.baseArguments(directory: parent) + ["rev-parse", "--show-toplevel", "--show-prefix"]
         guard let output = await run(git, arguments, Self.environment) else { return .failed }
-        // 128 is git's "not a repository" (also unsafe ownership), which fails closed either way.
-        guard output.exitCode == 0 else { return output.exitCode == 128 ? .notInRepository : .failed }
+        guard output.exitCode == 0 else {
+            return output.exitCode == 128 && GitRepositoryAbsence.isProven(at: parent) ? .notInRepository : .failed
+        }
         let lines = String(decoding: output.stdout, as: UTF8.self)
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
@@ -191,8 +199,10 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
         return nil
     }
 
+    /// With these, nothing a scanned repo's config names can run: a lazy fetch and fsmonitor are the two ways
+    /// `check-ignore` and `ls-files` reach one. A git too old for the flag exits 129, which fails closed.
     private static func baseArguments(directory: String) -> [String] {
-        ["-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-C", directory]
+        ["--no-pager", "--no-lazy-fetch", "-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-C", directory]
     }
 
     /// Case- and normalization-insensitive, so a spelling mismatch reports "tracked" (fail closed).
