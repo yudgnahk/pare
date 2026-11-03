@@ -4,6 +4,8 @@ import SwiftUI
 /// Compact startup-disk meter for the sidebar footer.
 struct StorageMeter: View {
     let usage: VolumeUsage
+    /// Optional breakdown line under the free-space text; hidden when it has nothing to say.
+    var header: DiskHeaderSnapshot?
 
     @Environment(\.pareDisplayScale) private var scale
 
@@ -43,7 +45,42 @@ struct StorageMeter: View {
                 .foregroundStyle(isLow ? AppTheme.warmText : AppTheme.textSecondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
+
+            if let detail = header?.detailLine {
+                Text(detail)
+                    .font(scale.font(10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(warnsOfSwapPressure ? AppTheme.warning : AppTheme.textTertiary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(warnsOfSwapPressure
+                        ? "\(detail). Heavy swap on a nearly full disk slows the Mac — free space or quit memory-heavy apps."
+                        : detail)
+            }
         }
         .accessibilityElement(children: .combine)
     }
+
+    private var warnsOfSwapPressure: Bool {
+        header?.warnsOfSwapPressure(freeBytes: usage.availableBytes) ?? false
+    }
 }
+
+#if DEBUG
+struct StorageMeter_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 16) {
+            StorageMeter(
+                usage: VolumeUsage(name: "Macintosh HD", totalBytes: 494_000_000_000, availableBytes: 82_000_000_000),
+                header: DiskHeaderSnapshot(purgeableBytes: 3_200_000_000, swapUsedBytes: 1_100_000_000, localSnapshotCount: 4)
+            )
+            StorageMeter(
+                usage: VolumeUsage(name: "Macintosh HD", totalBytes: 494_000_000_000, availableBytes: 7_000_000_000),
+                header: DiskHeaderSnapshot(purgeableBytes: nil, swapUsedBytes: 6_500_000_000, localSnapshotCount: 0)
+            )
+        }
+        .padding()
+        .frame(width: 240)
+    }
+}
+#endif

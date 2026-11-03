@@ -9,29 +9,17 @@ public struct ToolCommandRunner: Sendable {
     /// slower is treated as absent.
     public static let defaultTimeoutSeconds: TimeInterval = 3
 
-    /// Conventional install locations checked in addition to PATH — Finder-launched
-    /// GUI apps do not inherit the user's shell PATH.
-    public static let conventionalSearchPaths = [
-        "/opt/homebrew/bin",
-        "/usr/local/bin",
-    ]
-
     public let timeoutSeconds: TimeInterval
 
     public init(timeoutSeconds: TimeInterval = ToolCommandRunner.defaultTimeoutSeconds) {
         self.timeoutSeconds = timeoutSeconds
     }
 
-    /// Resolves an executable name against the given environment's PATH entries
-    /// plus conventional Homebrew locations. Returns nil when not installed.
+    /// Resolves an executable name against `ToolSearchPath` for the given environment.
+    /// Returns nil when not installed.
     public func resolveExecutable(named name: String, environmentVariables: [String: String]) -> URL? {
         guard !name.isEmpty, !name.contains("/") else { return nil }
-        let pathEntries = (environmentVariables["PATH"] ?? "")
-            .split(separator: ":")
-            .map(String.init)
-        var searched = Set<String>()
-        for directory in pathEntries + Self.conventionalSearchPaths {
-            guard !directory.isEmpty, searched.insert(directory).inserted else { continue }
+        for directory in ToolSearchPath.directories(environment: environmentVariables) {
             let candidate = URL(fileURLWithPath: directory).appending(path: name)
             if FileManager.default.isExecutableFile(atPath: candidate.path) {
                 return candidate
@@ -50,18 +38,36 @@ public struct ToolCommandRunner: Sendable {
             named: command.executableName,
             environmentVariables: environmentVariables
         ) else { return nil }
-        return await capture(executable: executable, arguments: command.arguments)
+        let path = ToolSearchPath.pathValue(environment: environmentVariables)
+        return await capture(executable: executable, arguments: command.arguments, environment: ["PATH": path])
     }
 
     /// Runs the executable with a bounded timeout and returns trimmed stdout on
     /// exit status 0. Any failure (launch error, non-zero exit, timeout) → nil.
-    public func capture(executable: URL, arguments: [String]) async -> String? {
+    public func capture(executable: URL, arguments: [String], environment: [String: String] = [:]) async -> String? {
+        guard let result = await run(executable: executable, arguments: arguments, environment: environment),
+              result.exitCode == 0 else { return nil }
+        return String(data: result.stdout, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Runs the executable with a bounded timeout and returns its exit code and raw stdout.
+    /// `environment` is layered over the inherited one. Nil only on launch failure or timeout.
+    public func run(
+        executable: URL,
+        arguments: [String],
+        environment: [String: String] = [:]
+    ) async -> (exitCode: Int32, stdout: Data)? {
         let timeout = timeoutSeconds
         return await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = executable
             process.arguments = arguments
             process.standardInput = FileHandle.nullDevice
+            if !environment.isEmpty {
+                process.environment = ProcessInfo.processInfo.environment
+                    .merging(environment) { _, override in override }
+            }
 
             let stdoutPipe = Pipe()
             process.standardOutput = stdoutPipe
@@ -77,13 +83,11 @@ public struct ToolCommandRunner: Sendable {
 
             process.terminationHandler = { proc in
                 drainGroup.wait()
-                guard proc.terminationStatus == 0, !timedOut.value else {
+                guard !timedOut.value else {
                     continuation.resume(returning: nil)
                     return
                 }
-                let output = String(data: buffer.data, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                continuation.resume(returning: output)
+                continuation.resume(returning: (proc.terminationStatus, buffer.data))
             }
 
             do {

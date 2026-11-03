@@ -16,3 +16,5 @@ image.png
 by_tool.png
 *.LOCAL.md
 .DS_Store
+# Release/orchestration working notes (kept locally, never committed)
+.scratch/

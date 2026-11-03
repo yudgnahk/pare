@@ -33,112 +33,113 @@ public struct ScanReportAnnotator: Sendable {
     /// Same attribution as the “Where space goes” chart — used to group category browser rows by tool.
     public static func sourceApp(forPath path: String) -> String {
         let path = path.lowercased()
-        if path.contains("com.microsoft.vscode") || path.contains("/code/") || path.contains("/.vscode/")
-            || path.contains("com.visualstudio.code") {
+        let m = PathMatcher(path)
+        if m.has("com.microsoft.vscode") || m.has("/code/") || m.has("/.vscode/")
+            || m.has("com.visualstudio.code") {
             return "VS Code"
         }
-        if path.contains("jetbrains") || path.contains("intellij") || path.contains("datagrip")
-            || path.contains("pycharm") || path.contains("webstorm") || path.contains("phpstorm")
-            || path.contains("rubymine") || path.contains("androidstudio") || path.contains("goland")
-            || path.contains("clion") || path.contains("rustrover") {
+        if m.has("jetbrains") || m.has("intellij") || m.has("datagrip")
+            || m.has("pycharm") || m.has("webstorm") || m.has("phpstorm")
+            || m.has("rubymine") || m.has("androidstudio") || m.has("goland")
+            || m.has("clion") || m.has("rustrover") {
             return "JetBrains"
         }
-        if path.contains("com.docker.docker") || path.contains("/docker/") {
+        if m.has("com.docker.docker") || m.has("/docker/") {
             return "Docker"
         }
-        if path.contains("xcode") || path.contains("coresimulator") || path.contains("deriveddata") {
+        if m.has("xcode") || m.has("coresimulator") || m.has("deriveddata") {
             return "Xcode"
         }
-        if path.contains("com.apple.safari") || path.contains("/safari/") {
+        if m.has("com.apple.safari") || m.has("/safari/") {
             return "Safari"
         }
-        if path.contains("google/chrome") || path.contains("chromium") || path.contains("google chrome") {
+        if m.has("google/chrome") || m.has("chromium") || m.has("google chrome") {
             return "Chrome"
         }
-        if path.contains("bravesoftware") || path.contains("brave-browser") {
+        if m.has("bravesoftware") || m.has("brave-browser") {
             return "Brave"
         }
-        if path.contains("microsoft edge") || path.contains("com.microsoft.edgemac") {
+        if m.has("microsoft edge") || m.has("com.microsoft.edgemac") {
             return "Edge"
         }
-        if path.contains("firefox") {
+        if m.has("firefox") {
             return "Firefox"
         }
-        if path.contains("com.operasoftware.opera") || path.contains("/opera/") {
+        if m.has("com.operasoftware.opera") || m.has("/opera/") {
             return "Opera"
         }
-        if path.contains("com.adobe") || path.contains("/adobe/") {
+        if m.has("com.adobe") || m.has("/adobe/") {
             return "Adobe"
         }
-        if path.contains("com.figma") || path.contains("/figma/") {
+        if m.has("com.figma") || m.has("/figma/") {
             return "Figma"
         }
-        if path.contains("com.blackmagicdesign") || path.contains("davinci resolve") {
+        if m.has("com.blackmagicdesign") || m.has("davinci resolve") {
             return "DaVinci Resolve"
         }
-        if path.contains("finalcut") || path.contains("final cut pro") {
+        if m.has("finalcut") || m.has("final cut pro") {
             return "Final Cut Pro"
         }
         // Package managers / language toolchains (match chart + Developer Package Caches).
-        if path.contains("homebrew") || path.contains("/.npm/") || path.contains("/npm/")
-            || path.contains("node_modules") || path.contains("/.cargo/") || path.contains("/.rustup/")
-            || path.contains("/.gradle/") || path.contains("/.m2/") || path.contains("/.ivy2/")
-            || path.contains("/pnpm/") || path.contains("cocoapods") || path.contains("swiftpm")
-            || path.contains("org.swift.swiftpm") || path.contains("/go/pkg/") || path.contains("go-build")
-            || path.contains("/.pyenv/") || path.contains("/.gem/") || path.contains("/.bundle/")
-            || path.contains("/.rbenv/") || path.contains("/.cache/pip") || path.contains("/.cache/opencode")
-            || path.contains("/yarn/") {
+        if m.has("homebrew") || m.has("/.npm/") || m.has("/npm/")
+            || m.has("node_modules") || m.has("/.cargo/") || m.has("/.rustup/")
+            || m.has("/.gradle/") || m.has("/.m2/") || m.has("/.ivy2/")
+            || m.has("/pnpm/") || m.has("cocoapods") || m.has("swiftpm")
+            || m.has("org.swift.swiftpm") || m.has("/go/pkg/") || m.has("go-build")
+            || m.has("/.pyenv/") || m.has("/.gem/") || m.has("/.bundle/")
+            || m.has("/.rbenv/") || m.has("/.cache/pip") || m.has("/.cache/opencode")
+            || m.has("/yarn/") {
             return "Package Managers"
         }
-        if path.contains("cursor") && (path.contains("cache") || path.contains("application support")) {
+        if m.has("cursor") && (m.has("cache") || m.has("application support")) {
             return "Cursor"
         }
-        if path.contains("opencode") {
+        if m.has("opencode") {
             return "OpenCode"
         }
-        if path.contains("/library/logs/") || path.contains("/diagnosticreports/") || path.contains("/crashreporter/") {
+        if m.has("/library/logs/") || m.has("/diagnosticreports/") || m.has("/crashreporter/") {
             return "System Logs"
         }
-        if path.contains("/var/folders/") || path.contains("/caches/temporaryitems") || path.contains("/private/tmp/") {
+        if m.has("/var/folders/") || m.has("/caches/temporaryitems") || m.has("/private/tmp/") {
             return "Temp Files"
         }
-        if path.contains("slack") {
+        if m.has("slack") {
             return "Slack"
         }
-        if path.contains("zoom") {
+        if m.has("zoom") {
             return "Zoom"
         }
-        if path.contains("spotify") {
+        if m.has("spotify") {
             return "Spotify"
         }
-        if path.contains("com.microsoft.teams") || path.contains("teams.microsoft") {
+        if m.has("com.microsoft.teams") || m.has("teams.microsoft") {
             return "Teams"
         }
-        if path.contains("discord") {
+        if m.has("discord") {
             return "Discord"
         }
-        if path.contains("telegram") {
+        if m.has("telegram") {
             return "Telegram"
         }
-        if path.contains("1password") || path.contains("agilebits") {
+        if m.has("1password") || m.has("agilebits") {
             return "1Password"
         }
-        if path.contains("notion") {
+        if m.has("notion") {
             return "Notion"
         }
-        if path.contains("arc") && (path.contains("the browser company") || path.contains("user data")) {
+        if m.has("arc") && (m.has("the browser company") || m.has("user data")) {
             return "Arc"
         }
-        if path.contains("com.apple.mail") || path.contains("/mail/") {
+        if m.has("com.apple.mail") || m.has("/mail/") {
             return "Mail"
         }
-        if path.contains("com.apple.music") {
+        if m.has("com.apple.music") {
             return "Music"
         }
-        if path.contains("com.apple.photos") {
+        if m.has("com.apple.photos") {
             return "Photos"
         }
-        if path.contains("com.apple.imovie") {
+        if m.has("com.apple.imovie") {
             return "iMovie"
         }
         // Fallback: extract the app name from a reverse-DNS bundle ID in cache paths

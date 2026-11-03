@@ -23,6 +23,8 @@ final class ScanDashboardViewModel: ObservableObject {
         let toolRollups: [ToolRollup]
         let candidateStats: CandidateStats
         let totalReclaimableBytes: Int64
+        /// True when some reclaimable finding's size is a lower bound (sizing hit its deadline).
+        let isTotalSizePartial: Bool
         /// Human-readable scan warnings (rule failures, unreadable locations — R1.2/R1.3).
         let scanWarnings: [String]
         /// Rendered paths that existed on disk at scan finish (reveal button state).
@@ -36,8 +38,14 @@ final class ScanDashboardViewModel: ObservableObject {
 
     @Published private(set) var state: ScanState = .idle
     @Published private(set) var totalReclaimableBytes: Int64 = 0
+    /// The total is "at least" this much: some folder sizes stopped at their deadline.
+    @Published private(set) var isTotalSizePartial = false
+    /// "Grew since last scan: …" for the results summary; nil on the first scan or when nothing grew.
+    @Published private(set) var growthSinceLastScan: String?
     /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
     @Published private(set) var scanWarnings: [String] = []
+    /// Display-only cache activity by finding path; filled after results appear, never affects selection.
+    @Published private(set) var cacheActivity: [String: CacheActivityLabel] = [:]
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
     @Published private(set) var perToolRollups: [ToolRollup] = []
@@ -55,6 +63,8 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var scanStepTitle: String = ""
     @Published private(set) var scanRulesCompleted: Int = 0
     @Published private(set) var scanRulesTotal: Int = 0
+    /// True between the last rule finishing and results being applied.
+    @Published private(set) var isFinalizingScan = false
     /// After a successful scan with ~0 reclaimable bytes, coach the user on next steps.
     @Published private(set) var showEmptyScanCoaching: Bool = false
     /// Empty-scan card presentation when `showEmptyScanCoaching` is true.
@@ -82,10 +92,14 @@ final class ScanDashboardViewModel: ObservableObject {
     private let scanCache = ScanMetadataCache()
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
+    private let growthStore: GrowthSnapshotStore
+    /// Bumped per scan so growth lines or labels computed for an older scan cannot land after a newer one started.
+    private var scanGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
-    init(cleanup: CleanupCoordinator = CleanupCoordinator()) {
+    init(cleanup: CleanupCoordinator = CleanupCoordinator(), growthStore: GrowthSnapshotStore = GrowthSnapshotStore()) {
         self.cleanup = cleanup
+        self.growthStore = growthStore
         // Child observable objects publish through the dashboard so existing
         // `@ObservedObject var viewModel` views keep re-rendering.
         permissions.objectWillChange
@@ -101,6 +115,15 @@ final class ScanDashboardViewModel: ObservableObject {
 
     var isScanning: Bool {
         state == .scanning
+    }
+
+    static let finalizingProgressCap = 0.95
+    static let finalizingTitle = "Preparing results…"
+
+    /// Rule-count progress scaled to the finalize cap so the ring never steps back.
+    var scanProgress: Double {
+        guard scanRulesTotal > 0 else { return 0 }
+        return Double(scanRulesCompleted) / Double(scanRulesTotal) * Self.finalizingProgressCap
     }
 
     var cleanupState: CleanupCoordinator.CleanupState { cleanup.state }
@@ -330,6 +353,7 @@ final class ScanDashboardViewModel: ObservableObject {
     // MARK: - Scan lifecycle
 
     func cancelScan() {
+        scanGeneration += 1
         scanTask?.cancel()
         scanTask = nil
         state = .idle
@@ -337,6 +361,7 @@ final class ScanDashboardViewModel: ObservableObject {
         scanRulesTotal = 0
         scanStepTitle = ""
         scanStep = 1
+        isFinalizingScan = false
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
         refreshPermissionCoaching()
@@ -389,6 +414,9 @@ final class ScanDashboardViewModel: ObservableObject {
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
+        scanGeneration += 1
+        let generation = scanGeneration
+        growthSinceLastScan = nil
         state = .scanning
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
@@ -396,29 +424,23 @@ final class ScanDashboardViewModel: ObservableObject {
         scanStepTitle = "Scanning system & app caches…"
         scanRulesCompleted = 0
         scanRulesTotal = 0
+        isFinalizingScan = false
         let startedAt = Date()
         let cache = scanCache
 
         scanTask = Task(priority: .userInitiated) {
+            if forceRescan {
+                await ProjectRootDiscovery.shared.markStale()
+            }
             let rules = RuleCatalog.all
             let exclusionList = (try? ExclusionStore.shared.load()) ?? .empty
-            let runner = ScanRunner(exclusionList: exclusionList, cache: cache)
+            let runner = ScanRunner(exclusionList: exclusionList, cache: cache, regrowth: RegrowthDetector())
             let totalRules = rules.count
             await MainActor.run { self.scanRulesTotal = totalRules }
 
             let report = await runner.run(rules: rules, forceRescan: forceRescan) { completed, total, title in
                 Task { @MainActor in
-                    self.scanRulesCompleted = completed
-                    self.scanRulesTotal = total
-                    self.scanStepTitle = title
-                    let fraction = Double(completed) / Double(max(total, 1))
-                    if fraction < 0.34 {
-                        self.scanStep = 1
-                    } else if fraction < 0.67 {
-                        self.scanStep = 2
-                    } else {
-                        self.scanStep = 3
-                    }
+                    self.applyRuleProgress(completed: completed, total: total, title: title)
                 }
             }
 
@@ -430,6 +452,7 @@ final class ScanDashboardViewModel: ObservableObject {
             // attribution) must run in a detached task or the app beachballs with
             // “Not Responding” while still completing correctly afterward.
             let finishedAt = Date()
+            beginFinalizingScan()
             let prepared = await Task.detached(priority: .userInitiated) {
                 Self.prepareScanResults(from: report)
             }.value
@@ -437,7 +460,72 @@ final class ScanDashboardViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
 
             applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
+
+            await publishPostScanDetails(report: report, generation: generation)
         }
+    }
+
+    /// Growth recording and cache-activity labeling run side by side; each lands only while its scan is current.
+    private func publishPostScanDetails(report: ScanReport, generation: Int) async {
+        cacheActivity = [:]
+        let store = growthStore
+        // Only the rows "Largest items" shows can display a label.
+        let shown = largestItems.compactMap { findingsByPath[$0.path] }
+        let growthJob = Task.detached(priority: .utility) { Self.recordGrowth(report: report, store: store) }
+        let activityJob = Task.detached(priority: .utility) { CacheActivityLabeler.labels(for: shown) }
+
+        let activity = await activityJob.value
+        if generation == scanGeneration, !Task.isCancelled { cacheActivity = activity }
+        let growth = await growthJob.value
+        if generation == scanGeneration, !Task.isCancelled { growthSinceLastScan = growth }
+    }
+
+    func cacheActivityText(path: String) -> String? {
+        cacheActivity[path]?.text(now: Date())
+    }
+
+    /// Compares with the last complete snapshot, saves this scan's, and returns the top growth as one line.
+    nonisolated private static func recordGrowth(report: ScanReport, store: GrowthSnapshotStore) -> String? {
+        let current = GrowthSnapshot(report: report)
+        let previous = store.latestComplete()
+        do {
+            try store.save(current)
+        } catch {
+            NSLog("Saving growth snapshot failed: \(error.localizedDescription)")
+        }
+        guard let previous else { return nil }
+        let delta = GrowthDelta.compute(previous: previous, current: current)
+        let pathNames = Dictionary(
+            report.findings.map { (GrowthSnapshot.key($0.path), URL(fileURLWithPath: $0.path).lastPathComponent) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let top = (delta.paths.isEmpty ? delta.categories : delta.paths).prefix(5).map { entry in
+            let size = ScanReportPresenter.formatBytes(entry.grewBy)
+            return "\(pathNames[entry.key] ?? entry.key) " + (entry.isNew ? "new \(size)" : "+\(size)")
+        }
+        return top.isEmpty ? nil : "Grew since last scan: " + top.joined(separator: ", ")
+    }
+
+    /// Rule callbacks hop to the main actor unstructured, so one can land after finalize began; drop it.
+    func applyRuleProgress(completed: Int, total: Int, title: String) {
+        guard isScanning, !isFinalizingScan else { return }
+        scanRulesCompleted = completed
+        scanRulesTotal = total
+        scanStepTitle = title
+        let fraction = Double(completed) / Double(max(total, 1))
+        if fraction < 0.34 {
+            scanStep = 1
+        } else if fraction < 0.67 {
+            scanStep = 2
+        } else {
+            scanStep = 3
+        }
+    }
+
+    func beginFinalizingScan() {
+        guard isScanning else { return }
+        isFinalizingScan = true
+        scanStepTitle = Self.finalizingTitle
     }
 
     /// Pure post-scan aggregation — safe to call from a background task.
@@ -465,6 +553,7 @@ final class ScanDashboardViewModel: ObservableObject {
             toolRollups: FolderRollup.makeToolRollups(from: findings),
             candidateStats: CandidateStats.compute(from: findings),
             totalReclaimableBytes: report.totalReclaimableBytes,
+            isTotalSizePartial: report.hasPartialSizes,
             scanWarnings: makeScanWarnings(from: report),
             revealablePaths: revealablePaths,
             folderFindingPaths: folderFindingPaths
@@ -472,7 +561,7 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     /// Builds user-facing warnings from the report's error channels (R1.2/R1.3).
-    nonisolated private static func makeScanWarnings(from report: ScanReport) -> [String] {
+    nonisolated static func makeScanWarnings(from report: ScanReport) -> [String] {
         var warnings: [String] = []
         if !report.unreadableLocations.isEmpty {
             let count = report.unreadableLocations.count
@@ -482,6 +571,9 @@ final class ScanDashboardViewModel: ObservableObject {
         }
         for failure in report.ruleFailures {
             warnings.append("\(failure.ruleTitle) failed: \(failure.message)")
+        }
+        for incomplete in report.incompleteRules {
+            warnings.append("\(incomplete.ruleTitle): scan incomplete, results are partial. \(incomplete.message)")
         }
         return warnings
     }
@@ -527,6 +619,7 @@ final class ScanDashboardViewModel: ObservableObject {
         categoryFolderRows = prepared.aggregate.rowsByCategory
         categoryToolGroups = prepared.aggregate.toolGroupsByCategory
         totalReclaimableBytes = prepared.totalReclaimableBytes
+        isTotalSizePartial = prepared.isTotalSizePartial
         scanWarnings = prepared.scanWarnings
         summaries = prepared.summaries
         topFindings = prepared.sortedTopFindings
@@ -543,6 +636,7 @@ final class ScanDashboardViewModel: ObservableObject {
         revealFeedback = nil
         scanStep = 3
         scanStepTitle = "Scan complete"
+        isFinalizingScan = false
         state = .success
         // Snapshot FDA at scan finish so later grants can show "rescan needed"
         // instead of a misleading clean-disk empty state.
@@ -632,6 +726,7 @@ final class ScanDashboardViewModel: ObservableObject {
         // Capture the finding before removal so totals can be adjusted (R0.6).
         let excluded = findingsByPath[path] ?? latestFindings.first { $0.path == path }
         latestFindings.removeAll { $0.path == path }
+        isTotalSizePartial = ScanReport.hasPartialSizes(in: latestFindings)
         findingsByPath.removeValue(forKey: path)
         topFindings.removeAll { $0.path == path }
         // Rebuild private maps + lightweight rows (not on scroll hot path).
@@ -681,6 +776,16 @@ final class ScanDashboardViewModel: ObservableObject {
         ScanReportPresenter.formatBytes(bytes)
     }
 
+    /// "≥ X" or "size unknown" when a member finding's sizing stopped at its deadline.
+    func formattedFolderSize(_ row: CategoryFolderRow) -> String {
+        ScanReportPresenter.formatFindingSize(bytes: row.totalBytes, isComplete: !row.hasPartialSize)
+    }
+
+    /// "≥ X" or "size unknown" when the finding's sizing stopped at its deadline.
+    func formattedFindingSize(_ finding: FindingItem) -> String {
+        ScanReportPresenter.formatFindingSize(bytes: finding.sizeBytes, isComplete: finding.isSizeComplete)
+    }
+
     func formattedDate(_ date: Date?) -> String {
         guard let date else { return "Unknown" }
         let formatter = DateFormatter()
@@ -704,6 +809,12 @@ extension ScanDashboardViewModel {
         let prepared = Self.prepareScanResults(from: report)
         let finishedAt = Date()
         applyPreparedScanResults(prepared, startedAt: finishedAt.addingTimeInterval(-duration), finishedAt: finishedAt)
+    }
+
+    /// Freezes the hero in its finalize state (all rules done, results being prepared).
+    func applySnapshotFinalizing(total: Int) {
+        applySnapshotScanning(step: 3, completed: total, total: total, title: "")
+        beginFinalizingScan()
     }
 
     /// Freezes the hero in its scanning state without starting a real scan.

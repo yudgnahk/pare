@@ -192,6 +192,9 @@ private struct TransactionCard: View {
                             Text("\(transaction.items.count) item\(transaction.items.count == 1 ? "" : "s") · \(transaction.profileName) profile")
                                 .font(scale.font(12, weight: .medium))
                                 .foregroundStyle(AppTheme.textSecondary)
+                            if transaction.measuredBytesFreed != nil {
+                                ReclaimSummaryText(summary: ReclaimSummary(transaction: transaction))
+                            }
                         }
 
                         Spacer()

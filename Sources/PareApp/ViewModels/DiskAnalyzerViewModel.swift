@@ -71,6 +71,7 @@ final class DiskAnalyzerViewModel: ObservableObject {
     var cleanupIsBusy: Bool { coordinator.isCleaning || coordinator.isUndoing }
     var cleanupSkippedReasons: [String] { coordinator.lastResult?.skipped.map(\.reason) ?? [] }
     var cleanupSymlinkSkipExplanation: String? { coordinator.symlinkSkipExplanation }
+    var cleanupReclaim: ReclaimSummary? { coordinator.lastReclaim }
     var transactionSaveError: String? { coordinator.transactionSaveError }
 
     /// Drives the tray's confirmation sheet (`.sheet(item:)`); only ever `.diskReview`.

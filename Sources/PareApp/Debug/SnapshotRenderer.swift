@@ -95,6 +95,9 @@ extension SnapshotRenderer {
             Scene(name: "02-smart-scan-scanning", destination: .smartScan) { store in
                 store.scan.applySnapshotScanning(step: 2, completed: 21, total: 36, title: "Browser caches…")
             },
+            Scene(name: "02b-smart-scan-preparing", destination: .smartScan) { store in
+                store.scan.applySnapshotFinalizing(total: 36)
+            },
             Scene(name: "03-smart-scan-results", destination: .smartScan) { store in
                 store.scan.applySnapshotResults(SnapshotFixtures.scanReport)
             },

@@ -1,6 +1,17 @@
 import Foundation
 
 /// Allocated bytes, regular-file count and newest modification date for a directory subtree.
+/// Bytes counted by a folder walk, and whether the walk reached the end.
+public struct DirectorySizeResult: Sendable, Equatable {
+    public let bytes: Int64
+    public let isComplete: Bool
+
+    public init(bytes: Int64, isComplete: Bool) {
+        self.bytes = bytes
+        self.isComplete = isComplete
+    }
+}
+
 public struct DirectoryUsage: Sendable {
     public let allocatedBytes: Int64
     public let itemCount: Int
@@ -40,7 +51,23 @@ public enum FileSystemUtils {
     }
 
     public static func directorySize(url: URL) -> Int64 {
-        measureDirectory(url: url, includeModificationDates: false).allocatedBytes
+        measureDirectory(url: url, includeModificationDates: false).usage.allocatedBytes
+    }
+
+    /// Entries walked between clock reads; reading the clock per entry would dominate small-file trees.
+    static let deadlineCheckInterval = 256
+
+    /// Allocated size, stopping at `deadline`; an unfinished walk keeps the bytes counted so far.
+    public static func directorySize(at url: URL, deadline: Date?, now: @escaping () -> Date = { Date() }) -> DirectorySizeResult {
+        directorySize(at: url, deadline: deadline, now: now, checkEvery: deadlineCheckInterval)
+    }
+
+    static func directorySize(at url: URL, deadline: Date?, now: @escaping () -> Date, checkEvery: Int) -> DirectorySizeResult {
+        let walk = measureDirectory(
+            url: url, includeModificationDates: false,
+            deadline: deadline.map { (date: $0, now: now, checkEvery: max(1, checkEvery)) }
+        )
+        return DirectorySizeResult(bytes: walk.usage.allocatedBytes, isComplete: walk.finished)
     }
 
     /// How a walk treats directories that are the root of another mounted volume.
@@ -70,7 +97,7 @@ public enum FileSystemUtils {
     /// (avoids walking large trees twice for the Disk Analyzer's size + item-count + date columns).
     /// Directories that `mountPoints` flags are skipped, so other volumes are never double-counted.
     public static func directoryUsage(url: URL, mountPoints: MountPointCheck = .none) -> DirectoryUsage {
-        measureDirectory(url: url, includeModificationDates: true, mountPoints: mountPoints)
+        measureDirectory(url: url, includeModificationDates: true, mountPoints: mountPoints).usage
     }
 
     /// True when `url` is the root of a mounted volume (external, network, or an APFS sibling like `/System/Volumes/Data`).
@@ -78,11 +105,13 @@ public enum FileSystemUtils {
         (try? url.resourceValues(forKeys: [.isVolumeKey]))?.isVolume == true
     }
 
+    /// `finished` is false when the walk stopped early: cancelled, or past its deadline.
     private static func measureDirectory(
         url: URL,
         includeModificationDates: Bool,
-        mountPoints: MountPointCheck = .none
-    ) -> DirectoryUsage {
+        mountPoints: MountPointCheck = .none,
+        deadline: (date: Date, now: () -> Date, checkEvery: Int)? = nil
+    ) -> (usage: DirectoryUsage, finished: Bool) {
         var keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileSizeKey, .isRegularFileKey]
         if includeModificationDates { keys.append(.contentModificationDateKey) }
         let checksMountPoints = mountPoints.isActive
@@ -98,14 +127,23 @@ public enum FileSystemUtils {
                 return true
             }
         ) else {
-            return DirectoryUsage(allocatedBytes: 0, itemCount: 0, newestModification: nil, isPartial: true)
+            return (DirectoryUsage(allocatedBytes: 0, itemCount: 0, newestModification: nil, isPartial: true), true)
         }
         var tally = UsageTally()
+        var visited = 0
+        var stoppedEarly = false
         for case let fileURL as URL in enumerator {
             // Checked on every entry so a cancelled walk of a huge tree stops promptly.
             if Task.isCancelled {
+                stoppedEarly = true
                 break
             }
+            // Clock read on the first entry and every `checkEvery` after, so a passed deadline stops at once.
+            if let deadline, visited % deadline.checkEvery == 0, deadline.now() >= deadline.date {
+                stoppedEarly = true
+                break
+            }
+            visited += 1
             guard let vals = try? fileURL.resourceValues(forKeys: keySet) else {
                 isPartial = true
                 continue
@@ -119,12 +157,13 @@ public enum FileSystemUtils {
             }
             tally.add(vals, includeModificationDates: includeModificationDates)
         }
-        return DirectoryUsage(
+        let usage = DirectoryUsage(
             allocatedBytes: tally.total,
             itemCount: tally.itemCount,
             newestModification: tally.newest,
-            isPartial: isPartial || Task.isCancelled
+            isPartial: isPartial || stoppedEarly || Task.isCancelled
         )
+        return (usage, !stoppedEarly)
     }
 
     /// Running totals for one `measureDirectory` walk; a local accumulator keeps the hot loop allocation-free.

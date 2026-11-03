@@ -39,7 +39,7 @@ final class ScanRunnerTests: XCTestCase {
 
     func testBaselineRuleIncludesKnownRules() {
         let rules = RuleCatalog.baseline
-        XCTAssertEqual(rules.count, 11, "Baseline includes core + Phase 5–8 additions")
+        XCTAssertEqual(rules.count, 21, "Baseline includes core + Phase 5–8 additions + diagnostics")
         XCTAssertTrue(rules.contains(where: { $0.id == "user-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "temporary-files" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "logs-crash-reports" }))
@@ -53,6 +53,9 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "mobile-sync-backups" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "productivity-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "orphaned-launch-agents" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "crash-loops" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "runaway-logs" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "version-siblings" }))
     }
 
     func testUnifiedCatalogRuleCount() {
@@ -60,7 +63,17 @@ final class ScanRunnerTests: XCTestCase {
         let ids = all.map(\.id)
         XCTAssertEqual(ids.count, Set(ids).count, "RuleCatalog.all must be unique by id")
         // Keep in sync with RuleCatalog constructors (developer ∪ designer ∪ videoBuilder).
-        XCTAssertEqual(all.count, 36, "Update this when adding/removing rules from RuleCatalog")
+        XCTAssertEqual(all.count, 48, "Update this when adding/removing rules from RuleCatalog")
+    }
+
+    func testProjectDependenciesRuleIsDeveloperOnlyAndReviewOnly() {
+        let id = ProjectDependenciesRule().id
+        XCTAssertTrue(RuleCatalog.developer.contains { $0.id == id })
+        XCTAssertTrue(RuleCatalog.all.contains { $0.id == id })
+        for profile in [ScanProfile.baseline, .designer, .videoBuilder] {
+            XCTAssertFalse(RuleCatalog.rules(for: profile).contains { $0.id == id }, "\(profile)")
+        }
+        XCTAssertEqual(ProjectDependenciesRule().riskLevel, .review)
     }
 
     func testBrowserRuleSkipsSensitiveFiles() {
@@ -159,6 +172,7 @@ final class ScanRunnerTests: XCTestCase {
         XCTAssertTrue(rules.contains(where: { $0.id == "ai-tool-caches" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "homebrew-cache" }))
         XCTAssertTrue(rules.contains(where: { $0.id == "project-artifacts-v2" }))
+        XCTAssertTrue(rules.contains(where: { $0.id == "project-dependencies" }))
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-vm-data-advanced" }))
         // Orphaned logs-only rule is not registered; DockerStorageRule covers logs + VM visibility.
         XCTAssertFalse(rules.contains(where: { $0.id == "docker-logs-review-required" }))
@@ -455,6 +469,162 @@ final class ScanRunnerTests: XCTestCase {
             report.summaries.first(where: { $0.category == .userCaches })?.reclaimableBytes,
             100
         )
+    }
+
+    // MARK: - Overlapping findings are deduplicated
+
+    private func makeDedupeRunner(
+        filesByDirectory: [String: [ScannedFile]],
+        exclusionList: ExclusionList = .empty
+    ) -> ScanRunner {
+        ScanRunner(
+            environment: ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test"), tempDirectory: URL(fileURLWithPath: "/tmp")),
+            traversal: MockTraversal(filesByDirectory: filesByDirectory),
+            exclusionList: exclusionList
+        )
+    }
+
+    func testSamePathFromTwoRulesIsCountedOnce() async {
+        let dir = URL(fileURLWithPath: "/tmp/shared")
+        let runner = makeDedupeRunner(filesByDirectory: [
+            dir.path: [ScannedFile(url: dir.appendingPathComponent("a.cache"), sizeBytes: 250, lastModified: nil)]
+        ])
+        let rules: [any ScanRule] = [
+            TestRule(id: "first", title: "First", category: .userCaches, targets: [dir]),
+            TestRule(id: "second", title: "Second", category: .userCaches, targets: [dir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.findings.count, 1)
+        XCTAssertEqual(report.totalReclaimableBytes, 250)
+        let summary = report.summaries.first(where: { $0.category == .userCaches })
+        XCTAssertEqual(summary?.reclaimableBytes, 250)
+        XCTAssertEqual(summary?.fileCount, 1)
+    }
+
+    func testAdvancedDuplicateStaysOutOfTotals() async {
+        let dir = URL(fileURLWithPath: "/tmp/tool-cache")
+        let runner = makeDedupeRunner(filesByDirectory: [
+            dir.path: [ScannedFile(url: dir.appendingPathComponent("blob"), sizeBytes: 500, lastModified: nil)]
+        ])
+        let rules: [any ScanRule] = [
+            TestRule(id: "safe", title: "Safe", category: .userCaches, riskLevel: .safe, targets: [dir]),
+            TestRule(id: "advanced", title: "Advanced", category: .developerPackageCaches, riskLevel: .advanced, targets: [dir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.findings.count, 1)
+        XCTAssertEqual(report.findings.first?.riskLevel, .advanced, "highest risk wins on the same path")
+        XCTAssertEqual(report.totalReclaimableBytes, 0)
+        XCTAssertTrue(report.summaries.isEmpty)
+    }
+
+    func testExclusionListStillAppliesWithDeduplication() async {
+        let dir = URL(fileURLWithPath: "/tmp/shared")
+        let excluded = dir.appendingPathComponent("excluded.cache")
+        let kept = dir.appendingPathComponent("kept.cache")
+        var exclusions = ExclusionList()
+        exclusions.add(ExclusionEntry(path: excluded.path, matchType: .exact))
+        let runner = makeDedupeRunner(
+            filesByDirectory: [dir.path: [
+                ScannedFile(url: excluded, sizeBytes: 100, lastModified: nil),
+                ScannedFile(url: kept, sizeBytes: 40, lastModified: nil)
+            ]],
+            exclusionList: exclusions
+        )
+        let rules: [any ScanRule] = [
+            TestRule(id: "first", title: "First", category: .userCaches, targets: [dir]),
+            TestRule(id: "second", title: "Second", category: .userCaches, targets: [dir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.findings.map(\.path), [kept.path])
+        XCTAssertEqual(report.totalReclaimableBytes, 40)
+    }
+
+    // MARK: - Partial results from a rule that stopped early
+
+    private struct PartialRule: ScanRule {
+        let id = "partial-rule"
+        let title = "Partial Rule"
+        let reason = "Stopped early"
+        let category: ScanCategory = .projectArtifacts
+        let riskLevel: RiskLevel = .safe
+        let confidence = 1.0
+
+        func targetDirectories(environment: ScanEnvironment) -> [URL] { [] }
+        func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool { false }
+        func customScanResult(environment: ScanEnvironment) async throws -> ScanRuleResult? {
+            let finding = ScanFinding(
+                category: category, riskLevel: riskLevel, reason: reason,
+                path: "/tmp/project/target", sizeBytes: 700, lastUsed: nil, confidence: confidence
+            )
+            return ScanRuleResult(findings: [finding], incompleteMessage: "Stopped after 1 s")
+        }
+    }
+
+    func testIncompleteRuleKeepsPartialFindingsAndReportsNotice() async {
+        let cacheDir = URL(fileURLWithPath: "/tmp/cache")
+        let runner = makeDedupeRunner(filesByDirectory: [
+            cacheDir.path: [ScannedFile(url: cacheDir.appendingPathComponent("a.cache"), sizeBytes: 100, lastModified: nil)]
+        ])
+        let rules: [any ScanRule] = [
+            PartialRule(),
+            TestRule(id: "cache", title: "Cache", category: .userCaches, targets: [cacheDir])
+        ]
+
+        let report = await runner.run(rules: rules)
+
+        XCTAssertEqual(report.findings.count, 2)
+        XCTAssertEqual(report.summaries.first(where: { $0.category == .projectArtifacts })?.reclaimableBytes, 700)
+        XCTAssertEqual(report.totalReclaimableBytes, 800)
+        XCTAssertEqual(report.incompleteRules.count, 1)
+        XCTAssertEqual(report.incompleteRules.first?.ruleID, "partial-rule")
+        XCTAssertEqual(report.incompleteRules.first?.ruleTitle, "Partial Rule")
+        XCTAssertEqual(report.incompleteRules.first?.message, "Stopped after 1 s")
+        XCTAssertTrue(report.ruleFailures.isEmpty)
+    }
+
+    func testCompleteRulesReportNoIncompleteNotice() async {
+        let cacheDir = URL(fileURLWithPath: "/tmp/cache")
+        let runner = makeDedupeRunner(filesByDirectory: [
+            cacheDir.path: [ScannedFile(url: cacheDir.appendingPathComponent("a.cache"), sizeBytes: 100, lastModified: nil)]
+        ])
+
+        let report = await runner.run(rules: [
+            TestRule(id: "cache", title: "Cache", category: .userCaches, targets: [cacheDir])
+        ])
+
+        XCTAssertTrue(report.incompleteRules.isEmpty)
+    }
+
+    // MARK: - Regrowth post-pass
+
+    func testRegrowthDetectorDemotesFindingsWithoutChangingTotals() async {
+        let dir = URL(fileURLWithPath: "/tmp/regrowth")
+        let cache = dir.appendingPathComponent("go-build")
+        let traversal = MockTraversal(filesByDirectory: [
+            dir.path: [ScannedFile(url: cache, sizeBytes: 1_300_000_000, lastModified: nil)]
+        ])
+        let now = Date()
+        let history = [CleanupTransaction(
+            timestamp: now.addingTimeInterval(-3 * 86_400), profileName: "all", isDryRun: false,
+            items: [CleanupItem(originalPath: cache.path, trashedPath: "/Users/test/.Trash/go-build",
+                                sizeBytes: 6_930_000_000, reason: "cache", riskLevel: .safe)]
+        )]
+        let runner = ScanRunner(
+            environment: ScanEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/test"), tempDirectory: URL(fileURLWithPath: "/tmp")),
+            traversal: traversal,
+            regrowth: RegrowthDetector(history: { history }, now: { now })
+        )
+
+        let report = await runner.run(rules: [TestRule(id: "cache", title: "Cache", category: .userCaches, targets: [dir])])
+
+        XCTAssertEqual(report.findings.first?.riskLevel, .review)
+        XCTAssertEqual(report.totalReclaimableBytes, 1_300_000_000)
     }
 
     // MARK: - R1.2: per-rule error channel

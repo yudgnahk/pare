@@ -39,6 +39,13 @@ final class CleanupCoordinator: ObservableObject {
     /// One line replacing N skip rows when a shared symlinked ancestor (e.g. home) blocked every item.
     @Published private(set) var symlinkSkipExplanation: String?
 
+    /// Notes for the result card: shared-symlink skips and an unavailable open-file check.
+    var resultExplanation: String? {
+        let unavailable = lastResult?.inUseCheckUnavailable == true ? CleanupResult.inUseCheckUnavailableNote : nil
+        let notes = [symlinkSkipExplanation, unavailable].compactMap { $0 }
+        return notes.isEmpty ? nil : notes.joined(separator: " ")
+    }
+
     /// Run after every cleanup or undo; each screen sharing this coordinator registers one.
     private var completionHandlers: [() -> Void] = []
 
@@ -59,6 +66,11 @@ final class CleanupCoordinator: ObservableObject {
     var isUndoing: Bool {
         if case .undoing = state { return true }
         return false
+    }
+
+    /// Estimated vs measured reclaim for the last real cleanup; nil when nothing was trashed.
+    var lastReclaim: ReclaimSummary? {
+        lastResult?.transaction.map(ReclaimSummary.init(transaction:))
     }
 
     var canUndo: Bool {

@@ -17,17 +17,16 @@ public struct TemporaryFilesRule: ScanRule {
     }
 
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
+        // Age first: a date compare rejects fresh files before the per-file path string searches.
+        guard ScanPolicy.passesMinimumAge(
+            for: resourceValues,
+            minimumAgeSeconds: ScanPolicy.defaultMinimumAgeSeconds(for: category)
+        ) else { return false }
+
         let path = fileURL.path.lowercased()
         let temporaryMarkers = ["/tmp/", "/temp/", "temporaryitems", "diagnosticreports"]
         let matchesTempPath = temporaryMarkers.contains(where: { path.contains($0) }) || fileURL.lastPathComponent.lowercased().hasPrefix("tmp")
 
-        guard matchesTempPath, ScanPolicy.isLowImpactPath(fileURL) else {
-            return false
-        }
-
-        return ScanPolicy.passesMinimumAge(
-            for: resourceValues,
-            minimumAgeSeconds: ScanPolicy.defaultMinimumAgeSeconds(for: category)
-        )
+        return matchesTempPath && ScanPolicy.isLowImpactPath(fileURL)
     }
 }

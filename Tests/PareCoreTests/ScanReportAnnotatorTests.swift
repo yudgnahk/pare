@@ -95,6 +95,44 @@ final class ScanReportAnnotatorTests: XCTestCase {
         XCTAssertTrue(rollups.isEmpty)
     }
 
+    /// Pins the full appRollups output (fold-into-Other, top files, ordering) for a mixed input.
+    func testRollupsPinnedOutputForMixedFindings() {
+        let mb: Int64 = 1_048_576
+        var findings = (1...40).map {
+            makeFinding(path: "/Users/u/Library/Caches/Google/Chrome/Default/Cache/f_\($0)", size: Int64($0) * mb / 4)
+        }
+        findings += [
+            makeFinding(path: "/Users/u/Library/Developer/Xcode/DerivedData/App/a", size: 3 * mb),
+            makeFinding(path: "/Users/u/Library/Developer/Xcode/DerivedData/App/b", size: 2 * mb + 5),
+            makeFinding(path: "/Users/u/Library/Caches/Slack/tiny", size: 1_000),
+            makeFinding(path: "/Users/u/Library/Caches/com.unknown.app/blob", size: 5 * mb),
+            makeFinding(path: "/Users/u/Library/Caches/com.apple.Maps/tile", size: 700),
+        ]
+        let rollups = ScanReportAnnotator.appRollups(from: findings)
+
+        XCTAssertEqual(rollups.map(\.app), ["Chrome", "Other", "Xcode"])
+        XCTAssertEqual(rollups.map(\.fileCount), [40, 3, 2])
+        XCTAssertEqual(rollups[0].totalBytes, (1...40).reduce(Int64(0)) { $0 + Int64($1) * mb / 4 })
+        XCTAssertEqual(rollups[1].totalBytes, 5 * mb + 1_700)
+        XCTAssertEqual(rollups[2].totalBytes, 5 * mb + 5)
+        XCTAssertEqual(rollups[0].topFiles.count, 10)
+        XCTAssertEqual(rollups[0].topFiles.first?.path, "/Users/u/Library/Caches/Google/Chrome/Default/Cache/f_40")
+        XCTAssertEqual(rollups[0].topFiles.last?.path, "/Users/u/Library/Caches/Google/Chrome/Default/Cache/f_31")
+        XCTAssertEqual(rollups[1].topFiles.map(\.path), ["/Users/u/Library/Caches/com.unknown.app/blob"])
+        XCTAssertEqual(rollups[2].topFiles.map(\.sizeBytes), [3 * mb, 2 * mb + 5])
+    }
+
+    /// Guards the ASCII fast path: non-ASCII and mixed-case paths attribute like the plain string match.
+    func testAttributionHandlesCaseAndNonASCII() {
+        XCTAssertEqual(attribution("/Users/user/Library/Caches/GOOGLE/CHROME/foo"), "Chrome")
+        XCTAssertEqual(attribution("/Users/josé/Library/Caches/Firefox/foo"), "Firefox")
+        XCTAssertEqual(attribution("/Users/josé/Library/Caches/com.example.Éditor/foo"), "Éditor")
+        // "xcode" + combining accent is one grapheme ("é"), so the non-ASCII path must not match "xcode".
+        XCTAssertEqual(attribution("/Users/user/Caches/xcode/foo"), "Xcode")
+        XCTAssertEqual(attribution("/Users/user/Caches/xcode\u{301}/foo"), "Other")
+        XCTAssertEqual(attribution("/Users/jos\u{e9}/Caches/xcode/foo"), "Xcode")
+    }
+
     // MARK: - Helpers
 
     private func attribution(_ path: String) -> String {

@@ -113,7 +113,7 @@ struct SidebarView: View {
     @ViewBuilder
     private var footer: some View {
         if let usage = volume.usage {
-            StorageMeter(usage: usage)
+            StorageMeter(usage: usage, header: volume.header)
                 .padding(12)
                 .background(
                     AppTheme.Fill.subtle,
