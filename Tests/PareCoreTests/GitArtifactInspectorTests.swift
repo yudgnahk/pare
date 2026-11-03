@@ -8,10 +8,7 @@ final class GitArtifactInspectorTests: XCTestCase {
     private var git: URL!
 
     override func setUp() async throws {
-        guard let located = await GitLocator().locate() else {
-            throw XCTSkip("git is not installed")
-        }
-        git = located
+        git = try await RealGit.locate()
         root = FileManager.default.temporaryDirectory.appending(path: "pare-git-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
@@ -195,6 +192,31 @@ final class GitArtifactInspectorFailureTests: XCTestCase {
         let statuses = await inspector.statuses(for: dirs)
 
         XCTAssertEqual(statuses, Dictionary(uniqueKeysWithValues: dirs.map { ($0.path, .failed) }))
+    }
+
+    /// Production gets exit 128 and empty stdout here: stderr is discarded, so the code alone can't say why.
+    func testExit128IsNoRepositoryOnlyWithoutAnyGitEntryOnDisk() async throws {
+        let base = FileManager.default.temporaryDirectory.appending(path: "pare-git128-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let plain = base.appending(path: "plain/app")
+        let owned = base.appending(path: "foreign/packages/app")
+        for directory in [plain, owned] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+        try FileManager.default.createDirectory(at: base.appending(path: "foreign/.git"), withIntermediateDirectories: true)
+        let inspector = SystemGitArtifactInspector(
+            locateGit: { URL(fileURLWithPath: "/Library/Developer/CommandLineTools/usr/bin/git") },
+            run: { _, _, _ in (exitCode: 128, stdout: Data()) }
+        )
+        let inPlain = URL(fileURLWithPath: plain.path + "/node_modules")
+        let inOwned = URL(fileURLWithPath: owned.path + "/node_modules")
+        let missing = URL(fileURLWithPath: base.path + "/gone/node_modules")
+
+        let statuses = await inspector.statuses(for: [inPlain, inOwned, missing])
+
+        XCTAssertEqual(statuses[inPlain.path], .notInRepository)
+        XCTAssertEqual(statuses[inOwned.path], .failed, "dubious ownership and corrupt repos answer 128 too")
+        XCTAssertEqual(statuses[missing.path], .failed)
     }
 
     func testEmptyInputNeverLocatesGit() async {

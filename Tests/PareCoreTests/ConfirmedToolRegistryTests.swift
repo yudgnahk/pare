@@ -140,6 +140,62 @@ final class ConfirmedToolRegistryTests: XCTestCase {
         XCTAssertFalse(lines.contains { $0.hasPrefix("NODE_") || $0.hasPrefix("DYLD_") }, "\(lines)")
     }
 
+    /// What same-user code can plant with `security add-generic-password -A`: any path with that file's real fingerprint.
+    private func plantedRegistry(_ tool: ConfirmableTool, path: String) throws -> ConfirmedToolRegistry {
+        let resolved = try XCTUnwrap(realpathString(path))
+        let fingerprint = try XCTUnwrap(ExecutableFingerprint.current(atPath: resolved))
+        return ConfirmedToolRegistry(store: InMemoryConfirmedToolStore(
+            [tool: ConfirmedTool(path: resolved, fingerprint: fingerprint)]
+        ))
+    }
+
+    private func assertNotConfirmed(_ state: ToolTrustState, file: StaticString = #filePath, line: UInt = #line) {
+        if case .confirmed = state { XCTFail("a planted item must not read as confirmed", file: file, line: line) }
+    }
+
+    func testPlantedScriptIsNeverSpawned() async throws {
+        let script = try plantMarkerTool("go")
+        let registry = try plantedRegistry(.go, path: script.path)
+
+        let launch = await registry.launchURL(for: .go)
+        let output = await ToolCommandRunner().captureConfirmed(.go, arguments: [], registry: registry)
+        let state = await registry.state(for: .go, environment: pathEnvironment)
+
+        XCTAssertNil(launch)
+        XCTAssertNil(output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "a planted script ran")
+        assertNotConfirmed(state)
+    }
+
+    func testPlantedSystemProgramIsNeverSpawned() async throws {
+        let registry = try plantedRegistry(.go, path: "/bin/sh")
+
+        let launch = await registry.launchURL(for: .go)
+        let output = await ToolCommandRunner().captureConfirmed(
+            .go, arguments: ["-c", "touch '\(marker.path)'"], registry: registry
+        )
+        let state = await registry.state(for: .go, environment: pathEnvironment)
+
+        XCTAssertNil(launch)
+        XCTAssertNil(output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path), "a planted system program ran")
+        assertNotConfirmed(state)
+    }
+
+    func testPlantedProgramOutsideTheSearchPathIsNeverLaunched() async throws {
+        let elsewhere = root.appending(path: "elsewhere")
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        let program = elsewhere.appending(path: "go")
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/env"), to: program)
+        let registry = try plantedRegistry(.go, path: program.path)
+
+        let launch = await registry.launchURL(for: .go)
+        let state = await registry.state(for: .go, environment: pathEnvironment)
+
+        XCTAssertNil(launch, "vetting passes this file, but Pare never offered it")
+        assertNotConfirmed(state)
+    }
+
     func testScriptIsRejectedWhateverItsInterpreter() throws {
         let registry = ConfirmedToolRegistry(store: InMemoryConfirmedToolStore())
         for (name, shebang) in [("pnpm", "#!/usr/bin/env node"), ("uv", "#!/bin/sh")] {
