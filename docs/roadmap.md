@@ -72,7 +72,7 @@ slice 1 (#69, registered in the developer profile) are done. Duplicate Chrome `I
 
 ## Product backlog
 
-- [ ] Cache activity drives selection: hot rows start unchecked but selectable, the confirmation sheet says they will be re-downloaded, no "include all hot" (settled 2026-10-13, `docs/features/cache-activity.md`)
+- [x] Cache activity drives selection: hot rows start unchecked but selectable, the confirmation sheet says they will be re-downloaded, no "include all hot" (settled 2026-10-13, `docs/features/cache-activity.md`)
 - [ ] "Safe Care": scan, select `.safe` only, confirm, clean, optional light maintenance, in at most 3 clicks; never `.review` or `.advanced`
 - [ ] App Manager: hide system apps by default, multi-select with bulk uninstall and update, confirm every update (a single cask update runs `brew upgrade --cask --greedy` without asking today)
 - [ ] Maintenance: confirm Docker prune actions before running (they delete permanently), and fix the card layout. Needs a screenshot of the actual layout defect first.
