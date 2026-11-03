@@ -68,7 +68,9 @@ final class DiagnosticsFindingsTests: XCTestCase {
 
         XCTAssertEqual(finding.category, .diagnostics)
         XCTAssertEqual(finding.riskLevel, .advanced)
-        XCTAssertEqual(finding.annotations, [.explainOnly(action: "Restart node to reclaim the space")])
+        XCTAssertEqual(finding.annotations, [
+            .explainOnly(action: "Restart node to reclaim the space"), .deletedFilesHolder(command: "node"),
+        ])
     }
 
     func testLsofEscapedNamesAreDecoded() {

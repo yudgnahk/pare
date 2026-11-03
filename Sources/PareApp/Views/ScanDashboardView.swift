@@ -88,6 +88,7 @@ struct ScanDashboardView: View {
                 scanWarningsSection
                 decisionTiles
                     .modifier(RevealOnAppear(appeared: resultsAppeared, index: 1))
+                diagnosticNotesSection
                 deviceBackupsSection
                 categoryBrowser
                     .modifier(RevealOnAppear(appeared: resultsAppeared, index: 2))
@@ -200,6 +201,13 @@ struct ScanDashboardView: View {
             return .permissionsUpdatedNeedsRescan
         case .genuinelyEmpty:
             return .emptyScan(fullDiskAccessLikelyMissing: false)
+        }
+    }
+
+    @ViewBuilder
+    private var diagnosticNotesSection: some View {
+        if !viewModel.diagnosticNotes.isEmpty {
+            DiagnosticNotesCard(notes: viewModel.diagnosticNotes)
         }
     }
 

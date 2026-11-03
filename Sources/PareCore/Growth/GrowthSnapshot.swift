@@ -44,7 +44,7 @@ public struct GrowthSnapshot: Codable, Sendable, Equatable {
         finding.riskLevel != .advanced && finding.sizeBytes >= trackedPathBytes
             && !finding.annotations.contains { annotation in
                 switch annotation {
-                case .explainOnly, .workingSet: return true
+                case .explainOnly, .workingSet, .deletedFilesHolder: return true
                 }
             }
     }

@@ -14,10 +14,13 @@ extension ScanPolicy {
     /// `Library/Caches` folders holding Google identity state; deleting them makes Google apps rewrite it at ~50 MB/s.
     public static let neverCleanUserCacheFolderNames: Set<String> = ["gippseudonymousid", "cctclearcutlogger"]
 
-    /// Lowercased component runs of app user data (sessions, credentials, identity) next to reclaimable caches.
+    /// Lowercased component runs of app user data (sessions, credentials, identity, iCloud sync state).
+    /// Trashing anything under iCloud Drive deletes it on every device; CloudDocs is the sync daemon's database.
     public static let neverCleanUserDataComponentSequences: [[String]] = [
         [".local", "share", "opencode", "storage"],
         [".local", "share", "opencode", "auth.json"],
+        ["library", "application support", "clouddocs"],
+        ["library", "mobile documents"],
     ] + neverCleanUserCacheFolderNames.sorted().map { ["library", "caches", $0] }
 
     /// File-name prefixes protected directly inside a parent run, so SQLite `-wal`/`-shm` side files match too.

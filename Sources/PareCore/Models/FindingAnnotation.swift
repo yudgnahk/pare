@@ -6,4 +6,6 @@ public enum FindingAnnotation: Sendable, Equatable {
     case workingSet(selfTrimDays: Int?)
     /// Nothing for Pare to delete; `action` tells the user how to reclaim the space themselves.
     case explainOnly(action: String)
+    /// `command` keeps deleted files open; lets the app fold every holder into one note.
+    case deletedFilesHolder(command: String)
 }

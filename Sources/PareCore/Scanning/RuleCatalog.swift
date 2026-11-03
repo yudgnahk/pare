@@ -38,6 +38,7 @@ public enum RuleCatalog {
             SwapUsageRule(),
             MemoryPressureRule(),
             LaunchdRestartLoopRule(),
+            ICloudStuckUploadsRule(),
             TinyFileQueueRule(),
             CrashLoopRule(),
             RunawayLogsRule(),

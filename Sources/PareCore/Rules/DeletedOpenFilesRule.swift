@@ -100,7 +100,7 @@ public struct DeletedOpenFilesRule: ScanRule {
             sizeBytes: holder.bytes,
             lastUsed: nil,
             confidence: 0.9,
-            annotations: [.explainOnly(action: "Restart \(command) to reclaim the space")]
+            annotations: [.explainOnly(action: "Restart \(command) to reclaim the space"), .deletedFilesHolder(command: command)]
         )
     }
 

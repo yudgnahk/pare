@@ -1,8 +1,8 @@
 import Foundation
 
-/// Finds macOS installer files (.dmg, .pkg, .iso, .xip) in ~/Downloads, ~/Desktop, and
-/// iCloud Drive, plus .zip files whose central directory contains a .app bundle or iOS
-/// Payload/ folder. Files must be at least 7 days old.
+/// Finds macOS installer files (.dmg, .pkg, .iso, .xip) in ~/Downloads and ~/Desktop, plus
+/// .zip files whose central directory contains a .app bundle or iOS Payload/ folder. Files must
+/// be at least 7 days old. iCloud Drive is skipped: trashing a file there deletes it on every device.
 ///
 /// Risk is `.review` — installer files may be intentionally kept, so the user must confirm.
 public struct InstallerFileRule: ScanRule {
@@ -22,8 +22,6 @@ public struct InstallerFileRule: ScanRule {
         [
             environment.homeDirectory.appending(path: "Downloads"),
             environment.homeDirectory.appending(path: "Desktop"),
-            // User-visible iCloud Drive root (com~apple~CloudDocs is the canonical container).
-            environment.homeDirectory.appending(path: "Library/Mobile Documents/com~apple~CloudDocs"),
         ]
     }
 
