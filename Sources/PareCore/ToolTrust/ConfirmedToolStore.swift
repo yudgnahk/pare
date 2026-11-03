@@ -11,8 +11,8 @@ public struct KeychainStoreError: Error, Equatable {
     public let status: OSStatus
 }
 
-/// One generic-password item in the login keychain. Its default ACL trusts only the app that created it,
-/// so other same-user code cannot read or rewrite it without a Keychain prompt, unlike a file in Application Support.
+/// One generic-password item in the login keychain. Its default ACL guards an item Pare created, but this query can't
+/// tell who created it and same-user code can pre-create one, so `ConfirmedToolRegistry` treats entries as claims.
 public struct KeychainConfirmedToolStore: ConfirmedToolStoring {
     static let service = "com.yudgnahk.pare.confirmed-tools"
     static let account = "developer-tools"

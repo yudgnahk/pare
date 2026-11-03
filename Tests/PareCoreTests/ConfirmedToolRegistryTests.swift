@@ -58,6 +58,18 @@ final class ConfirmedToolRegistryTests: XCTestCase {
 
     private var pathEnvironment: [String: String] { ["PATH": root.appending(path: "bin").path + ":/usr/bin:/bin"] }
 
+    /// A registry whose search path starts at this test's `bin`, as Settings' would at the tool it offers.
+    private func makeRegistry(_ store: InMemoryConfirmedToolStore = InMemoryConfirmedToolStore()) -> ConfirmedToolRegistry {
+        let environment = pathEnvironment
+        return ConfirmedToolRegistry(store: store, searchEnvironment: { environment })
+    }
+
+    private func linkToSystemBinary(named name: String) throws -> URL {
+        let link = root.appending(path: "bin/\(name)")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: URL(fileURLWithPath: "/usr/bin/env"))
+        return link
+    }
+
     func testUnconfirmedToolOnPathIsNeverSpawned() async throws {
         try plantMarkerTool("go")
         try plantMarkerTool("pnpm")
@@ -78,7 +90,7 @@ final class ConfirmedToolRegistryTests: XCTestCase {
     func testConfirmedThenReplacedBinaryIsNotSpawned() async throws {
         let tool = try copyOfSystemBinary(named: "go")
         let store = InMemoryConfirmedToolStore()
-        let registry = ConfirmedToolRegistry(store: store)
+        let registry = makeRegistry(store)
         _ = try registry.confirm(.go, path: tool.path)
         let confirmedLaunch = await registry.launchURL(for: .go)
         XCTAssertNotNil(confirmedLaunch)
@@ -98,7 +110,7 @@ final class ConfirmedToolRegistryTests: XCTestCase {
 
     func testRewrittenInPlaceIsUnconfirmed() async throws {
         let tool = try copyOfSystemBinary(named: "uv")
-        let registry = ConfirmedToolRegistry(store: InMemoryConfirmedToolStore())
+        let registry = makeRegistry()
         _ = try registry.confirm(.uv, path: tool.path)
 
         let handle = try FileHandle(forWritingTo: tool)
@@ -115,9 +127,8 @@ final class ConfirmedToolRegistryTests: XCTestCase {
 
     func testConfirmedToolRunsWithSanitizedEnvironment() async throws {
         // Copies of system binaries are killed on launch, so the confirmed tool is a symlink to the real one.
-        let link = root.appending(path: "bin/go")
-        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: URL(fileURLWithPath: "/usr/bin/env"))
-        let registry = ConfirmedToolRegistry(store: InMemoryConfirmedToolStore())
+        let link = try linkToSystemBinary(named: "go")
+        let registry = makeRegistry()
         let confirmed = try registry.confirm(.go, path: link.path)
         XCTAssertEqual(confirmed.path, "/usr/bin/env", "the resolved path is stored and launched, not the symlink")
 
@@ -196,6 +207,51 @@ final class ConfirmedToolRegistryTests: XCTestCase {
         assertNotConfirmed(state)
     }
 
+    func testForgedEntryIsDroppedAtLoadAndDoesNotSurviveASave() async throws {
+        let script = try plantMarkerTool("uv")
+        let resolved = try XCTUnwrap(realpathString(script.path))
+        let fingerprint = try XCTUnwrap(ExecutableFingerprint.current(atPath: resolved))
+        let store = InMemoryConfirmedToolStore([.uv: ConfirmedTool(path: resolved, fingerprint: fingerprint)])
+        let registry = makeRegistry(store)
+
+        let loaded = await registry.entries(timeout: 2)
+        _ = try registry.confirm(.go, path: try linkToSystemBinary(named: "go").path)
+
+        XCTAssertNil(loaded[.uv], "the file is unchanged but fails vetting, so Pare never wrote this entry")
+        XCTAssertEqual(Set(store.saved.keys), [.go])
+    }
+
+    func testConfirmedToolShadowedEarlierOnTheSearchPathIsNotLaunched() async throws {
+        let link = try linkToSystemBinary(named: "go")
+        let earlier = root.appending(path: "earlier")
+        try FileManager.default.createDirectory(at: earlier, withIntermediateDirectories: true)
+        let store = InMemoryConfirmedToolStore()
+        _ = try makeRegistry(store).confirm(.go, path: link.path)
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/env"), to: earlier.appending(path: "go"))
+        let environment = ["PATH": earlier.path + ":" + root.appending(path: "bin").path]
+        let registry = ConfirmedToolRegistry(store: store, searchEnvironment: { environment })
+
+        let launch = await registry.launchURL(for: .go)
+        let state = await registry.state(for: .go, environment: environment)
+
+        let resolved = try XCTUnwrap(realpathString(earlier.appending(path: "go").path))
+        XCTAssertNil(launch, "the confirmation covers one copy; Settings would now offer another")
+        XCTAssertEqual(state, .available(path: resolved, changed: true))
+    }
+
+    func testConfirmRefusesAProgramSettingsWouldNotOffer() throws {
+        let elsewhere = root.appending(path: "elsewhere")
+        try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        let program = elsewhere.appending(path: "go")
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/env"), to: program)
+        let store = InMemoryConfirmedToolStore()
+
+        XCTAssertThrowsError(try makeRegistry(store).confirm(.go, path: program.path)) {
+            XCTAssertEqual($0 as? ToolRejection, .notFirstOnSearchPath)
+        }
+        XCTAssertTrue(store.saved.isEmpty)
+    }
+
     func testScriptIsRejectedWhateverItsInterpreter() throws {
         let registry = ConfirmedToolRegistry(store: InMemoryConfirmedToolStore())
         for (name, shebang) in [("pnpm", "#!/usr/bin/env node"), ("uv", "#!/bin/sh")] {
@@ -240,9 +296,9 @@ final class ConfirmedToolRegistryTests: XCTestCase {
 
     func testForgetKeepsOtherConfirmations() async throws {
         let store = InMemoryConfirmedToolStore()
-        let registry = ConfirmedToolRegistry(store: store)
-        _ = try registry.confirm(.go, path: "/usr/bin/env")
-        _ = try registry.confirm(.uv, path: "/usr/bin/env")
+        let registry = makeRegistry(store)
+        _ = try registry.confirm(.go, path: try linkToSystemBinary(named: "go").path)
+        _ = try registry.confirm(.uv, path: try linkToSystemBinary(named: "uv").path)
         try registry.forget(.go)
 
         XCTAssertEqual(Set(store.saved.keys), [.uv])

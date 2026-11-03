@@ -63,5 +63,19 @@ public struct ToolCommandRunner: Sendable {
             timeout: timeoutSeconds
         )
     }
+
+    /// Like `run`, but the child gets exactly `exactEnvironment` and inherits nothing.
+    public func run(
+        executable: URL,
+        arguments: [String],
+        exactEnvironment: [String: String]
+    ) async -> (exitCode: Int32, stdout: Data)? {
+        await BoundedChildProcess.run(
+            executable: executable,
+            arguments: arguments,
+            environment: exactEnvironment,
+            timeout: timeoutSeconds
+        )
+    }
 }
 

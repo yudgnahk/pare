@@ -383,6 +383,20 @@ final class ToolCommandRunnerRunTests: XCTestCase {
         XCTAssertTrue(output.contains("PATH="), "inherited variables must survive")
     }
 
+    func testExactEnvironmentInheritsNothing() async {
+        setenv("PARE_RUNNER_INHERITED", "1", 1)
+        defer { unsetenv("PARE_RUNNER_INHERITED") }
+
+        let result = await ToolCommandRunner().run(
+            executable: URL(fileURLWithPath: "/usr/bin/env"),
+            arguments: [],
+            exactEnvironment: ["PARE_RUNNER_PROBE": "1"]
+        )
+
+        let output = result.map { String(decoding: $0.stdout, as: UTF8.self) }
+        XCTAssertEqual(output, "PARE_RUNNER_PROBE=1\n")
+    }
+
     func testTimeoutReturnsNil() async {
         let result = await ToolCommandRunner(timeoutSeconds: 0.5).run(
             executable: URL(fileURLWithPath: "/bin/sleep"),
