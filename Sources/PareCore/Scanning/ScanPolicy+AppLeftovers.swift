@@ -25,6 +25,14 @@ extension ScanPolicy {
         }
     }
 
+    /// False for IDs too generic for prefix or component matching: under three components, or Apple's
+    /// namespace on an app outside `/System`; such apps only get exact-name leftovers.
+    public static func allowsDerivedLeftovers(bundleID: String, appPath: String) -> Bool {
+        let id = bundleID.lowercased()
+        guard id.split(separator: ".").count >= 3 else { return false }
+        return !id.hasPrefix("com.apple.") || appPath.hasPrefix("/System/")
+    }
+
     /// Dot-boundary match of a Preferences or launchd file name (`.plist` stripped), case-insensitive.
     public static func bundleIDNameMatch(_ fileName: String, bundleID: String) -> BundleIDNameMatch {
         let id = bundleID.lowercased()
@@ -60,6 +68,17 @@ extension ScanPolicy {
                 ? groupContainerNameMatches(name, bundleID: other)
                 : bundleIDNameMatch(name, bundleID: other) != .none
         }
+    }
+
+    /// Where an app row physically lives, spelled as `lsof` prints it.
+    public static func physicalAppPath(_ appPath: String) -> String {
+        canonicalPathURL(URL(fileURLWithPath: appPath).resolvingSymlinksInPath()).path
+    }
+
+    /// The real bundle when the row itself is a symlink: Trash would move only the link. Linked parent folders don't count.
+    public static func linkedAppBundle(forRow appPath: String) -> String? {
+        let path = URL(fileURLWithPath: appPath).path
+        return isSymbolicLink(atPath: path) ? physicalAppPath(path) : nil
     }
 
     /// True when `path` is a direct child of a per-user Library folder the App Manager scans.
