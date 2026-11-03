@@ -6,6 +6,7 @@ enum AppDestination: String, Hashable, CaseIterable, Identifiable {
     case apps
     case homebrew
     case disk
+    case processes
     case maintenance
     case history
     case settings
@@ -18,6 +19,7 @@ enum AppDestination: String, Hashable, CaseIterable, Identifiable {
         case .apps: return "Apps"
         case .homebrew: return "Homebrew"
         case .disk: return "Disk Analyzer"
+        case .processes: return "Processes"
         case .maintenance: return "Maintenance"
         case .history: return "History"
         case .settings: return "Settings"
@@ -30,6 +32,7 @@ enum AppDestination: String, Hashable, CaseIterable, Identifiable {
         case .apps: return "square.grid.2x2"
         case .homebrew: return "shippingbox"
         case .disk: return "externaldrive"
+        case .processes: return "cpu"
         case .maintenance: return "wrench.and.screwdriver"
         case .history: return "clock.arrow.circlepath"
         case .settings: return "gearshape"
@@ -39,7 +42,7 @@ enum AppDestination: String, Hashable, CaseIterable, Identifiable {
     var section: SidebarSection {
         switch self {
         case .smartScan: return .cleanup
-        case .apps, .homebrew, .disk, .maintenance: return .tools
+        case .apps, .homebrew, .disk, .processes, .maintenance: return .tools
         case .history, .settings: return .library
         }
     }

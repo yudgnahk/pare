@@ -53,6 +53,13 @@ slice 1 (#69, registered in the developer profile) are done. Duplicate Chrome `I
 - [ ] Result card: at critical pressure, space returns only after emptying the Trash
 - [ ] Check git at scan time too: a tracked `node_modules` is listed today, then refused at cleanup
 
+## Process monitor
+
+Spec and decisions: `docs/features/process-monitor.md`.
+
+- [x] **Slice 1 — Processes tab, view only.** Current user's processes as a ppid tree with branch memory (`phys_footprint`) and CPU, derived names (never raw command lines), optional Paseo session details; samples only while the tab is visible.
+- [ ] **Slice 2 — Kill with confirmation.** Blocked for system processes and Pare itself.
+
 ## Engineering follow-ups
 
 - [ ] Run the whole test suite under XCTest. Nothing from #38–#69 has run locally (Command Line Tools only); CI must confirm `integration/2026-10-07` before merging to `master`.
