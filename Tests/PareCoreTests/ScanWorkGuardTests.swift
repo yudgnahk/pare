@@ -267,7 +267,7 @@ final class ScanWorkGuardTests: XCTestCase {
 
     private func makeVersion(_ dir: URL) throws {
         try FileManager.default.createDirectory(at: dir.appending(path: "bin"), withIntermediateDirectories: true)
-        // Only app installs are offered, and `records` is no install folder, so the tool must be a real executable.
+        // Only app installs are offered, so the tool must be a real executable.
         try MachOFixture.header(fileType: 2).write(to: dir.appending(path: "bin/tool"))
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.appending(path: "bin/tool").path)
     }

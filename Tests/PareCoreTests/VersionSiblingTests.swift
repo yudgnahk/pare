@@ -398,14 +398,24 @@ final class VersionSiblingTests: XCTestCase {
 
     func testInstallEvidence() throws {
         let cases: [(name: String, parent: String, layout: (URL) throws -> Void, install: Bool)] = [
-            ("install parent", ".tool/versions", { _ in }, true),
-            ("install parent, any case", ".tool/Releases", { _ in }, true),
+            ("releases parent alone", ".tool/releases", { _ in }, false),
+            ("versions parent alone", ".tool/versions", { _ in }, false),
+            ("builds parent alone", ".tool/builds", { _ in }, false),
+            ("toolchains parent alone", ".tool/toolchains", { _ in }, false),
+            ("parent alone, any case", ".tool/Releases", { _ in }, false),
+            ("Mach-O under a versions parent", ".tool/versions", { try self.writeMachO($0.appending(path: "bin/tool")) }, true),
             ("Mach-O executable", ".tool/daemon", { try self.writeMachO($0.appending(path: "bin/tool")) }, true),
             ("universal executable", ".tool/daemon", { try self.writeMachO($0.appending(path: "tool"), fat: true) }, true),
             ("app bundle", ".tool/daemon", {
                 try FileManager.default.createDirectory(at: $0.appending(path: "Tool.app/Contents"), withIntermediateDirectories: true)
             }, true),
             ("no program", ".tool/daemon", { _ in }, false),
+            ("script launcher under a versions parent", ".tool/versions", {
+                try self.writeExecutable($0.appending(path: "bin/launch"), Array("#!/bin/sh\n".utf8))
+            }, false),
+            ("Mach-O below the inspected depth", ".tool/toolchains", {
+                try self.writeMachO($0.appending(path: "usr/local/bin/tool"))
+            }, false),
             ("Mach-O without the exec bit", ".tool/daemon", {
                 try self.writeMachO($0.appending(path: "bin/tool"), permissions: 0o644)
             }, false),
@@ -415,8 +425,12 @@ final class VersionSiblingTests: XCTestCase {
             ("Java class file", ".tool/daemon", {
                 try self.writeExecutable($0.appending(path: "Tool.class"), [0xCA, 0xFE, 0xBA, 0xBE, 0, 0, 0, 52])
             }, false),
-            ("database beside the program", ".tool/versions", { try Data().write(to: $0.appending(path: "state.sqlite")) }, false),
-            ("saves under an install parent", ".game/versions", {
+            ("database beside the program", ".tool/versions", {
+                try self.writeMachO($0.appending(path: "bin/tool"))
+                try Data().write(to: $0.appending(path: "state.sqlite"))
+            }, false),
+            ("saves beside the program", ".game/versions", {
+                try self.writeMachO($0.appending(path: "bin/tool"))
                 try FileManager.default.createDirectory(at: $0.appending(path: "saves"), withIntermediateDirectories: true)
             }, false),
             ("profiles above it", "Library/Application Support/Game/Profiles", {
@@ -424,10 +438,34 @@ final class VersionSiblingTests: XCTestCase {
             }, false),
         ]
         for testCase in cases {
-            let member = try makeVersion(home.appending(path: "\(UUID().uuidString)/\(testCase.parent)"), "1.0.0")
+            let member = try makeVersion(home.appending(path: "\(UUID().uuidString)/\(testCase.parent)"), "1.0.0", machO: false)
             try testCase.layout(member)
             XCTAssertEqual(ScanPolicy.isVersionInstall(member), testCase.install, testCase.name)
         }
+    }
+
+    func testDocsUnderAReleasesFolderAreNeverOffered() async throws {
+        // A plugin repo's git-tracked release notes: same shape as installs, nothing to run.
+        let releases = home.appending(path: ".claude/plugins/marketplaces/some-plugin/docs/releases")
+        for version in ["2.1.0", "2.0.0", "2.0.0-rc.1", "1.10.0", "1.8.0"] {
+            let notes = releases.appending(path: version)
+            try FileManager.default.createDirectory(at: notes.appending(path: "assets"), withIntermediateDirectories: true)
+            try Data("# Release notes".utf8).write(to: notes.appending(path: "release-notes.md"))
+            try Data(repeating: 0x42, count: 4096).write(to: notes.appending(path: "assets/demo.mp4"))
+        }
+        let oldest = releases.appending(path: "1.8.0")
+
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+        XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
+        XCTAssertEqual(ScanPolicy.versionSiblingRefusal(oldest, runningExecutables: [], customRoots: []), .notAnAppInstall)
+
+        let result = try await engine(StubExecutables([])).clean(findings: [finding(oldest)], profileName: "test")
+        XCTAssertTrue(result.succeeded.isEmpty)
+        guard case .some(.versionKept(_, let reason)) = result.skipped.first?.error else {
+            return XCTFail("expected .versionKept, got \(result.skipped.map(\.reason))")
+        }
+        XCTAssertEqual(reason, "not an app install")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: oldest.appending(path: "assets/demo.mp4").path))
     }
 
     func testExecutableUnderAPlainParentIsStillOffered() async throws {
@@ -435,9 +473,9 @@ final class VersionSiblingTests: XCTestCase {
         for version in ["1.0.0", "1.1.0", "1.2.0"] {
             try makeVersion(daemon, version, machO: true)
         }
-        try makeVersion(home.appending(path: ".notes/drafts"), "1.0.0")
-        try makeVersion(home.appending(path: ".notes/drafts"), "1.1.0")
-        try makeVersion(home.appending(path: ".notes/drafts"), "1.2.0")
+        try makeVersion(home.appending(path: ".notes/drafts"), "1.0.0", machO: false)
+        try makeVersion(home.appending(path: ".notes/drafts"), "1.1.0", machO: false)
+        try makeVersion(home.appending(path: ".notes/drafts"), "1.2.0", machO: false)
 
         let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
 
@@ -516,9 +554,9 @@ final class VersionSiblingTests: XCTestCase {
         XCTAssertTrue(ScanPolicy.isReclaimableVersionSibling(oldest, runningExecutables: []), "control: inside a home dot directory")
     }
 
-    /// `machO` makes `bin/tool` a real executable, for parents that do not name an install folder.
+    /// `machO: false` leaves `bin/tool` as plain data, so the folder shows no program.
     @discardableResult
-    private func makeVersion(_ parent: URL, _ name: String, machO: Bool = false) throws -> URL {
+    private func makeVersion(_ parent: URL, _ name: String, machO: Bool = true) throws -> URL {
         let dir = parent.appending(path: name)
         try FileManager.default.createDirectory(at: dir.appending(path: "bin"), withIntermediateDirectories: true)
         if machO {
@@ -537,6 +575,7 @@ final class VersionSiblingTests: XCTestCase {
     }
 
     private func writeExecutable(_ url: URL, _ bytes: [UInt8]) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try (Data(bytes) + Data(count: 64)).write(to: url)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
     }

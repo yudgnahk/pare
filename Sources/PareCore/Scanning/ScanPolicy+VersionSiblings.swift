@@ -6,7 +6,7 @@ import Foundation
 public enum VersionSiblingRefusal: Sendable, Equatable {
     /// Not a version sibling Pare offers at all; reported as a plain policy refusal.
     case outsidePolicy
-    /// No program inside and no install folder above it, or it holds user data (saves, profiles, databases).
+    /// No program inside, or it holds user data (saves, profiles, databases).
     case notAnAppInstall
     case processListUnavailable
     case fewerNewerVersions
@@ -137,8 +137,6 @@ extension ScanPolicy {
 
 extension ScanPolicy {
 
-    /// Parent folders that hold an app's own installs side by side.
-    public static let versionInstallParentNames: Set<String> = ["releases", "versions", "builds", "toolchains"]
     /// Folder names that mark user data (game worlds, launcher instances, profiles), never an install.
     public static let versionSiblingUserDataNames: Set<String> = ["saves", "worlds", "instances", "profiles", "documents"]
     public static let versionSiblingUserDataExtensions: Set<String> = ["db", "sqlite", "sqlite3"]
@@ -150,13 +148,13 @@ extension ScanPolicy {
     static let versionInstallExecutableProbeLimit = 64
     private static let machOExecuteFileType: UInt32 = 2 // MH_EXECUTE
 
-    /// True when `url` looks like an app's own install: a Mach-O executable or `.app` within two levels, or an
-    /// install-folder parent (`releases`, `versions`, …), and no sign of user data in or above it.
+    /// True when `url` holds an app's own program (a Mach-O executable or `.app` within two levels) and no sign of user
+    /// data in or above it. Only contents count: `docs/releases/<version>` has the same parent name as a real install.
     public static func isVersionInstall(_ url: URL) -> Bool {
         let parents = url.standardizedFileURL.deletingLastPathComponent().pathComponents
         guard !parents.contains(where: { versionSiblingUserDataNames.contains($0.lowercased()) }),
               let contents = versionInstallContents(url), !contents.holdsUserData else { return false }
-        return contents.hasProgram || versionInstallParentNames.contains(parents.last?.lowercased() ?? "")
+        return contents.hasProgram
     }
 
     private struct VersionInstallContents {
