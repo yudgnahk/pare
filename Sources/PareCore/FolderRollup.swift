@@ -103,6 +103,30 @@ public struct FolderMeta: Equatable, Sendable {
     }
 }
 
+/// One rolled-up folder, kept for every folder (published rows are capped; this is not).
+public struct FolderRecord: Equatable, Sendable {
+    public let id: String
+    public let folderPath: String
+    public let category: ScanCategory
+    public let bytes: Int64
+    public let itemCount: Int
+    public let riskLevel: RiskLevel
+    public let hasPartialSize: Bool
+
+    public init(
+        id: String, folderPath: String, category: ScanCategory, bytes: Int64,
+        itemCount: Int, riskLevel: RiskLevel, hasPartialSize: Bool
+    ) {
+        self.id = id
+        self.folderPath = folderPath
+        self.category = category
+        self.bytes = bytes
+        self.itemCount = itemCount
+        self.riskLevel = riskLevel
+        self.hasPartialSize = hasPartialSize
+    }
+}
+
 /// Result of rolling findings into folder rows + private path maps.
 public struct FolderAggregate: Sendable {
     public var rowsByCategory: [ScanCategory: [CategoryFolderRow]] = [:]
@@ -111,6 +135,8 @@ public struct FolderAggregate: Sendable {
     public var pathsByFolderId: [String: [String]] = [:]
     public var folderIdByPath: [String: String] = [:]
     public var metaByFolderId: [String: FolderMeta] = [:]
+    /// One record per folder, rows beyond the display cap included.
+    public var recordsByFolderId: [String: FolderRecord] = [:]
     public var safeFolderIds: Set<String> = []
     public var safeFolderIdsByCategory: [ScanCategory: Set<String>] = [:]
 
@@ -305,6 +331,15 @@ public enum FolderRollup {
                     bytes: acc.bytes,
                     reviewCount: acc.reviewCount,
                     isSafe: acc.worstRisk == .safe
+                )
+                aggregate.recordsByFolderId[id] = FolderRecord(
+                    id: id,
+                    folderPath: folderPath,
+                    category: category,
+                    bytes: acc.bytes,
+                    itemCount: acc.paths.count,
+                    riskLevel: acc.worstRisk,
+                    hasPartialSize: acc.hasPartialSize
                 )
                 if acc.worstRisk == .safe {
                     aggregate.safeFolderIds.insert(id)
