@@ -55,9 +55,13 @@ public struct CategoryToolGroup: Identifiable, Equatable, Sendable {
     public let folderCount: Int
     public let itemCount: Int
     public let riskLevel: RiskLevel
-    /// Folder row ids in this tool group (for bulk select).
+    /// Every folder row id in this group, review rows included (display only, never bulk-selected).
     public let folderIds: Set<String>
-    public let isSelectable: Bool
+    /// Selectable SAFE rows: what the group checkbox ticks, as the category checkbox does.
+    public let safeFolderIds: Set<String>
+
+    /// The group checkbox is live only when it has a safe row to tick.
+    public var isSelectable: Bool { !safeFolderIds.isEmpty }
 
     public var isSafeGroup: Bool { riskLevel == .safe }
 
@@ -70,7 +74,7 @@ public struct CategoryToolGroup: Identifiable, Equatable, Sendable {
         itemCount: Int,
         riskLevel: RiskLevel,
         folderIds: Set<String>,
-        isSelectable: Bool
+        safeFolderIds: Set<String>
     ) {
         self.id = id
         self.category = category
@@ -80,7 +84,7 @@ public struct CategoryToolGroup: Identifiable, Equatable, Sendable {
         self.itemCount = itemCount
         self.riskLevel = riskLevel
         self.folderIds = folderIds
-        self.isSelectable = isSelectable
+        self.safeFolderIds = safeFolderIds
     }
 }
 
@@ -345,7 +349,7 @@ public enum FolderRollup {
             let totalBytes = toolRows.reduce(Int64(0)) { $0 + $1.totalBytes }
             let itemCount = toolRows.reduce(0) { $0 + $1.itemCount }
             let hasReview = toolRows.contains { $0.riskLevel == .review }
-            let selectable = toolRows.contains(where: \.isSelectable)
+            let safeIds = Set(toolRows.filter { $0.isSafeFolder && $0.isSelectable }.map(\.id))
             return CategoryToolGroup(
                 id: "\(category.rawValue)|tool|\(toolName)",
                 category: category,
@@ -355,7 +359,7 @@ public enum FolderRollup {
                 itemCount: itemCount,
                 riskLevel: hasReview ? .review : .safe,
                 folderIds: folderIds,
-                isSelectable: selectable
+                safeFolderIds: safeIds
             )
         }
         .sorted { $0.totalBytes > $1.totalBytes }

@@ -12,13 +12,15 @@ extension ScanPolicy {
     ]
 
     /// `Library/Caches` folders holding Google identity state; deleting them makes Google apps rewrite it at ~50 MB/s.
-    public static let neverCleanUserCacheFolderNames: Set<String> = ["gippseudonymousid", "cctclearcutlogger"]
+    public static let neverCleanUserCacheFolderNames: Set<String> = [
+        "gippseudonymousid", "cctclearcutlogger", e5BundleCacheFolderName,
+    ]
 
     /// Lowercased component runs of app user data (sessions, credentials, identity) next to reclaimable caches.
     public static let neverCleanUserDataComponentSequences: [[String]] = [
         [".local", "share", "opencode", "storage"],
         [".local", "share", "opencode", "auth.json"],
-    ] + neverCleanUserCacheFolderNames.sorted().map { ["library", "caches", $0] }
+    ] + neverCleanAIDataComponentSequences + neverCleanUserCacheFolderNames.sorted().map { ["library", "caches", $0] }
 
     /// File-name prefixes protected directly inside a parent run, so SQLite `-wal`/`-shm` side files match too.
     public static let neverCleanUserDataFilePrefixes: [(parent: [String], prefix: String)] = [
@@ -28,12 +30,14 @@ extension ScanPolicy {
     /// True for Go's build and module caches (default spelling or a `go env` location) and for protected user data.
     public static func isNeverCleanPath(
         _ url: URL,
-        customRoots: [URL] = GoCacheLocations.shared.resolvedRoots
+        customRoots: [URL] = GoCacheLocations.shared.resolvedRoots,
+        aiDataRoots: [URL] = processAIDataRoots
     ) -> Bool {
         let components = url.standardizedFileURL.pathComponents.map { $0.lowercased() }
         let matchesDefault = neverCleanComponentSequences.contains { containsRun($0, in: components) }
         return matchesDefault
             || isProtectedUserDataPath(components: components)
+            || aiDataRoots.contains { isCanonicallyEqualToOrDescendant(candidate: url, root: $0) }
             || customRoots.contains { isCanonicallyEqualToOrDescendant(candidate: url, root: $0) }
     }
 
@@ -41,11 +45,12 @@ extension ScanPolicy {
     public static func holdsNeverCleanLocation(
         _ url: URL,
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
-        customRoots: [URL] = GoCacheLocations.shared.resolvedRoots
+        customRoots: [URL] = GoCacheLocations.shared.resolvedRoots,
+        aiDataRoots: [URL] = processAIDataRoots
     ) -> Bool {
         let runs = neverCleanComponentSequences + neverCleanUserDataComponentSequences
             + neverCleanUserDataFilePrefixes.map(\.parent) + [dockerVMDiskComponents]
-        let locations = runs.map { $0.reduce(home) { $0.appending(path: $1) } } + customRoots
+        let locations = runs.map { $0.reduce(home) { $0.appending(path: $1) } } + customRoots + aiDataRoots
         return locations.contains { isCanonicallyEqualToOrDescendant(candidate: $0, root: url) }
     }
 
@@ -53,8 +58,9 @@ extension ScanPolicy {
     static let dockerVMDiskComponents = ["library", "containers", "com.docker.docker", "data", "vms"]
 
     /// The non-Go subset of `isNeverCleanPath`: app user data or identity state, never a cache.
-    public static func isProtectedUserDataPath(_ url: URL) -> Bool {
+    public static func isProtectedUserDataPath(_ url: URL, aiDataRoots: [URL] = processAIDataRoots) -> Bool {
         isProtectedUserDataPath(components: url.standardizedFileURL.pathComponents.map { $0.lowercased() })
+            || aiDataRoots.contains { isCanonicallyEqualToOrDescendant(candidate: url, root: $0) }
     }
 
     private static func isProtectedUserDataPath(components: [String]) -> Bool {

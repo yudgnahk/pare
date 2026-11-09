@@ -52,7 +52,7 @@ enum SnapshotFixtures {
         Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.spotify.client", bytes: 890 * mb),
         Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.tinyspeck.slackmacgap", bytes: 540 * mb),
         Row(category: .logsAndCrashReports, risk: .safe, path: "/Library/Logs/DiagnosticReports", bytes: 260 * mb),
-        Row(category: .aiToolCaches, risk: .safe, path: "/.cache/huggingface/hub", bytes: 2 * gb + 50 * mb),
+        Row(category: .aiToolCaches, risk: .safe, path: "/.cache/opencode", bytes: 2 * gb + 50 * mb),
         Row(category: .installerFiles, risk: .review, path: "/Downloads/Xcode_16.dmg", bytes: 3 * gb + 700 * mb),
         Row(category: .temporaryFiles, risk: .safe, path: "/Library/Caches/TemporaryItems", bytes: 150 * mb)
     ]
