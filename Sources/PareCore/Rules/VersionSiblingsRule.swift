@@ -104,7 +104,8 @@ public struct VersionSiblingsRule: ScanRule {
         executables: [String],
         sizeIndex: DirectorySizeIndex
     ) -> [ScanFinding] {
-        let newestFirst = group.sorted { $1.name.version < $0.name.version }
+        // The newest real installs are kept; a newer folder with no program must not push the working one into the offer.
+        let newestFirst = group.sorted { $1.name.version < $0.name.version }.filter { ScanPolicy.isVersionInstall($0.url) }
         let kept = Array(newestFirst.prefix(ScanPolicy.versionSiblingKeepCount))
         guard kept.count == ScanPolicy.versionSiblingKeepCount,
               !ScanPolicy.isPinnedVersionSiblingGroup(group.map(\.url)) else { return [] }
@@ -112,8 +113,7 @@ public struct VersionSiblingsRule: ScanRule {
         let appName = Self.appName(for: group[0].url)
         return newestFirst.dropFirst(kept.count).compactMap { (candidate: (url: URL, name: VersionedName)) -> ScanFinding? in
             guard !ScanPolicy.isExecutedFrom(candidate.url, runningExecutables: executables),
-                  !ScanPolicy.containsSensitiveDataMarker(candidate.url),
-                  ScanPolicy.isVersionInstall(candidate.url) else { return nil }
+                  !ScanPolicy.containsSensitiveDataMarker(candidate.url) else { return nil }
             let size = sizeIndex.directorySize(url: candidate.url)
             guard size > 0 else { return nil }
             return ScanFinding(

@@ -91,7 +91,9 @@ extension ScanPolicy {
         guard isVersionInstall(url) else { return .notAnAppInstall }
         guard let runningExecutables else { return .processListUnavailable }
         let siblings = versionSiblings(of: url)
-        guard siblings.filter({ own.version < $0.name.version }).count >= versionSiblingKeepCount else {
+        // Only real installs count as newer: an empty newer folder must not leave the sole working version offered.
+        let newerInstalls = siblings.filter { own.version < $0.name.version && isVersionInstall($0.url) }
+        guard newerInstalls.count >= versionSiblingKeepCount else {
             return .fewerNewerVersions
         }
         guard !isPinnedVersionSiblingGroup(siblings.map(\.url)) else { return .pinnedByAlias }
@@ -138,7 +140,9 @@ extension ScanPolicy {
 extension ScanPolicy {
 
     /// Folder names that mark user data (game worlds, launcher instances, profiles), never an install.
-    public static let versionSiblingUserDataNames: Set<String> = ["saves", "worlds", "instances", "profiles", "documents"]
+    public static let versionSiblingUserDataNames: Set<String> = [
+        "saves", "worlds", "world", "instances", "profiles", "documents", "userdata", "savegames", "backups", "projects",
+    ]
     public static let versionSiblingUserDataExtensions: Set<String> = ["db", "sqlite", "sqlite3"]
     /// Levels below a version folder inspected for programs and user data.
     static let versionInstallEvidenceDepth = 2
@@ -153,7 +157,7 @@ extension ScanPolicy {
     public static func isVersionInstall(_ url: URL) -> Bool {
         let parents = url.standardizedFileURL.deletingLastPathComponent().pathComponents
         guard !parents.contains(where: { versionSiblingUserDataNames.contains($0.lowercased()) }),
-              let contents = versionInstallContents(url), !contents.holdsUserData else { return false }
+              !isInsideProject(url), let contents = versionInstallContents(url), !contents.holdsUserData else { return false }
         return contents.hasProgram
     }
 
@@ -171,7 +175,11 @@ extension ScanPolicy {
         for _ in 0..<versionInstallEvidenceDepth where !level.isEmpty {
             var next: [URL] = []
             for directory in level {
-                guard let listing = DirectoryListing.contents(of: directory) else { continue }
+                // An unreadable folder may hold user data, so it fails closed.
+                guard let listing = DirectoryListing.contents(of: directory) else {
+                    contents.holdsUserData = true
+                    continue
+                }
                 budget -= listing.entries.count
                 guard budget >= 0 else { return nil }
                 next += listing.entries.compactMap { inspect($0, in: listing, contents: &contents) }
@@ -193,7 +201,7 @@ extension ScanPolicy {
         case .directory:
             if versionSiblingUserDataNames.contains(lower) { contents.holdsUserData = true }
             guard ext != "app" else {
-                contents.hasProgram = true
+                if isRealAppBundle(listing.url(of: entry)) { contents.hasProgram = true }
                 return nil
             }
             return listing.url(of: entry)
@@ -207,6 +215,27 @@ extension ScanPolicy {
         case .symbolicLink, .other:
             return nil
         }
+    }
+
+    /// A bundle counts only with a regular executable file in `Contents/MacOS`; a bare `*.app` folder proves nothing.
+    static func isRealAppBundle(_ url: URL) -> Bool {
+        guard let listing = DirectoryListing.contents(of: url.appending(path: "Contents/MacOS")) else { return false }
+        return listing.entries.contains { $0.kind == .regularFile && access(listing.url(of: $0).path, X_OK) == 0 }
+    }
+
+    /// True when `url` or an ancestor below its home folder (the one holding `Library`) has `.git` (file or
+    /// directory) or another project marker, so a repo's built output is never taken for an install.
+    static func isInsideProject(_ url: URL) -> Bool {
+        var directory = url.standardizedFileURL
+        while directory.path != "/" {
+            let path = directory.path
+            if directory != url.standardizedFileURL, FileManager.default.fileExists(atPath: path + "/Library") { return false }
+            if projectRootMarkerFileNames.contains(where: { FileManager.default.fileExists(atPath: path + "/" + $0) }) {
+                return true
+            }
+            directory = directory.deletingLastPathComponent()
+        }
+        return false
     }
 
     /// Reads the Mach-O header (the first slice of a universal binary) and checks for `MH_EXECUTE`.

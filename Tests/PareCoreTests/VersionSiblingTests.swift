@@ -406,9 +406,28 @@ final class VersionSiblingTests: XCTestCase {
             ("Mach-O under a versions parent", ".tool/versions", { try self.writeMachO($0.appending(path: "bin/tool")) }, true),
             ("Mach-O executable", ".tool/daemon", { try self.writeMachO($0.appending(path: "bin/tool")) }, true),
             ("universal executable", ".tool/daemon", { try self.writeMachO($0.appending(path: "tool"), fat: true) }, true),
-            ("app bundle", ".tool/daemon", {
-                try FileManager.default.createDirectory(at: $0.appending(path: "Tool.app/Contents"), withIntermediateDirectories: true)
+            ("real app bundle", ".tool/daemon", {
+                try self.writeMachO($0.appending(path: "Tool.app/Contents/MacOS/Tool"))
             }, true),
+            ("bare .app folder", ".tool/daemon", {
+                try FileManager.default.createDirectory(at: $0.appending(path: "assets/Demo.app"), withIntermediateDirectories: true)
+            }, false),
+            ("bundle without Contents/MacOS", ".tool/daemon", {
+                try FileManager.default.createDirectory(at: $0.appending(path: "Tool.app/Contents"), withIntermediateDirectories: true)
+            }, false),
+            ("bundle whose MacOS holds no executable", ".tool/daemon", {
+                let file = $0.appending(path: "Tool.app/Contents/MacOS/Tool")
+                try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try Data(count: 64).write(to: file)
+            }, false),
+            ("world folder beside the program", ".game/versions", {
+                try self.writeMachO($0.appending(path: "bin/tool"))
+                try FileManager.default.createDirectory(at: $0.appending(path: "world"), withIntermediateDirectories: true)
+            }, false),
+            ("package.json in the folder", ".tool/daemon", {
+                try self.writeMachO($0.appending(path: "bin/tool"))
+                try Data("{}".utf8).write(to: $0.appending(path: "package.json"))
+            }, false),
             ("no program", ".tool/daemon", { _ in }, false),
             ("script launcher under a versions parent", ".tool/versions", {
                 try self.writeExecutable($0.appending(path: "bin/launch"), Array("#!/bin/sh\n".utf8))
@@ -442,6 +461,59 @@ final class VersionSiblingTests: XCTestCase {
             try testCase.layout(member)
             XCTAssertEqual(ScanPolicy.isVersionInstall(member), testCase.install, testCase.name)
         }
+    }
+
+    func testWorktreeAndRepoVersionFoldersAreRefusedEverywhere() async throws {
+        let worktrees = home.appending(path: ".worktrees")
+        for version in ["1.0.0", "1.1.0", "1.2.0"] {
+            let member = try makeVersion(worktrees, "myapp-\(version)")
+            // A linked worktree has a `.git` file, not a directory.
+            try Data("gitdir: /elsewhere/.git/worktrees/x\n".utf8).write(to: member.appending(path: ".git"))
+        }
+        let oldest = worktrees.appending(path: "myapp-1.0.0")
+        XCTAssertFalse(ScanPolicy.isVersionInstall(oldest))
+        XCTAssertEqual(ScanPolicy.versionSiblingRefusal(oldest, runningExecutables: [], customRoots: []), .notAnAppInstall)
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+        XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
+
+        let result = try await engine(StubExecutables([])).clean(findings: [finding(oldest)], profileName: "test")
+        XCTAssertTrue(result.succeeded.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: oldest.appending(path: "bin/tool").path))
+    }
+
+    func testAncestorWithGitMarkerRefusesButHomeDoesNot() throws {
+        let inRepo = try makeVersion(home.appending(path: ".tool/repo/builds"), "1.0.0")
+        try FileManager.default.createDirectory(at: home.appending(path: ".tool/repo/.git"), withIntermediateDirectories: true)
+        XCTAssertFalse(ScanPolicy.isVersionInstall(inRepo))
+
+        // A dotfiles repo at home itself is not project evidence.
+        let loose = try makeVersion(home.appending(path: ".other/versions"), "1.0.0")
+        try FileManager.default.createDirectory(at: home.appending(path: ".git"), withIntermediateDirectories: true)
+        XCTAssertTrue(ScanPolicy.isVersionInstall(loose))
+    }
+
+    func testNewerFoldersWithNoProgramDoNotCountAsKeptInstalls() async throws {
+        let daemon = home.appending(path: ".tool/daemon")
+        try makeVersion(daemon, "1.0.0")
+        try makeVersion(daemon, "1.1.0")
+        try makeVersion(daemon, "1.2.0", machO: false)
+        try makeVersion(daemon, "1.3.0", machO: false)
+
+        let findings = await rule(StubExecutables([])).customScan(environment: environment()) ?? []
+        XCTAssertTrue(findings.isEmpty, "\(findings.map(\.path))")
+        XCTAssertEqual(
+            ScanPolicy.versionSiblingRefusal(daemon.appending(path: "1.0.0"), runningExecutables: [], customRoots: []),
+            .fewerNewerVersions)
+    }
+
+    func testUnreadableSubfolderFailsClosed() throws {
+        let member = try makeVersion(home.appending(path: ".tool/daemon"), "1.0.0")
+        let locked = member.appending(path: "private")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+        try XCTSkipIf(getuid() == 0, "root reads every folder")
+        XCTAssertFalse(ScanPolicy.isVersionInstall(member))
     }
 
     func testDocsUnderAReleasesFolderAreNeverOffered() async throws {
