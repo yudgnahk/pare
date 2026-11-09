@@ -23,6 +23,7 @@ public final class ConfirmedToolRegistry: @unchecked Sendable {
 
     private let store: any ConfirmedToolStoring
     private let searchEnvironment: @Sendable () -> [String: String]
+    private let enforcesToolName: Bool
     private let lock = NSLock()
     private var cache: [ConfirmableTool: ConfirmedTool]?
     private var loading = false
@@ -30,16 +31,18 @@ public final class ConfirmedToolRegistry: @unchecked Sendable {
 
     public init(
         store: any ConfirmedToolStoring,
-        searchEnvironment: @escaping @Sendable () -> [String: String] = { ProcessInfo.processInfo.environment }
+        searchEnvironment: @escaping @Sendable () -> [String: String] = { ProcessInfo.processInfo.environment },
+        enforcesToolName: Bool = true
     ) {
         self.store = store
         self.searchEnvironment = searchEnvironment
+        self.enforcesToolName = enforcesToolName
     }
 
     /// The path to launch for `tool`, or nil when it is unconfirmed, changed, untrusted, or the store is unreadable.
     public func launchURL(for tool: ConfirmableTool, timeout: TimeInterval = scanLoadTimeoutSeconds) async -> URL? {
         guard let confirmed = await entries(timeout: timeout)[tool],
-              Self.isTrusted(confirmed, for: tool, environment: searchEnvironment()) else { return nil }
+              isTrusted(confirmed, for: tool, environment: searchEnvironment()) else { return nil }
         return URL(fileURLWithPath: confirmed.path)
     }
 
@@ -49,14 +52,14 @@ public final class ConfirmedToolRegistry: @unchecked Sendable {
         timeout: TimeInterval = scanLoadTimeoutSeconds
     ) async -> ToolTrustState {
         let confirmed = await entries(timeout: timeout)[tool]
-        if let confirmed, Self.isTrusted(confirmed, for: tool, environment: environment) {
+        if let confirmed, isTrusted(confirmed, for: tool, environment: environment) {
             return .confirmed(path: confirmed.path)
         }
         let changed = confirmed != nil
         guard let candidate = ToolSearchPath.firstExecutable(named: tool.executableName, environment: environment) else {
             return .notFound(changed: changed)
         }
-        switch ToolVetting.vet(path: candidate.path) {
+        switch ToolVetting.vet(path: candidate.path, for: tool, enforcingName: enforcesToolName) {
         case .success(let vetted): return .available(path: vetted.path, changed: changed)
         case .failure(let reason): return .rejected(path: candidate.path, reason: reason)
         }
@@ -64,7 +67,7 @@ public final class ConfirmedToolRegistry: @unchecked Sendable {
 
     /// Re-vets `path` and stores it; the stored path is the symlink-resolved one.
     public func confirm(_ tool: ConfirmableTool, path: String) throws -> ConfirmedTool {
-        let vetted = try ToolVetting.vet(path: path).get()
+        let vetted = try ToolVetting.vet(path: path, for: tool, enforcingName: enforcesToolName).get()
         guard Self.offeredPath(for: tool, environment: searchEnvironment()) == vetted.path else {
             throw ToolRejection.notFirstOnSearchPath
         }
@@ -77,12 +80,12 @@ public final class ConfirmedToolRegistry: @unchecked Sendable {
     }
 
     /// The store can't prove Pare wrote an entry, so each one must pass what `confirm` checks every time it is used.
-    private static func isTrusted(_ confirmed: ConfirmedTool, for tool: ConfirmableTool, environment: [String: String]) -> Bool {
-        isVetted(confirmed) && offeredPath(for: tool, environment: environment) == confirmed.path
+    private func isTrusted(_ confirmed: ConfirmedTool, for tool: ConfirmableTool, environment: [String: String]) -> Bool {
+        isVetted(confirmed, for: tool) && Self.offeredPath(for: tool, environment: environment) == confirmed.path
     }
 
-    private static func isVetted(_ confirmed: ConfirmedTool) -> Bool {
-        (try? ToolVetting.vet(path: confirmed.path).get()) == confirmed
+    private func isVetted(_ confirmed: ConfirmedTool, for tool: ConfirmableTool) -> Bool {
+        (try? ToolVetting.vet(path: confirmed.path, for: tool, enforcingName: enforcesToolName).get()) == confirmed
     }
 
     private static func offeredPath(for tool: ConfirmableTool, environment: [String: String]) -> String? {
@@ -93,12 +96,17 @@ public final class ConfirmedToolRegistry: @unchecked Sendable {
     /// An unchanged file that fails vetting was never confirmed, so that entry is planted or altered. A file that
     /// changed stays, so Settings can say it changed.
     private func loadVerified() throws -> [ConfirmableTool: ConfirmedTool] {
-        try store.load().filter { _, confirmed in !confirmed.isUnchanged || Self.isVetted(confirmed) }
+        try store.load().filter { tool, confirmed in !confirmed.isUnchanged || isVetted(confirmed, for: tool) }
+    }
+
+    /// An item that no longer decodes holds no usable confirmation; treating it as empty lets Forget and Confirm replace it.
+    private func loadForUpdate() throws -> [ConfirmableTool: ConfirmedTool] {
+        do { return try loadVerified() } catch is DecodingError { return [:] }
     }
 
     /// Writes go through a fresh read so a cache that timed out empty never overwrites other confirmations.
     private func update(_ change: (inout [ConfirmableTool: ConfirmedTool]) -> Void) throws {
-        var tools = try loadVerified()
+        var tools = try loadForUpdate()
         change(&tools)
         try store.save(tools)
         lock.withLock { cache = tools }

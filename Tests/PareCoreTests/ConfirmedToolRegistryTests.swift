@@ -5,10 +5,10 @@ import XCTest
 final class InMemoryConfirmedToolStore: ConfirmedToolStoring, @unchecked Sendable {
     private let lock = NSLock()
     private var tools: [ConfirmableTool: ConfirmedTool]
-    private let loadError: KeychainStoreError?
+    private let loadError: (any Error)?
     private let loadDelay: TimeInterval
 
-    init(_ tools: [ConfirmableTool: ConfirmedTool] = [:], loadError: KeychainStoreError? = nil, loadDelay: TimeInterval = 0) {
+    init(_ tools: [ConfirmableTool: ConfirmedTool] = [:], loadError: (any Error)? = nil, loadDelay: TimeInterval = 0) {
         self.tools = tools
         self.loadError = loadError
         self.loadDelay = loadDelay
@@ -61,7 +61,7 @@ final class ConfirmedToolRegistryTests: XCTestCase {
     /// A registry whose search path starts at this test's `bin`, as Settings' would at the tool it offers.
     private func makeRegistry(_ store: InMemoryConfirmedToolStore = InMemoryConfirmedToolStore()) -> ConfirmedToolRegistry {
         let environment = pathEnvironment
-        return ConfirmedToolRegistry(store: store, searchEnvironment: { environment })
+        return ConfirmedToolRegistry(store: store, searchEnvironment: { environment }, enforcesToolName: false)
     }
 
     private func linkToSystemBinary(named name: String) throws -> URL {
@@ -142,11 +142,15 @@ final class ConfirmedToolRegistryTests: XCTestCase {
                 "NODE_PATH": "/tmp/evil",
                 "DYLD_FRAMEWORK_PATH": "/tmp/evil",
                 "GOTOOLCHAIN": "go1.99.0",
+                "GIT_DIR": "/tmp/evil",
+                "GIT_EXEC_PATH": "/tmp/evil",
             ]
         )
 
         let lines = Set(try XCTUnwrap(output).split(separator: "\n").map(String.init))
         XCTAssertTrue(lines.contains("GOTOOLCHAIN=local"))
+        XCTAssertTrue(lines.contains("GIT_CONFIG_GLOBAL=/dev/null"))
+        XCTAssertFalse(lines.contains { $0.hasPrefix("GIT_DIR=") || $0.hasPrefix("GIT_EXEC_PATH=") }, "\(lines)")
         XCTAssertTrue(lines.contains("PARE_KEEP=1"))
         XCTAssertFalse(lines.contains { $0.hasPrefix("NODE_") || $0.hasPrefix("DYLD_") }, "\(lines)")
     }
@@ -229,7 +233,7 @@ final class ConfirmedToolRegistryTests: XCTestCase {
         _ = try makeRegistry(store).confirm(.go, path: link.path)
         try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/env"), to: earlier.appending(path: "go"))
         let environment = ["PATH": earlier.path + ":" + root.appending(path: "bin").path]
-        let registry = ConfirmedToolRegistry(store: store, searchEnvironment: { environment })
+        let registry = ConfirmedToolRegistry(store: store, searchEnvironment: { environment }, enforcesToolName: false)
 
         let launch = await registry.launchURL(for: .go)
         let state = await registry.state(for: .go, environment: environment)
@@ -320,7 +324,7 @@ final class ConfirmedToolRegistryTests: XCTestCase {
         XCTAssertEqual(try ConfirmedToolCoding.decode(withUnknown), [.pnpm: tool])
     }
 
-    func testSanitizedEnvironmentStripsLoaderHooksAndPinsGoToolchain() {
+    func testSanitizedEnvironmentStripsLoaderAndGitHooksAndPinsToolchain() {
         let sanitized = ToolSpawnEnvironment.sanitized([
             "HOME": "/Users/x",
             "NODE_OPTIONS": "--require x",
@@ -328,8 +332,74 @@ final class ConfirmedToolRegistryTests: XCTestCase {
             "DYLD_INSERT_LIBRARIES": "/x.dylib",
             "DYLD_LIBRARY_PATH": "/x",
             "GOTOOLCHAIN": "auto",
+            "GIT_CONFIG_GLOBAL": "/Users/x/.gitconfig",
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_SSH_COMMAND": "/x",
         ])
-        XCTAssertEqual(sanitized, ["HOME": "/Users/x", "GOTOOLCHAIN": "local"])
+        XCTAssertEqual(sanitized, [
+            "HOME": "/Users/x", "GOTOOLCHAIN": "local",
+            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1",
+        ])
+    }
+
+    /// A real program that is not go: what a symlinked `go` to git would resolve to.
+    func testToolWhoseRealFileIsAnotherProgramIsNeverConfirmedOrLaunched() async throws {
+        let link = root.appending(path: "bin/go")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: URL(fileURLWithPath: "/usr/bin/git"))
+        let store = InMemoryConfirmedToolStore()
+        let registry = makeStrictRegistry(store)
+
+        XCTAssertThrowsError(try registry.confirm(.go, path: link.path)) {
+            XCTAssertEqual($0 as? ToolRejection, .notThisTool)
+        }
+        XCTAssertTrue(store.saved.isEmpty)
+
+        let planted = try plantedStrictRegistry(.go, path: link.path)
+        let launch = await planted.launchURL(for: .go)
+        let output = await ToolCommandRunner().captureConfirmed(.go, arguments: ["env"], registry: planted)
+        let state = await planted.state(for: .go, environment: pathEnvironment)
+        XCTAssertNil(launch, "a planted Keychain item must not make git run as go")
+        XCTAssertNil(output)
+        XCTAssertEqual(state, .rejected(path: link.path, reason: .notThisTool))
+    }
+
+    func testNameCheckLooksAtTheResolvedFileNotTheLinkName() throws {
+        XCTAssertEqual(rejection(ToolVetting.vet(path: "/usr/bin/env", for: .uv)), .notThisTool)
+        XCTAssertNil(rejection(ToolVetting.vet(path: "/usr/bin/env", for: .uv, enforcingName: false)))
+    }
+
+    func testForgetAndConfirmReplaceAnItemThatNoLongerDecodes() throws {
+        let corrupt = DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "garbage"))
+        let fingerprint = try XCTUnwrap(ExecutableFingerprint.current(atPath: "/usr/bin/env"))
+        let stale = [ConfirmableTool.go: ConfirmedTool(path: "/usr/bin/env", fingerprint: fingerprint)]
+
+        let forgetStore = InMemoryConfirmedToolStore(stale, loadError: corrupt)
+        try makeRegistry(forgetStore).forget(.go)
+        XCTAssertTrue(forgetStore.saved.isEmpty, "Forget must always be able to delete the item")
+
+        let confirmStore = InMemoryConfirmedToolStore([:], loadError: corrupt)
+        _ = try makeRegistry(confirmStore).confirm(.uv, path: try linkToSystemBinary(named: "uv").path)
+        XCTAssertEqual(Set(confirmStore.saved.keys), [.uv])
+    }
+
+    func testForgetStillFailsWhenTheStoreCannotBeRead() throws {
+        let store = InMemoryConfirmedToolStore([:], loadError: KeychainStoreError(status: -25293))
+        XCTAssertThrowsError(try makeRegistry(store).forget(.go), "an unreadable store is not an empty one")
+    }
+
+    private func makeStrictRegistry(_ store: InMemoryConfirmedToolStore) -> ConfirmedToolRegistry {
+        let environment = pathEnvironment
+        return ConfirmedToolRegistry(store: store, searchEnvironment: { environment })
+    }
+
+    private func plantedStrictRegistry(_ tool: ConfirmableTool, path: String) throws -> ConfirmedToolRegistry {
+        let resolved = try XCTUnwrap(realpathString(path))
+        let fingerprint = try XCTUnwrap(ExecutableFingerprint.current(atPath: resolved))
+        let environment = pathEnvironment
+        return ConfirmedToolRegistry(
+            store: InMemoryConfirmedToolStore([tool: ConfirmedTool(path: resolved, fingerprint: fingerprint)]),
+            searchEnvironment: { environment }
+        )
     }
 
     private func rejection(_ result: Result<ConfirmedTool, ToolRejection>) -> ToolRejection? {

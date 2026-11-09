@@ -11,6 +11,7 @@ public enum ToolRejection: Error, Equatable, Sendable {
     case loadsNonSystemLibrary(String)
     case setsDyldEnvironment
     case notFirstOnSearchPath
+    case notThisTool
 
     public var message: String {
         switch self {
@@ -24,12 +25,26 @@ public enum ToolRejection: Error, Equatable, Sendable {
             return "Loads \(URL(fileURLWithPath: library).lastPathComponent) from outside macOS"
         case .setsDyldEnvironment: return "Changes how macOS loads its libraries"
         case .notFirstOnSearchPath: return "Another copy comes first on your PATH"
+        case .notThisTool: return "This file is a different program"
         }
     }
 }
 
 /// Decides whether an executable may be confirmed: a regular Mach-O file loading only system libraries.
 public enum ToolVetting {
+    /// `vet`, plus: the real file must carry the tool's own name, so a `go` link to git is refused.
+    public static func vet(
+        path: String,
+        for tool: ConfirmableTool,
+        enforcingName: Bool = true
+    ) -> Result<ConfirmedTool, ToolRejection> {
+        if enforcingName, let resolved = resolvedPath(path),
+           URL(fileURLWithPath: resolved).lastPathComponent != tool.executableName {
+            return .failure(.notThisTool)
+        }
+        return vet(path: path)
+    }
+
     public static func vet(path: String) -> Result<ConfirmedTool, ToolRejection> {
         guard let resolved = resolvedPath(path) else { return .failure(.notFound) }
         guard let fingerprint = ExecutableFingerprint.current(atPath: resolved),
