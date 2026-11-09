@@ -90,6 +90,31 @@ enum CategoryStyle {
         }
     }
 
+    // MARK: - Chip
+
+    /// One-word category chip on owner-browser rows.
+    static func chipLabel(for category: ScanCategory) -> String {
+        switch category {
+        case .userCaches, .productivityCaches: return "Cache"
+        case .browserCaches: return "Browser"
+        case .logsAndCrashReports: return "Logs"
+        case .temporaryFiles: return "Temp"
+        case .developerBuildArtifacts: return "Build"
+        case .developerPackageCaches: return "Packages"
+        case .developerSimulatorCaches: return "Simulator"
+        case .designerCaches: return "Design"
+        case .videoBuilderCaches: return "Video"
+        case .aiToolCaches: return "AI"
+        case .installerFiles: return "Installer"
+        case .applications: return "App"
+        case .projectArtifacts: return "Project"
+        case .deviceBackups: return "Backup"
+        case .launchAgents: return "Agent"
+        // Diagnostics never reach an owner group.
+        case .diagnostics: return category.rawValue
+        }
+    }
+
     // MARK: - Category tint
 
     /// Tint for a scan category — kept for callers predating the swatch-based tile API.

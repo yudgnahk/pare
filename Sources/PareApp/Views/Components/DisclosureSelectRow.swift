@@ -28,6 +28,8 @@ struct DisclosureSelectRow<Leading: View>: View {
 
     let style: Style
     let title: String
+    /// Second line under the title, e.g. a project's folder.
+    var subtitle: String? = nil
     var badgeText: String? = nil
     let sizeText: String
     let isExpanded: Bool
@@ -67,10 +69,19 @@ struct DisclosureSelectRow<Leading: View>: View {
             HStack(spacing: style == .category ? 10 : 8) {
                 leading()
 
-                Text(title)
-                    .font(scale.rowTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(scale.rowTitle)
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(scale.rowMeta)
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
 
                 if let badgeText {
                     Text(badgeText)
