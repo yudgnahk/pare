@@ -17,6 +17,7 @@ struct DiagnosticActionPerformer {
         case .openLoginItems: openFirst(SystemSettingsLinks.loginItems)
         case .revealInFinder(let path): reveal(path)
         case .openICloudStorage: openFirst(SystemSettingsLinks.iCloudStorage)
+        case .openDockerDesktop: openFirst(DockerDesktopLinks.dashboard)
         }
     }
 
@@ -26,6 +27,7 @@ struct DiagnosticActionPerformer {
         case .openLoginItems: return "Login Items"
         case .revealInFinder: return "Show in Finder"
         case .openICloudStorage: return "iCloud Storage"
+        case .openDockerDesktop: return "Docker Desktop"
         }
     }
 

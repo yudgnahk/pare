@@ -14,6 +14,7 @@ Status legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **Phase 7 — Platform completeness.** Docker logs and build-cache actions, iOS backups, browser review data. Doc: `docs/features/phase-7-platform-completeness.md`.
 - **Phase 8 — Productivity and system health.** Productivity caches, orphaned launch agents (report-only), Maintenance tab. Doc: `docs/features/phase-8-productivity-system.md`.
 - **Phase 11 — UI redesign.** Adaptive light/dark tokens, category tiles, sidebar vibrancy, Disk Analyzer rewrite, "Tidewater" pass. Direction: `docs/design/ui-wow-audit.md`.
+- **Docker VM memory note (2026-11-09).** Explain-only warning when Docker Desktop's VM may hold half of RAM while swap is high; reads `settings-store.json` read-only, one button opens Docker Desktop. Doc: `docs/features/docker-safety.md`.
 - **iCloud stuck uploads (2026-10-18).** Explain-only warning when iCloud Drive cannot upload because storage is full; CloudDocs and iCloud Drive are never-clean; diagnostics now show their advice in the app.
 - **2026-10-07 wave (#38–#69).** Safety gates, explain-only diagnostics, scan coverage and reclaim reporting. See `CHANGELOG.md` and `docs/architecture/cleanup-safety.md`.
 

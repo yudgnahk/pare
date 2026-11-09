@@ -18,10 +18,11 @@ final class DiagnosticActionPerformerTests: XCTestCase {
 
         performer.perform(.openLoginItems)
         performer.perform(.openICloudStorage)
+        performer.perform(.openDockerDesktop)
         performer.perform(.revealInFinder(path: "/x.plist"))
         performer.perform(.showProcesses(pids: [10, 40]))
 
-        XCTAssertEqual(opened, [SystemSettingsLinks.loginItems, SystemSettingsLinks.iCloudStorage])
+        XCTAssertEqual(opened, [SystemSettingsLinks.loginItems, SystemSettingsLinks.iCloudStorage, DockerDesktopLinks.dashboard])
         XCTAssertEqual(revealed, ["/x.plist"])
         XCTAssertEqual(shown, [[10, 40]])
     }
@@ -31,5 +32,6 @@ final class DiagnosticActionPerformerTests: XCTestCase {
         XCTAssertEqual(DiagnosticActionPerformer.title(for: .openLoginItems), "Login Items")
         XCTAssertEqual(DiagnosticActionPerformer.title(for: .revealInFinder(path: "/x")), "Show in Finder")
         XCTAssertEqual(DiagnosticActionPerformer.title(for: .openICloudStorage), "iCloud Storage")
+        XCTAssertEqual(DiagnosticActionPerformer.title(for: .openDockerDesktop), "Docker Desktop")
     }
 }

@@ -36,4 +36,5 @@ public enum DiagnosticAction: Sendable, Equatable {
     case openLoginItems
     case revealInFinder(path: String)
     case openICloudStorage
+    case openDockerDesktop
 }
