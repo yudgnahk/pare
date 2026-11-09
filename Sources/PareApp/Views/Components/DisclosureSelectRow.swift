@@ -15,6 +15,21 @@ enum TriSelectionState {
     }
 }
 
+/// VoiceOver text for image-only checkboxes.
+enum SelectAccessibility {
+    static func groupLabel(title: String) -> String { "Select safe folders in \(title)" }
+
+    static func folderLabel(path: String) -> String { "Select \(path)" }
+
+    static func stateText(_ state: TriSelectionState) -> String {
+        switch state {
+        case .all: return "Selected"
+        case .partial: return "Partly selected"
+        case .none: return "Not selected"
+        }
+    }
+}
+
 /// Shared anatomy of the expandable "Browse by category" section headers:
 /// [tri-state select] [leading visual · title · count chip … size · chevron].
 ///
@@ -62,6 +77,8 @@ struct DisclosureSelectRow<Leading: View>: View {
         .buttonStyle(.plain)
         .disabled(!isSelectable)
         .help(selectHelp)
+        .accessibilityLabel(SelectAccessibility.groupLabel(title: title))
+        .accessibilityValue(SelectAccessibility.stateText(selection))
     }
 
     private var disclosureButton: some View {

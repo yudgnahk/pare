@@ -51,7 +51,8 @@ extension ScanDashboardViewModel {
             let home = FileManager.default.homeDirectoryForCurrentUser.path
             let roots = ["/Applications", "/System/Applications", home + "/Applications"].map(URL.init(fileURLWithPath:))
             let index = InstalledAppIndex.load(
-                roots: roots, locator: LaunchServicesAppCopyLocator(), deadline: Date().addingTimeInterval(budget)
+                roots: roots, locator: LaunchServicesAppCopyLocator(), deadline: Date().addingTimeInterval(budget),
+                isCancelled: { box.isCancelled }
             )
             box.fulfill(index)
         }

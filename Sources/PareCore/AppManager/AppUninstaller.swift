@@ -119,7 +119,7 @@ public struct AppUninstaller: Sendable {
         return merged
     }
 
-    private static func isInTrash(_ path: String) -> Bool {
+    static func isInTrash(_ path: String) -> Bool {
         URL(fileURLWithPath: path).pathComponents.contains { $0 == ".Trash" || $0 == ".Trashes" }
     }
 

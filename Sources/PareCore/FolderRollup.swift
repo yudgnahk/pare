@@ -378,26 +378,36 @@ public enum FolderRollup {
         category: ScanCategory,
         rows: [CategoryFolderRow]
     ) -> [CategoryToolGroup] {
-        let grouped = Dictionary(grouping: rows, by: \.toolName)
-        return grouped.map { toolName, toolRows in
-            let folderIds = Set(toolRows.map(\.id))
-            let totalBytes = toolRows.reduce(Int64(0)) { $0 + $1.totalBytes }
-            let itemCount = toolRows.reduce(0) { $0 + $1.itemCount }
+        makeToolGroups(category: category, rows: rows, ownerKeyByFolderId: [:], detailByOwnerKey: [:])
+    }
+
+    /// Groups by owner key where known (else by name), so same-named owners stay apart.
+    /// `detailByOwnerKey` is appended to the title only when two groups share a name.
+    public static func makeToolGroups(
+        category: ScanCategory,
+        rows: [CategoryFolderRow],
+        ownerKeyByFolderId: [String: String],
+        detailByOwnerKey: [String: String]
+    ) -> [CategoryToolGroup] {
+        let grouped = Dictionary(grouping: rows) { ownerKeyByFolderId[$0.id] ?? "name:\($0.toolName)" }
+        let nameCounts = Dictionary(grouping: grouped.values, by: { $0[0].toolName }).mapValues(\.count)
+        return grouped.map { key, toolRows in
+            let toolName = toolRows[0].toolName
+            let detail = nameCounts[toolName, default: 1] > 1 ? detailByOwnerKey[key] : nil
             let hasReview = toolRows.contains { $0.riskLevel == .review }
-            let safeIds = Set(toolRows.filter { $0.isSafeFolder && $0.isSelectable }.map(\.id))
             return CategoryToolGroup(
-                id: "\(category.rawValue)|tool|\(toolName)",
+                id: "\(category.rawValue)|tool|\(key)",
                 category: category,
-                toolName: toolName,
-                totalBytes: totalBytes,
+                toolName: detail.map { "\(toolName) · \($0)" } ?? toolName,
+                totalBytes: toolRows.reduce(Int64(0)) { $0 + $1.totalBytes },
                 folderCount: toolRows.count,
-                itemCount: itemCount,
+                itemCount: toolRows.reduce(0) { $0 + $1.itemCount },
                 riskLevel: hasReview ? .review : .safe,
-                folderIds: folderIds,
-                safeFolderIds: safeIds
+                folderIds: Set(toolRows.map(\.id)),
+                safeFolderIds: Set(toolRows.filter { $0.isSafeFolder && $0.isSelectable }.map(\.id))
             )
         }
-        .sorted { $0.totalBytes > $1.totalBytes }
+        .sorted { $0.totalBytes != $1.totalBytes ? $0.totalBytes > $1.totalBytes : $0.id < $1.id }
     }
 
     public static func makeToolRollups(from findings: [ScanFinding]) -> [ToolRollup] {

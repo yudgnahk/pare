@@ -76,6 +76,7 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Owners resolved at scan finish, replayed when an exclusion rebuilds the groups.
     private var ownerByFolderPath: [String: FolderOwner] = [:]
     private let browseModes: BrowseModeStore
+    private let exclusionStore: ExclusionStore
     /// Precomputed at scan finish (background pass) — see `revealabilityIndex`.
     private var revealablePaths: Set<String> = []
     private var folderFindingPaths: Set<String> = []
@@ -100,13 +101,15 @@ final class ScanDashboardViewModel: ObservableObject {
                 forRoots: $0, homeDirectory: FileManager.default.homeDirectoryForCurrentUser
             )
         },
-        browseModes: BrowseModeStore = BrowseModeStore()
+        browseModes: BrowseModeStore = BrowseModeStore(),
+        exclusionStore: ExclusionStore = .shared
     ) {
         self.cleanup = cleanup
         self.growthStore = growthStore
         self.cacheActivityLabeler = cacheActivityLabeler
         self.projectActivityLabeler = projectActivityLabeler
         self.browseModes = browseModes
+        self.exclusionStore = exclusionStore
         self.browseMode = SmartScanFeatures.ownerView ? browseModes.mode : .categories
         // Child observable objects publish through the dashboard so existing
         // `@ObservedObject var viewModel` views keep re-rendering.
@@ -469,8 +472,9 @@ final class ScanDashboardViewModel: ObservableObject {
                 await ProjectRootDiscovery.shared.markStale()
             }
             let installedApps = SmartScanFeatures.ownerView ? Self.startInstalledAppsLoad() : nil
+            defer { if Task.isCancelled { installedApps?.cancel() } }
             let rules = RuleCatalog.all
-            let exclusionList = (try? ExclusionStore.shared.load()) ?? .empty
+            let exclusionList = (try? exclusionStore.load()) ?? .empty
             let runner = ScanRunner(exclusionList: exclusionList, cache: cache, regrowth: RegrowthDetector())
             let totalRules = rules.count
             await MainActor.run { self.scanRulesTotal = totalRules }
@@ -734,7 +738,7 @@ final class ScanDashboardViewModel: ObservableObject {
 
     func exclude(path: String) {
         let entry = ExclusionEntry(path: path)
-        try? ExclusionStore.shared.addEntry(entry)
+        try? exclusionStore.addEntry(entry)
         // Capture the finding before removal so totals can be adjusted (R0.6).
         let excluded = findingsByPath[path] ?? latestFindings.first { $0.path == path }
         latestFindings.removeAll { $0.path == path }
