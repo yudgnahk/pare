@@ -59,7 +59,7 @@ public struct GoCachesRule: ScanRule {
             if let finding = measured.first, finding.isSizeComplete {
                 moduleSizes.remember(finding.sizeBytes, for: root)
             }
-            findings += measured.map { $0.annotated(with: annotation) }
+            findings += measured.map { $0.copy(annotations: $0.annotations + [annotation]) }
         }
         return findings
     }
@@ -89,21 +89,5 @@ public struct GoCachesRule: ScanRule {
         case .explainOnly(let action):
             return action
         }
-    }
-}
-
-private extension ScanFinding {
-    func annotated(with annotation: FindingAnnotation) -> ScanFinding {
-        ScanFinding(
-            category: category,
-            riskLevel: riskLevel,
-            reason: reason,
-            path: path,
-            sizeBytes: sizeBytes,
-            lastUsed: lastUsed,
-            confidence: confidence,
-            annotations: annotations + [annotation],
-            isSizeComplete: isSizeComplete
-        )
     }
 }

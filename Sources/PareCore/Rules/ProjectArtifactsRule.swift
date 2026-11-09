@@ -118,6 +118,9 @@ public struct ProjectArtifactsRule: ScanRule {
         }
 
         var notices: [String] = []
+        if statuses.values.contains(.gitTooOld) {
+            notices.append("Git is older than 2.45, so build folders can't be checked and aren't listed. Update the Command Line Tools.")
+        }
         if discoveryTimedOut {
             notices.append("Project discovery timed out; some projects may be missing.")
         }

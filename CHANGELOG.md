@@ -6,9 +6,12 @@ All notable changes to Pare are documented here.
 
 ## [Unreleased]
 
-Release candidate `release/2026-10`: pull requests #37–#78 (#38–#69 via `integration/2026-10-07`, merged in #73).
+Release candidate `release/2026-10`: pull requests #37–#80 (#38–#69 via `integration/2026-10-07`, merged in #73).
 
 ### Release candidate fixes (2026-10-13)
+- App Manager uninstall skips a leftover that another process has open and names the holder; with no open-file listing it removes nothing (#80).
+- Opened from Finder, Pare still finds uv, pnpm, Go and git in Homebrew, `~/.local/bin`, `~/.cargo/bin` and the pnpm/Volta/mise/asdf folders (#80).
+- Old-version cleanup never touches never-clean paths and says why a version was kept; diagnostics no longer change cleanable findings during deduplication; a cut-short Go cache keeps its "at least" (#80).
 - Project discovery keeps only the outermost project folder at any depth, and tidies roots already saved; excluding a root no longer hides the projects inside it (#77).
 - Smart Scan: warm full scan ~35 s → about 5–7 s on an idle Mac (release build) and peak memory ~700 MB → ~130 MB. Listing-only walks read directories with `readdir`, the Go build- and module-cache sizes are remembered, and project discovery skips `$HOME`, app bundles, SDKs and toolchain trees (#71, #76). Results appear without the post-scan stall (#37).
 - App Manager uninstall matches leftovers on bundle-ID boundaries (uninstalling Chrome no longer touches Chrome Canary), only reports system launchd jobs, unloads user launch agents before trashing them, and records the uninstall in History so it can be undone (#75).

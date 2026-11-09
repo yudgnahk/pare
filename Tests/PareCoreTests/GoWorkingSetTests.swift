@@ -83,7 +83,7 @@ final class GoWorkingSetTests: XCTestCase {
         let locations = GoCacheLocations(query: {
             queries.increment()
             return nil
-        })
+        }, environment: [:], home: tmp)
 
         let first = await locations.resolveIfNeeded()
         let second = await locations.resolveIfNeeded()
@@ -92,6 +92,64 @@ final class GoWorkingSetTests: XCTestCase {
         XCTAssertEqual(second, .empty)
         XCTAssertEqual(queries.value, 1)
         XCTAssertEqual(locations.resolvedRoots, [])
+    }
+
+    // MARK: - Declared locations (go unconfirmed, so never spawned)
+
+    private func writeGoEnvFile(_ text: String, at relative: String = "home/Library/Application Support/go/env") throws {
+        let file = tmp.appending(path: relative)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: file)
+    }
+
+    func testDeclaredRootsComeFromEnvironmentAndGoEnvFileWithoutRunningGo() async throws {
+        try writeGoEnvFile("# comment\nGOMODCACHE=/opt/from-file/mod\nGOCACHE=/opt/from-file/build\nGOPATH=/opt/gp1:/opt/gp2\n")
+        let home = tmp.appending(path: "home")
+        let fromFile = GoCacheLocations(query: { nil }, environment: [:], home: home)
+        let overridden = GoCacheLocations(
+            query: { nil }, environment: ["GOMODCACHE": "/opt/from-env/mod", "GOPATH": "/opt/env-gp"], home: home
+        )
+
+        XCTAssertEqual(
+            Set(fromFile.resolvedRoots.map(\.path)),
+            ["/opt/from-file/mod", "/opt/from-file/build", "/opt/gp1/pkg/mod", "/opt/gp2/pkg/mod"],
+            "known before any resolve, with no go to run"
+        )
+        XCTAssertEqual(
+            Set(overridden.resolvedRoots.map(\.path)),
+            ["/opt/from-env/mod", "/opt/env-gp/pkg/mod", "/opt/from-file/build"]
+        )
+        let resolved = await fromFile.resolveIfNeeded()
+        XCTAssertEqual(Set(resolved.all.map(\.path)), Set(fromFile.resolvedRoots.map(\.path)))
+    }
+
+    func testGoEnvOverrideAndUnusableValuesAreHandled() throws {
+        try writeGoEnvFile("GOMODCACHE=/opt/default-file\n")
+        try writeGoEnvFile("GOMODCACHE=/opt/custom-file\nGOCACHE=off\nGOPATH=relative/dir\n", at: "custom.env")
+        let roots = GoDeclaredCacheRoots.roots(
+            environment: ["GOENV": tmp.appending(path: "custom.env").path], home: tmp.appending(path: "home")
+        )
+        XCTAssertEqual(roots.map(\.path), ["/opt/custom-file"])
+        XCTAssertEqual(GoDeclaredCacheRoots.roots(environment: ["GOENV": "off"], home: tmp), [])
+    }
+
+    func testCleanupSkipsDeclaredModCacheWhileGoIsUnconfirmed() async throws {
+        let modCache = try makeCache("Library/Caches/gomod")
+        try writeGoEnvFile("GOMODCACHE=\(modCache.path)\n")
+        let engine = CleanupEngineFixture.make(
+            store: CleanupTransactionStore(directory: tmp.appending(path: "store")),
+            projectRootsProvider: { [] },
+            goCacheLocations: GoCacheLocations(query: { nil }, environment: [:], home: tmp.appending(path: "home"))
+        )
+
+        let result = try await engine.clean(
+            findings: [finding(modCache, category: .userCaches)], profileName: "test", dryRun: true
+        )
+
+        XCTAssertTrue(result.succeeded.isEmpty, "an unconfirmed go must not unprotect GOMODCACHE")
+        guard case .some(.workingSetProtected(_)) = result.skipped.first?.error else {
+            return XCTFail("expected .workingSetProtected, got \(result.skipped)")
+        }
     }
 
     // MARK: - GoCachesRule
@@ -123,6 +181,21 @@ final class GoWorkingSetTests: XCTestCase {
 
         XCTAssertEqual(findings.map(\.path), [custom.path])
         XCTAssertEqual(findings.first?.riskLevel, .advanced)
+    }
+
+    func testCutShortGoCacheKeepsItsAtLeastSize() async throws {
+        let goBuild = try makeCache("Library/Caches/go-build")
+        let rule = GoCachesRule(
+            locations: GoCacheLocations(query: { nil }),
+            moduleSizes: GoModuleCacheSizeStore(storeURL: tmp.appending(path: "go-sizes.json"))
+        )
+        let bounded = DirectorySizeIndex(budgetSeconds: 0, now: { Date(timeIntervalSinceReferenceDate: 0) })
+
+        let findings = await rule.customScan(environment: ScanEnvironment(homeDirectory: tmp, sizeIndex: bounded)) ?? []
+
+        let build = try XCTUnwrap(findings.first { $0.path == goBuild.path })
+        XCTAssertFalse(build.isSizeComplete, "a cut-short size must still read as \"at least\"")
+        XCTAssertEqual(build.annotations, [.workingSet(selfTrimDays: 5)])
     }
 
     func testGoFindingsExcludedFromReclaimableTotal() async throws {

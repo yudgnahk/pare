@@ -6,7 +6,7 @@ final class GitArtifactInspectorDeadlineTests: XCTestCase {
 
     private let git = URL(fileURLWithPath: "/opt/homebrew/bin/git")
 
-    func testDirectoriesPastTheDeadlineFailClosedWithoutRunningGit() async {
+    func testDirectoriesPastTheDeadlineFailClosedWithoutRunningGit() async throws {
         let clock = GitClock()
         let calls = LockedCounter()
         let inspector = SystemGitArtifactInspector(
@@ -19,7 +19,13 @@ final class GitArtifactInspectorDeadlineTests: XCTestCase {
             totalDeadline: 20,
             now: clock.now
         )
-        let dirs = (0..<300).map { URL(fileURLWithPath: "/Users/u/Projects/p\($0)/build") }
+        let base = FileManager.default.temporaryDirectory.appending(path: "pare-git-deadline-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let parents = (0..<300).map { base.appending(path: "p\($0)") }
+        for parent in parents {
+            try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        }
+        let dirs = parents.map { URL(fileURLWithPath: $0.path + "/build") }
 
         let statuses = await inspector.statuses(for: dirs)
 

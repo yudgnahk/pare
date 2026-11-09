@@ -232,14 +232,15 @@ final class ScanDashboardViewModel: ObservableObject {
         selection.folderSelectionState(row)
     }
 
-    /// Toggle every folder under a tool group (e.g. all JetBrains package-cache folders).
+    /// Toggles the group's SAFE folders only; review rows stay one click each.
     func toggleToolGroup(_ group: CategoryToolGroup) {
         guard group.isSelectable else { return }
-        selection.toggleFolderIds(group.folderIds)
+        selection.toggleFolderIds(group.safeFolderIds)
     }
 
+    /// Reads the safe rows only, so a hand-ticked review row never flips the group checkbox.
     func toolGroupSelectionState(_ group: CategoryToolGroup) -> CategorySelectState {
-        selection.selectionState(of: group.folderIds)
+        selection.selectionState(of: group.safeFolderIds)
     }
 
     func selectAllSafe() {

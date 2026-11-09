@@ -35,6 +35,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
     case restoreFailed(String)
     /// Another process has a file open at or under the path.
     case inUse(String, holder: String)
+    /// A version sibling that must stay, with the reason `ScanPolicy.versionSiblingRefusal` gave.
+    case versionKept(String, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -73,6 +75,8 @@ public enum CleanupError: Error, LocalizedError, Sendable {
             return "Cannot restore — \(reason)"
         case .inUse(let path, let holder):
             return "Skipped: in use by \(holder): \(path)"
+        case .versionKept(let path, let reason):
+            return "Kept (\(reason)): \(path)"
         }
     }
 }
@@ -188,7 +192,7 @@ public actor CleanupEngine {
         openFiles: any OpenFileSnapshotProviding = LsofOpenFileSnapshotProvider(),
         runningApps: any RunningAppsProviding = WorkspaceRunningAppsProvider(),
         freeSpace: any VolumeFreeSpaceProviding = SystemVolumeFreeSpace(),
-        runningExecutables: any RunningExecutablesProviding = PsRunningExecutablesProvider(),
+        runningExecutables: any RunningExecutablesProviding = LibprocRunningExecutablesProvider(),
         isCodexRunning: (@Sendable () async -> Bool)? = nil,
         pnpmActiveStore: (@Sendable () async -> URL?)? = nil
     ) {
@@ -425,6 +429,8 @@ public actor CleanupEngine {
 
             // Set when the dependency gate decides: project activity then replaces the folder's own age.
             var isProjectDependency = false
+            // A version a process runs from must not go when the open-file check cannot see it.
+            var isVersionSibling = false
 
             if ScanPolicy.hasUpgradeBackupSignal(url.lastPathComponent) {
                 // Backup-named paths pass only through the upgrade-backup gate, never the generic allow-lists.
@@ -434,11 +440,15 @@ public actor CleanupEngine {
                 }
             } else if ScanPolicy.isVersionSiblingMember(url) {
                 // Version siblings pass only their own re-verification, never a broader allow-list.
+                isVersionSibling = true
                 if executablesSnapshot == nil {
                     executablesSnapshot = .some(await runningExecutables.runningExecutablePaths())
                 }
-                if !ScanPolicy.isReclaimableVersionSibling(url, runningExecutables: executablesSnapshot ?? nil) {
-                    skipped.append(CleanupSkippedItem(path: finding.path, error: .unsafePath(finding.path)))
+                if let refusal = ScanPolicy.versionSiblingRefusal(
+                    url, runningExecutables: executablesSnapshot ?? nil, customRoots: goCacheRoots) {
+                    let error: CleanupError = refusal == .outsidePolicy
+                        ? .unsafePath(finding.path) : .versionKept(finding.path, reason: refusal.reason)
+                    skipped.append(CleanupSkippedItem(path: finding.path, error: error))
                     continue
                 }
             } else if ScanPolicy.isPnpmGuardedPath(url) {
@@ -470,7 +480,14 @@ public actor CleanupEngine {
             } else if let rejection = policyRejection(
                 for: finding, url: url, projectRootPaths: projectRootPaths, gitStatuses: gitStatuses
             ) {
-                skipped.append(CleanupSkippedItem(path: finding.path, error: rejection))
+                // Refused either way; a version folder whose group shrank says why instead of "unsafe".
+                let error: CleanupError
+                if case .unsafePath = rejection, ScanPolicy.isShrunkVersionSiblingGroup(url) {
+                    error = .versionKept(finding.path, reason: VersionSiblingRefusal.fewerNewerVersions.reason)
+                } else {
+                    error = rejection
+                }
+                skipped.append(CleanupSkippedItem(path: finding.path, error: error))
                 continue
             }
 
@@ -514,7 +531,8 @@ public actor CleanupEngine {
             // Last gate before trashing, so the batch's single snapshot is only taken when needed.
             // A dependency folder is in use when anything inside its project is, e.g. a dev server's cwd.
             let inUsePath = isProjectDependency ? url.deletingLastPathComponent().path : finding.path
-            if let holder = await inUse.holder(forPath: inUsePath, failClosedWithoutSnapshot: isProjectDependency) {
+            if let holder = await inUse.holder(
+                forPath: inUsePath, failClosedWithoutSnapshot: isProjectDependency || isVersionSibling) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .inUse(finding.path, holder: holder)))
                 continue
             }

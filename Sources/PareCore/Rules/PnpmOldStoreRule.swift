@@ -49,12 +49,6 @@ public struct PnpmOldStoreRule: ScanRule {
 
 /// Finds the active pnpm store by asking pnpm itself (`pnpm store path`), bounded and non-fatal.
 public enum PnpmStoreLocator {
-    /// Where standalone pnpm installs keep the binary, besides PATH and Homebrew.
-    static func binaryDirectories(home: URL, environment: [String: String]) -> [String] {
-        [environment["PNPM_HOME"], home.appending(path: "Library/pnpm").path, home.appending(path: ".local/share/pnpm").path]
-            .compactMap { $0 }
-    }
-
     /// The last absolute line of `pnpm store path` output, when it ends in a `v<N>` folder.
     static func activeStore(fromStorePathOutput output: String?) -> URL? {
         guard let line = output?
@@ -66,14 +60,10 @@ public enum PnpmStoreLocator {
         return ScanPolicy.pnpmStoreVersion(url.lastPathComponent) == nil ? nil : url
     }
 
-    /// Nil when pnpm is absent, fails, times out, or prints something unexpected.
-    public static func activeStore(home: URL) async -> URL? {
-        var environment = ProcessInfo.processInfo.environment
-        environment["PATH"] = ([environment["PATH"]] + binaryDirectories(home: home, environment: environment).map { Optional($0) })
-            .compactMap { $0 }
-            .joined(separator: ":")
-        let runner = ToolCommandRunner()
-        guard let pnpm = runner.resolveExecutable(named: "pnpm", environmentVariables: environment) else { return nil }
-        return activeStore(fromStorePathOutput: await runner.capture(executable: pnpm, arguments: ["store", "path"]))
+    /// Nil when pnpm is unconfirmed or changed, fails, times out, or prints something unexpected.
+    public static func activeStore(home: URL, registry: ConfirmedToolRegistry = .shared) async -> URL? {
+        activeStore(fromStorePathOutput: await ToolCommandRunner().captureConfirmed(
+            .pnpm, arguments: ["store", "path"], registry: registry, environment: ["HOME": home.path]
+        ))
     }
 }
