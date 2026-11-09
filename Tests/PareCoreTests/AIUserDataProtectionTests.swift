@@ -125,7 +125,7 @@ final class AIUserDataProtectionTests: XCTestCase {
     }
 
     func testAIToolCachesRuleNeverReportsProtectedPaths() async throws {
-        for relative in protectedRelatives where !relative.hasPrefix("Library") {
+        for relative in leaves(protectedRelatives) where !relative.hasPrefix("Library") {
             try makeFile(tmp.appending(path: relative))
         }
         let environment = ScanEnvironment(homeDirectory: tmp, systemApplicationDirectories: [])
@@ -141,7 +141,7 @@ final class AIUserDataProtectionTests: XCTestCase {
     }
 
     func testCleanupRefusesEveryAIDataPath() async throws {
-        let urls = try protectedRelatives.map { try makeFile(tmp.appending(path: $0)) }
+        let urls = try leaves(protectedRelatives).map { try makeFile(tmp.appending(path: $0)) }
 
         let result = try await dryRunClean(urls)
 
@@ -157,7 +157,7 @@ final class AIUserDataProtectionTests: XCTestCase {
     }
 
     func testCleanupDoesNotRefuseLookAlikesAsProtectedData() async throws {
-        let urls = try lookAlikeRelatives.map { try makeFile(tmp.appending(path: $0)) }
+        let urls = try leaves(lookAlikeRelatives).map { try makeFile(tmp.appending(path: $0)) }
 
         let result = try await dryRunClean(urls)
 
@@ -183,6 +183,11 @@ final class AIUserDataProtectionTests: XCTestCase {
             )
         }
         return try await engine.clean(findings: findings, profileName: "test", dryRun: true)
+    }
+
+    /// Paths with no listed descendant, so each can be written as a file without blocking a child's folder.
+    private func leaves(_ relatives: [String]) -> [String] {
+        relatives.filter { candidate in !relatives.contains { $0.hasPrefix(candidate + "/") } }
     }
 
     @discardableResult
