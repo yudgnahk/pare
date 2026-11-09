@@ -30,8 +30,19 @@ public struct ScanReportAnnotator: Sendable {
         sourceApp(forPath: finding.path)
     }
 
-    /// Same attribution as the “Where space goes” chart — used to group category browser rows by tool.
+    /// Owner name for a path, as the resolver sees it with no installed-app or project context.
     public static func sourceApp(forPath path: String) -> String {
+        guard SmartScanFeatures.ownerView else { return legacySourceApp(forPath: path) }
+        return defaultResolver.owner(forFolderPath: path).displayName
+    }
+
+    private static let defaultResolver = OwnerResolver(
+        homeDirectory: FileManager.default.homeDirectoryForCurrentUser,
+        installedApps: .empty
+    )
+
+    /// Substring attribution kept for one release behind `SmartScanFeatures.ownerView`.
+    public static func legacySourceApp(forPath path: String) -> String {
         let path = path.lowercased()
         let m = PathMatcher(path)
         if m.has("com.microsoft.vscode") || m.has("/code/") || m.has("/.vscode/")

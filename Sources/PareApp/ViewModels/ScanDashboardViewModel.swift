@@ -12,28 +12,6 @@ final class ScanDashboardViewModel: ObservableObject {
         case success
     }
 
-    /// Fully prepared scan UI payload. Built off the main actor so large scans
-    /// do not freeze the app at finalize (macOS “Not Responding”).
-    private struct PreparedScanResults: Sendable {
-        let findings: [ScanFinding]
-        let findingsByPath: [String: ScanFinding]
-        let aggregate: FolderAggregate
-        let summaries: [SummaryItem]
-        let sortedTopFindings: [FindingItem]
-        let toolRollups: [ToolRollup]
-        let candidateStats: CandidateStats
-        let totalReclaimableBytes: Int64
-        /// True when some reclaimable finding's size is a lower bound (sizing hit its deadline).
-        let isTotalSizePartial: Bool
-        /// Human-readable scan warnings (rule failures, unreadable locations — R1.2/R1.3).
-        let scanWarnings: [String]
-        /// Rendered paths that existed on disk at scan finish (reveal button state).
-        /// Precomputed here so SwiftUI row bodies never call FileManager.
-        let revealablePaths: Set<String>
-        /// Rendered top-finding paths that are directories (folder icon state).
-        let folderFindingPaths: Set<String>
-    }
-
     // MARK: - Published scan state
 
     @Published private(set) var state: ScanState = .idle
@@ -60,6 +38,9 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var categoryFolderRows: [ScanCategory: [CategoryFolderRow]] = [:]
     /// Tool/app groups under a category (e.g. Developer Package Caches → JetBrains, Package Managers).
     @Published private(set) var categoryToolGroups: [ScanCategory: [CategoryToolGroup]] = [:]
+    /// Every reclaimable folder grouped by owner; reuses the category rows' ids and selection.
+    @Published private(set) var ownerSections: [OwnerSection] = []
+    @Published private(set) var browseMode: BrowseMode
     /// Scan progress for 3-step hero (1...3) and status line.
     @Published private(set) var scanStep: Int = 1
     @Published private(set) var scanStepTitle: String = ""
@@ -88,6 +69,9 @@ final class ScanDashboardViewModel: ObservableObject {
     private var findingsByPath: [String: ScanFinding] = [:]
     /// Private path expansion map — never exposed to SwiftUI views.
     private var pathsByFolderId: [String: [String]] = [:]
+    /// Owners resolved at scan finish, replayed when an exclusion rebuilds the groups.
+    private var ownerByFolderPath: [String: FolderOwner] = [:]
+    private let browseModes: BrowseModeStore
     /// Precomputed at scan finish (background pass) — see `revealabilityIndex`.
     private var revealablePaths: Set<String> = []
     private var folderFindingPaths: Set<String> = []
@@ -105,11 +89,14 @@ final class ScanDashboardViewModel: ObservableObject {
         growthStore: GrowthSnapshotStore = GrowthSnapshotStore(),
         cacheActivityLabeler: @escaping @Sendable ([ScanFinding]) async -> [String: CacheActivityLabel] = {
             CacheActivityLabeler.labels(for: $0)
-        }
+        },
+        browseModes: BrowseModeStore = BrowseModeStore()
     ) {
         self.cleanup = cleanup
         self.growthStore = growthStore
         self.cacheActivityLabeler = cacheActivityLabeler
+        self.browseModes = browseModes
+        self.browseMode = SmartScanFeatures.ownerView ? browseModes.mode : .categories
         // Child observable objects publish through the dashboard so existing
         // `@ObservedObject var viewModel` views keep re-rendering.
         permissions.objectWillChange
@@ -238,6 +225,19 @@ final class ScanDashboardViewModel: ObservableObject {
         selection.toggleFolderIds(group.safeFolderIds)
     }
 
+    /// Same rule for owner groups: safe rows only, hot rows left to their own checkbox.
+    func toggleOwnerGroup(_ group: OwnerGroup) {
+        guard group.isSelectable else { return }
+        selection.toggleFolderIds(group.safeFolderIds)
+    }
+
+    /// Changes only how results are grouped; selection and totals stay as they are.
+    func setBrowseMode(_ mode: BrowseMode) {
+        guard SmartScanFeatures.ownerView, mode != browseMode else { return }
+        browseMode = mode
+        browseModes.mode = mode
+    }
+
     /// Reads the safe rows only, so a hand-ticked review row never flips the group checkbox.
     func toolGroupSelectionState(_ group: CategoryToolGroup) -> CategorySelectState {
         selection.selectionState(of: group.safeFolderIds)
@@ -282,8 +282,16 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     func toggleToolGroupExpanded(_ group: CategoryToolGroup) {
-        if !selection.expandedToolGroups.insert(group.id).inserted {
-            selection.expandedToolGroups.remove(group.id)
+        toggleExpandedGroup(group.id)
+    }
+
+    func toggleOwnerGroupExpanded(_ group: OwnerGroup) {
+        toggleExpandedGroup(group.id)
+    }
+
+    private func toggleExpandedGroup(_ id: String) {
+        if !selection.expandedToolGroups.insert(id).inserted {
+            selection.expandedToolGroups.remove(id)
         }
     }
 
@@ -449,6 +457,7 @@ final class ScanDashboardViewModel: ObservableObject {
             if forceRescan {
                 await ProjectRootDiscovery.shared.markStale()
             }
+            let installedApps = SmartScanFeatures.ownerView ? Self.startInstalledAppsLoad() : nil
             let rules = RuleCatalog.all
             let exclusionList = (try? ExclusionStore.shared.load()) ?? .empty
             let runner = ScanRunner(exclusionList: exclusionList, cache: cache, regrowth: RegrowthDetector())
@@ -470,8 +479,9 @@ final class ScanDashboardViewModel: ObservableObject {
             // “Not Responding” while still completing correctly afterward.
             let finishedAt = Date()
             beginFinalizingScan()
+            let owners = await Self.gatherOwnerInputs(installedApps)
             let prepared = await Task.detached(priority: .userInitiated) {
-                Self.prepareScanResults(from: report)
+                Self.prepareScanResults(from: report, owners: owners)
             }.value
 
             guard !Task.isCancelled else { return }
@@ -559,83 +569,6 @@ final class ScanDashboardViewModel: ObservableObject {
         scanStepTitle = Self.finalizingTitle
     }
 
-    /// Pure post-scan aggregation — safe to call from a background task.
-    nonisolated private static func prepareScanResults(from report: ScanReport) -> PreparedScanResults {
-        let findings = report.findings
-        let aggregate = FolderRollup.buildAggregate(from: findings)
-        let pathIndex = Dictionary(findings.map { ($0.path, $0) }, uniquingKeysWith: { _, last in last })
-        let summaries: [SummaryItem] = report.summaries.map { summary in
-            SummaryItem(
-                summary: summary,
-                folderCount: aggregate.rowsByCategory[summary.category]?.count ?? 0
-            )
-        }
-        let sortedTopFindings = largestItemsSorted(from: findings, limit: 40)
-        let (revealablePaths, folderFindingPaths) = revealabilityIndex(
-            aggregate: aggregate,
-            topFindings: sortedTopFindings
-        )
-        return PreparedScanResults(
-            findings: findings,
-            findingsByPath: pathIndex,
-            aggregate: aggregate,
-            summaries: summaries,
-            sortedTopFindings: sortedTopFindings,
-            toolRollups: FolderRollup.makeToolRollups(from: findings),
-            candidateStats: CandidateStats.compute(from: findings),
-            totalReclaimableBytes: report.totalReclaimableBytes,
-            isTotalSizePartial: report.hasPartialSizes,
-            scanWarnings: makeScanWarnings(from: report),
-            revealablePaths: revealablePaths,
-            folderFindingPaths: folderFindingPaths
-        )
-    }
-
-    /// Builds user-facing warnings from the report's error channels (R1.2/R1.3).
-    nonisolated static func makeScanWarnings(from report: ScanReport) -> [String] {
-        var warnings: [String] = []
-        if !report.unreadableLocations.isEmpty {
-            let count = report.unreadableLocations.count
-            warnings.append(
-                "\(count) location\(count == 1 ? "" : "s") could not be read — grant Full Disk Access to scan everything."
-            )
-        }
-        for failure in report.ruleFailures {
-            warnings.append("\(failure.ruleTitle) failed: \(failure.message)")
-        }
-        for incomplete in report.incompleteRules {
-            warnings.append("\(incomplete.ruleTitle): scan incomplete, results are partial. \(incomplete.message)")
-        }
-        return warnings
-    }
-
-    /// Stats every rendered path once, off the main actor, so row bodies can use
-    /// set lookups instead of per-render FileManager calls. Bounded work: folder
-    /// rows are capped per category and top findings are capped at 40.
-    nonisolated private static func revealabilityIndex(
-        aggregate: FolderAggregate,
-        topFindings: [FindingItem]
-    ) -> (revealable: Set<String>, folders: Set<String>) {
-        let fm = FileManager.default
-        var revealable: Set<String> = []
-        var folders: Set<String> = []
-
-        for rows in aggregate.rowsByCategory.values {
-            for row in rows where fm.fileExists(atPath: row.folderPath) {
-                revealable.insert(row.folderPath)
-            }
-        }
-        for item in topFindings {
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: item.path, isDirectory: &isDir) else { continue }
-            revealable.insert(item.path)
-            if isDir.boolValue {
-                folders.insert(item.path)
-            }
-        }
-        return (revealable, folders)
-    }
-
     private func applyPreparedScanResults(
         _ prepared: PreparedScanResults,
         startedAt: Date,
@@ -649,6 +582,8 @@ final class ScanDashboardViewModel: ObservableObject {
         folderFindingPaths = prepared.folderFindingPaths
         categoryFolderRows = prepared.aggregate.rowsByCategory
         categoryToolGroups = prepared.aggregate.toolGroupsByCategory
+        ownerSections = prepared.ownerSections
+        ownerByFolderPath = prepared.ownerByFolderPath
         totalReclaimableBytes = prepared.totalReclaimableBytes
         isTotalSizePartial = prepared.isTotalSizePartial
         scanWarnings = prepared.scanWarnings
@@ -768,10 +703,15 @@ final class ScanDashboardViewModel: ObservableObject {
         findingsByPath.removeValue(forKey: path)
         topFindings.removeAll { $0.path == path }
         // Rebuild private maps + lightweight rows (not on scroll hot path).
-        let aggregate = FolderRollup.buildAggregate(from: latestFindings)
+        let resolver = SmartScanFeatures.ownerView ? CachedOwnerResolver(owners: ownerByFolderPath) : nil
+        let owned = Self.ownerResults(
+            aggregate: FolderRollup.buildAggregate(from: latestFindings), findings: latestFindings, resolver: resolver
+        )
+        let aggregate = owned.aggregate
         pathsByFolderId = aggregate.pathsByFolderId
         categoryFolderRows = aggregate.rowsByCategory
         categoryToolGroups = aggregate.toolGroupsByCategory
+        ownerSections = owned.sections
         // Only the excluded finding's category loses bytes/count; `.advanced` findings
         // were never counted as reclaimable, so they don't reduce totals (R0.6).
         let excludedBytes = excluded?.sizeBytes ?? 0
@@ -805,7 +745,7 @@ final class ScanDashboardViewModel: ObservableObject {
             resetToSafeSelection: false
         )
         candidateStats = CandidateStats.compute(from: bulkCleanFindings)
-        perToolRollups = FolderRollup.makeToolRollups(from: latestFindings)
+        perToolRollups = owned.toolRollups
     }
 
     // MARK: - Formatting
@@ -846,9 +786,10 @@ extension ScanDashboardViewModel {
     func applySnapshotResults(
         _ report: ScanReport,
         cacheActivity: [String: CacheActivityLabel] = [:],
-        duration: TimeInterval = 14.2
+        duration: TimeInterval = 14.2,
+        owners: OwnerInputs = OwnerInputs()
     ) {
-        let prepared = Self.prepareScanResults(from: report)
+        let prepared = Self.prepareScanResults(from: report, owners: SmartScanFeatures.ownerView ? owners : nil)
         let finishedAt = Date()
         applyPreparedScanResults(prepared, startedAt: finishedAt.addingTimeInterval(-duration), finishedAt: finishedAt)
         if !cacheActivity.isEmpty { applyCacheActivity(cacheActivity, generation: scanGeneration) }

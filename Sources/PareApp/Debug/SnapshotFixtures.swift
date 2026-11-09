@@ -6,6 +6,7 @@ import PareCore
 enum SnapshotFixtures {
     static let root = "/nonexistent/pare-fixture"
     private static let home = root + "/home"
+    static let projectsRoot = home + "/Code"
     private static let trash = root + "/Trash"
     private static let gb: Int64 = 1_073_741_824
     private static let mb: Int64 = 1_048_576
@@ -64,8 +65,33 @@ enum SnapshotFixtures {
         Row(category: .logsAndCrashReports, risk: .safe, path: "/Library/Logs/DiagnosticReports", bytes: 260 * mb),
         Row(category: .aiToolCaches, risk: .safe, path: "/.cache/opencode", bytes: 2 * gb + 50 * mb),
         Row(category: .installerFiles, risk: .review, path: "/Downloads/Xcode_16.dmg", bytes: 3 * gb + 700 * mb),
-        Row(category: .temporaryFiles, risk: .safe, path: "/Library/Caches/TemporaryItems", bytes: 150 * mb)
+        Row(category: .temporaryFiles, risk: .safe, path: "/Library/Caches/TemporaryItems", bytes: 150 * mb),
+        Row(category: .projectArtifacts, risk: .safe, path: "/Code/shop/.next", bytes: 1 * gb + 420 * mb),
+        Row(category: .projectArtifacts, risk: .review, path: "/Code/shop/node_modules", bytes: 910 * mb),
+        Row(category: .projectArtifacts, risk: .safe, path: "/Code/blog/target", bytes: 2 * gb + 160 * mb),
+        Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.acme.Whisper", bytes: 640 * mb),
+        Row(category: .userCaches, risk: .safe, path: "/Library/Application Support/Code/Cache", bytes: 480 * mb)
     ]
+
+    /// Owner context for the fake home: one installed app and two projects, found without touching disk.
+    static var ownerInputs: OwnerInputs {
+        OwnerInputs(
+            homeDirectory: URL(fileURLWithPath: home),
+            installedApps: InstalledAppIndex(namesByBundleID: ["com.acme.whisper": "Whisper"]),
+            registeredRoots: [URL(fileURLWithPath: projectsRoot)],
+            probe: FixtureProjectProbe(gitRoots: [projectsRoot + "/shop"], markerRoots: [projectsRoot + "/blog"])
+        )
+    }
+
+    /// Answers project-marker probes from fixed lists.
+    struct FixtureProjectProbe: ProjectMarkerProbing {
+        let gitRoots: Set<String>
+        let markerRoots: Set<String>
+
+        func probe(directory: String) -> (hasGit: Bool, hasMarker: Bool) {
+            (gitRoots.contains(directory), markerRoots.contains(directory))
+        }
+    }
 
     /// Model store whose cleanup and history engines can never move, restore or record a real file.
     @MainActor
@@ -73,7 +99,8 @@ enum SnapshotFixtures {
         let store = CleanupTransactionStore(directory: URL(fileURLWithPath: root + "/transactions"))
         return AppModelStore(
             cleanup: CleanupCoordinator(engine: inertEngine(store: store)),
-            history: HistoryViewModel(store: store, engine: inertEngine(store: store))
+            history: HistoryViewModel(store: store, engine: inertEngine(store: store)),
+            browseModes: .inMemory()
         )
     }
 

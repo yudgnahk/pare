@@ -99,23 +99,47 @@ extension SnapshotRenderer {
                 store.scan.applySnapshotFinalizing(total: 36)
             },
             Scene(name: "03-smart-scan-results", destination: .smartScan) { store in
-                store.scan.applySnapshotResults(SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity)
+                store.scan.applySnapshotResults(
+                    SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity, owners: SnapshotFixtures.ownerInputs
+                )
             },
             Scene(name: "03b-smart-scan-results-full", destination: .smartScan, height: 1500) { store in
-                store.scan.applySnapshotResults(SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity)
+                store.scan.applySnapshotResults(
+                    SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity, owners: SnapshotFixtures.ownerInputs
+                )
             },
             Scene(name: "03c-smart-scan-hot-cache", destination: .smartScan, height: 2600) { store in
-                store.scan.applySnapshotResults(SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity)
+                store.scan.applySnapshotResults(
+                    SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity, owners: SnapshotFixtures.ownerInputs
+                )
+                store.scan.setBrowseMode(.categories)
                 store.scan.toggleCategoryExpanded(.developerPackageCaches)
                 store.scan.toolGroups(for: .developerPackageCaches).forEach(store.scan.toggleToolGroupExpanded)
             },
             Scene(name: "04-smart-scan-cleaned", destination: .smartScan) { store in
-                store.scan.applySnapshotResults(SnapshotFixtures.scanReport)
+                store.scan.applySnapshotResults(SnapshotFixtures.scanReport, owners: SnapshotFixtures.ownerInputs)
                 store.scan.cleanup.applySnapshotState(.done(bytesFreed: 12_884_901_888, skippedCount: 0))
+            },
+            Scene(name: "03d-smart-scan-by-app", destination: .smartScan, height: 2400) { store in
+                store.scan.applySnapshotResults(
+                    SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity, owners: SnapshotFixtures.ownerInputs
+                )
+                store.scan.setBrowseMode(.apps)
+                store.scan.ownerSections.flatMap(\.groups)
+                    .filter { $0.owner.kind == .project || $0.owner.key == "tool:npm" }
+                    .forEach(store.scan.toggleOwnerGroupExpanded)
+            },
+            Scene(name: "03e-smart-scan-categories", destination: .smartScan, height: 1800) { store in
+                store.scan.applySnapshotResults(
+                    SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity, owners: SnapshotFixtures.ownerInputs
+                )
+                store.scan.setBrowseMode(.categories)
+                store.scan.toggleCategoryExpanded(.projectArtifacts)
+                store.scan.toolGroups(for: .projectArtifacts).forEach(store.scan.toggleToolGroupExpanded)
             },
             Scene(name: "05-disk-analyzer-empty", destination: .disk) { _ in },
             Scene(name: "05b-disk-analyzer-folder", destination: .disk, settleSeconds: 5) { store in
-                store.scan.applySnapshotResults(SnapshotFixtures.scanReport)
+                store.scan.applySnapshotResults(SnapshotFixtures.scanReport, owners: SnapshotFixtures.ownerInputs)
                 store.disk.open(root: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
             },
             Scene(name: "06-apps", destination: .apps, settleSeconds: 10) { _ in },

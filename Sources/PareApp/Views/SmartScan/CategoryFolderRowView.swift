@@ -11,6 +11,10 @@ struct CategoryFolderRowView: View, Equatable {
     let canReveal: Bool
     let onToggle: () -> Void
     let onReveal: () -> Void
+    /// Category chip shown when rows of several categories share one list.
+    var chip: String? = nil
+    /// Replaces the `~/` path, e.g. with a path relative to the project root.
+    var label: String? = nil
     @Environment(\.pareDisplayScale) private var scale
 
     nonisolated static func == (lhs: CategoryFolderRowView, rhs: CategoryFolderRowView) -> Bool {
@@ -19,6 +23,8 @@ struct CategoryFolderRowView: View, Equatable {
             && lhs.sizeText == rhs.sizeText
             && lhs.selectionState == rhs.selectionState
             && lhs.canReveal == rhs.canReveal
+            && lhs.chip == rhs.chip
+            && lhs.label == rhs.label
     }
 
     var body: some View {
@@ -38,12 +44,24 @@ struct CategoryFolderRowView: View, Equatable {
             IconTile(category: category, size: 18)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(row.displayPath)
-                    .font(scale.rowMono)
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 6) {
+                    Text(label ?? row.displayPath)
+                        .font(scale.rowMono)
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                    if let chip {
+                        Text(chip)
+                            .font(scale.micro)
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(AppTheme.Fill.control, in: Capsule())
+                            .fixedSize()
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help(label == nil ? "" : row.displayPath)
 
                 Text(row.itemCount == 1
                      ? "1 item · \(riskLabel)"
