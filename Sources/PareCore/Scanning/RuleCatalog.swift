@@ -62,6 +62,7 @@ public enum RuleCatalog {
             JetBrainsReviewRequiredRule(),
             WrongPlatformBinariesRule(),
             DockerStorageRule(),
+            DockerMemoryRule(),
             AIToolCachesRule(),
             HomebrewCacheRule(),
             PythonCachesRule(),

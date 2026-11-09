@@ -1,7 +1,7 @@
 # Docker Safety Policy (Pare)
 
 **Status:** binding product policy  
-**Last updated:** 2026-10-09  
+**Last updated:** 2026-11-09  
 
 This document defines how Pare treats Docker Desktop storage. Implementation must match these rules.
 
@@ -46,6 +46,9 @@ This document defines how Pare treats Docker Desktop storage. Implementation mus
 
 7. **Reclaimable totals** exclude `.advanced` findings.
 
+8. **Pare reads `settings-store.json` read-only and never edits Docker settings.**  
+   The VM memory note below only explains; the user changes the limit in Docker Desktop.
+
 ---
 
 ## What is cleanable under Docker-related paths
@@ -58,6 +61,16 @@ This document defines how Pare treats Docker Desktop storage. Implementation mus
 
 ---
 
+## VM memory (explain-only)
+
+`DockerMemoryRule` (developer profile, `.diagnostics`, `.advanced`, size 0) warns when Docker's Linux VM may hold too much RAM.
+
+- **Keys** in `~/Library/Group Containers/group.com.docker/settings-store.json` (legacy `settings.json` only when the store is absent): `MemoryMiB` (absent = host RAM ÷ 2), `UseResourceSaver` (absent = on), `KubernetesEnabled` (absent = off; name inferred). Docker Model Runner runs on the host and is ignored.
+- **Gate:** swap above 1 GB, and either (A) no useful limit (limit ≥ half of RAM − 256 MiB) with Resource Saver off or Kubernetes on, or (B) `MemoryMiB` unset on a host with 16 GB RAM or less (Resource Saver only stops the VM after idle with no containers). Settings are read first, swap only when the config can fire.
+- **Copy:** one line, e.g. "Docker can take up to 8 GB of RAM — no memory limit set"; the tip suggests a limit of max(2, RAM ÷ 4) GB. One button opens `docker-desktop://dashboard/open` (opening Docker Desktop starts its VM).
+
+---
+
 ## Code map
 
 | Concern | Location |
@@ -66,6 +79,8 @@ This document defines how Pare treats Docker Desktop storage. Implementation mus
 | Advanced markers | `ScanPolicy.developerDockerAdvancedPathMarkers` |
 | Log-only markers | `developerDockerSafePathMarkers` / `developerDockerReviewPathMarkers` (no `/vms`) |
 | Scan findings (logs only) | `DockerStorageRule` (does not emit VM disk) |
+| VM memory note (settings read-only) | `DockerMemoryRule`, `DockerDesktopSettingsParser` |
+| Note button link | `DockerDesktopLinks.dashboard` |
 | Cleanup hard block | `CleanupEngine.clean` (before risk / persona checks) |
 | System prune args (no volumes) | `MaintenanceRunner.dockerSystemPruneArguments` |
 | Builder prune args (7d / 1d) | `MaintenanceRunner.dockerBuilderPruneArguments(untilHours:)` |
@@ -109,5 +124,6 @@ early was declined on 2026-10-03.
 - `Phase7RuleTests.testDockerReviewMarkersDoNotIncludeVMsTree`  
 - `Phase7RuleTests.testDockerStorageRuleDoesNotReportVMDisk`  
 - `Phase7RuleTests.testFileSystemUtilsUsesAllocatedSizeForSparseFiles`  
+- `DockerDesktopSettingsParserTests`, `DockerMemoryRuleTests`
 - `CleanupEngineTests.testCleanBlocksDockerRawPathRegardlessOfRiskLevel`  
 - `ScanRunnerTests.testAdvancedFindingsAreExcludedFromReclaimableTotals`  
