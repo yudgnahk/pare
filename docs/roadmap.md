@@ -127,6 +127,6 @@ Measured facts that shaped the rules. Keep them in mind before changing a gate.
 
 ## Won't build
 
-Malware scanning, a menu-bar monitor, cloud-provider cleanup, photo or AI duplicate finders, macOS
+Malware scanning, a menu-bar system monitor (CPU, fans, temperatures), cloud-provider cleanup, photo or AI duplicate finders, macOS
 update installation. An AI auto-approver for agent waves (Jev AI) was evaluated on 2026-09-27 and
 rejected: labels with no reasoning, self-reported benchmarks, and code sent to a third party.

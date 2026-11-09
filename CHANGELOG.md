@@ -128,5 +128,5 @@ Initial public release.
 
 - Requires macOS 13 Ventura or later
 - Universal binary (Apple Silicon + Intel)
-- Distributed as a signed and notarized `.dmg`; direct download (no Mac App Store — sandboxing is incompatible with full-disk scanning)
+- Distributed as a direct-download `.dmg` (ad-hoc signed until a Developer ID is in place; not yet notarized) (no Mac App Store — sandboxing is incompatible with full-disk scanning)
 - Full Disk Access recommended: grant in System Settings → Privacy & Security → Full Disk Access
