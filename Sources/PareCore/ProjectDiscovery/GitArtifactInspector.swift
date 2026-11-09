@@ -7,6 +7,8 @@ public enum GitArtifactStatus: Sendable, Equatable {
     case containsTrackedFiles
     case notInRepository
     case gitUnavailable
+    /// Git predates `--no-lazy-fetch` (2.45), so nothing could be checked safely; fails closed like `.failed`.
+    case gitTooOld
     case failed
 }
 
@@ -38,6 +40,8 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
         return NSHomeDirectoryForUser(NSUserName()).map { fixed.merging(["HOME": $0]) { current, _ in current } } ?? fixed
     }()
 
+    static let usageErrorExitCode: Int32 = 129
+
     private struct Candidate {
         let key: String
         let relative: String
@@ -46,6 +50,7 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
     private enum RepositoryLookup {
         case repository(top: String, prefix: String)
         case notInRepository
+        case gitTooOld
         case failed
     }
 
@@ -78,6 +83,7 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
             return Self.uniform(directories.map(\.path), .gitUnavailable)
         }
 
+        let supportCache = GitSupportCache()
         var result: [String: GitArtifactStatus] = [:]
         var lookups: [String: RepositoryLookup] = [:]
         var knownTops: Set<String> = []
@@ -85,7 +91,9 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
         for directory in directories {
             let parent = directory.deletingLastPathComponent().path
             let lookup: RepositoryLookup
-            if let cached = lookups[parent] {
+            if supportCache.value(for: git.path) == true {
+                lookup = .gitTooOld
+            } else if let cached = lookups[parent] {
                 lookup = cached
             } else if let top = Self.enclosingKnownTop(of: parent, knownTops: knownTops) {
                 lookup = .repository(top: top, prefix: parent == top ? "" : String(parent.dropFirst(top.count + 1)) + "/")
@@ -93,16 +101,23 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
             } else if now() >= deadline {
                 lookup = .failed
             } else {
-                lookup = await lookUpRepository(containing: parent, git: git)
+                lookup = await lookUpRepository(containing: parent, git: git, support: supportCache)
                 lookups[parent] = lookup
                 if case .repository(let top, _) = lookup { knownTops.insert(top) }
             }
             switch lookup {
             case .repository(let top, let prefix):
                 let candidate = Candidate(key: directory.path, relative: prefix + directory.lastPathComponent)
-                candidatesByRepository[top, default: []].append(candidate)
+                if GitCandidateChecks.holdsOwnGitEntry(directory.path)
+                    || !GitCandidateChecks.isInside(top: top, relative: candidate.relative, directory: directory.path) {
+                    result[directory.path] = .failed
+                } else {
+                    candidatesByRepository[top, default: []].append(candidate)
+                }
             case .notInRepository:
-                result[directory.path] = .notInRepository
+                result[directory.path] = GitCandidateChecks.holdsOwnGitEntry(directory.path) ? .failed : .notInRepository
+            case .gitTooOld:
+                result[directory.path] = .gitTooOld
             case .failed:
                 result[directory.path] = .failed
             }
@@ -117,10 +132,11 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
 
     // MARK: - Git commands
 
-    private func lookUpRepository(containing parent: String, git: URL) async -> RepositoryLookup {
+    private func lookUpRepository(containing parent: String, git: URL, support: GitSupportCache) async -> RepositoryLookup {
         let arguments = Self.baseArguments(directory: parent) + ["rev-parse", "--show-toplevel", "--show-prefix"]
         guard let output = await run(git, arguments, Self.environment) else { return .failed }
         guard output.exitCode == 0 else {
+            if output.exitCode == Self.usageErrorExitCode, await isTooOld(git, support: support) { return .gitTooOld }
             return output.exitCode == 128 && GitRepositoryAbsence.isProven(at: parent) ? .notInRepository : .failed
         }
         let lines = String(decoding: output.stdout, as: UTF8.self)
@@ -128,6 +144,16 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
             .map(String.init)
         guard let top = lines.first, !top.isEmpty else { return .failed }
         return .repository(top: top, prefix: lines.count > 1 ? lines[1] : "")
+    }
+
+    /// Exit 129 is git rejecting an option; only a version below 2.45 makes it ours, anything else stays `.failed`.
+    private func isTooOld(_ git: URL, support: GitSupportCache) async -> Bool {
+        if let known = support.value(for: git.path) { return known }
+        guard let output = await run(git, ["--version"], Self.environment), output.exitCode == 0,
+              let version = GitVersion(output: String(decoding: output.stdout, as: UTF8.self)) else { return false }
+        let tooOld = version < GitVersion.noLazyFetchSupport
+        support.store(tooOld, for: git.path)
+        return tooOld
     }
 
     private func inspect(
@@ -200,7 +226,7 @@ public struct SystemGitArtifactInspector: GitArtifactInspecting {
     }
 
     /// With these, nothing a scanned repo's config names can run: a lazy fetch and fsmonitor are the two ways
-    /// `check-ignore` and `ls-files` reach one. A git too old for the flag exits 129, which fails closed.
+    /// `check-ignore` and `ls-files` reach one. A git too old for the flag exits 129 and reads `.gitTooOld`.
     private static func baseArguments(directory: String) -> [String] {
         ["--no-pager", "--no-lazy-fetch", "-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-C", directory]
     }

@@ -221,6 +221,32 @@ final class GitHostileRepositoryTests: XCTestCase {
         XCTAssertEqual(statuses[dependency.path], .failed)
     }
 
+    func testFolderThatIsItselfARepositoryIsNeverAdmitted() async throws {
+        let outsideRepo = try makeArtifact(root, "plain/app/node_modules")
+        try FileManager.default.createDirectory(at: outsideRepo.appending(path: ".git"), withIntermediateDirectories: true)
+        let ignoring = try makeRepo("ignores-nested", ignoring: "node_modules/\n")
+        let insideRepo = try makeArtifact(ignoring, "node_modules")
+        try runGit(["init", "-q"], in: insideRepo)
+
+        let statuses = await SystemGitArtifactInspector().statuses(for: [outsideRepo, insideRepo])
+
+        XCTAssertEqual(statuses[outsideRepo.path], .failed, "a nested .git is not 'no repository'")
+        XCTAssertEqual(statuses[insideRepo.path], .failed, "ignored by the outer repo, but it is its own repository")
+        XCTAssertFalse(ScanPolicy.gitEvidenceAllows(dependency: insideRepo, status: statuses[insideRepo.path]))
+    }
+
+    func testTrackedFolderIsNotIgnoredWhenCoreWorktreePointsAtAnotherRepository() async throws {
+        let tracking = try makeRepoTrackingDependencies("worktree-redirected")
+        let other = try makeRepo("worktree-other", ignoring: "node_modules/\n")
+        _ = try makeArtifact(other, "node_modules")
+        try config(tracking, "core.worktree", other.path)
+        let dependency = URL(fileURLWithPath: tracking.path + "/node_modules")
+
+        let statuses = await SystemGitArtifactInspector().statuses(for: [dependency])
+
+        XCTAssertEqual(statuses[dependency.path], .failed, "the other repo's ignore rules say nothing about this folder")
+    }
+
     func testPlainFolderIsStillNotInRepository() async throws {
         let dependency = try makeArtifact(root, "plain/app/node_modules")
 
@@ -309,22 +335,80 @@ final class GitHostileRepositoryTests: XCTestCase {
     }
 }
 
+/// Git older than 2.45 rejects `--no-lazy-fetch` with exit 129; that must never read as "no repository".
+final class OldGitTests: XCTestCase {
+    private let git = URL(fileURLWithPath: "/Library/Developer/CommandLineTools/usr/bin/git")
+    private var base: URL!
+
+    override func setUpWithError() throws {
+        base = FileManager.default.temporaryDirectory.appending(path: "pare-oldgit-\(UUID().uuidString)").resolvingSymlinksInPath()
+        for name in ["a", "b"] {
+            try FileManager.default.createDirectory(at: base.appending(path: "\(name)/node_modules"), withIntermediateDirectories: true)
+        }
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: base)
+    }
+
+    private func inspector(version: String?, versionCalls: LockedCounter) -> SystemGitArtifactInspector {
+        SystemGitArtifactInspector(locateGit: { [git] in git }, run: { _, arguments, _ in
+            if arguments == ["--version"] {
+                versionCalls.increment()
+                return version.map { (exitCode: 0, stdout: Data($0.utf8)) }
+            }
+            return (exitCode: 129, stdout: Data())
+        })
+    }
+
+    func testGitBelow245ReadsTooOldAndIsAskedForItsVersionOnce() async {
+        let calls = LockedCounter()
+        let dirs = ["a", "b"].map { base.appending(path: "\($0)/node_modules") }
+
+        let statuses = await inspector(version: "git version 2.39.5 (Apple Git-154)\n", versionCalls: calls).statuses(for: dirs)
+
+        XCTAssertEqual(Set(dirs.map { statuses[$0.path] }), [.gitTooOld])
+        XCTAssertEqual(calls.value, 1)
+    }
+
+    func testExit129FromACurrentOrUnknownGitStaysFailed() async {
+        let dirs = [base.appending(path: "a/node_modules")]
+        for version in ["git version 2.54.0 (Apple Git-157)\n", "git version 3.0.0\n", "garbage", nil] {
+            let statuses = await inspector(version: version, versionCalls: LockedCounter()).statuses(for: dirs)
+            XCTAssertEqual(statuses[dirs[0].path], .failed, String(describing: version))
+        }
+    }
+
+    func testVersionParsing() {
+        XCTAssertEqual(GitVersion(output: "git version 2.54.0 (Apple Git-157)\n"), GitVersion(major: 2, minor: 54))
+        XCTAssertEqual(GitVersion(output: "git version 2.45.0"), GitVersion.noLazyFetchSupport)
+        XCTAssertTrue(GitVersion(major: 2, minor: 44) < GitVersion.noLazyFetchSupport)
+        XCTAssertFalse(GitVersion(major: 10, minor: 0) < GitVersion.noLazyFetchSupport)
+        XCTAssertNil(GitVersion(output: "git version"))
+        XCTAssertNil(GitVersion(output: "hg 6.1"))
+    }
+}
+
 /// What every git call carries, whatever repository it runs in.
 final class GitInvocationTests: XCTestCase {
 
-    func testEveryCallIsolatesGitFromLazyFetchAndTheInheritedEnvironment() async {
+    func testEveryCallIsolatesGitFromLazyFetchAndTheInheritedEnvironment() async throws {
+        let repo = FileManager.default.temporaryDirectory
+            .appending(path: "pare-invocation-\(UUID().uuidString)").resolvingSymlinksInPath()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try FileManager.default.createDirectory(at: repo.appending(path: "build"), withIntermediateDirectories: true)
         let recorder = GitCallRecorder()
         let inspector = SystemGitArtifactInspector(
             locateGit: { URL(fileURLWithPath: "/Library/Developer/CommandLineTools/usr/bin/git") },
             run: { _, arguments, environment in
                 recorder.record(arguments, environment)
                 return arguments.contains("rev-parse")
-                    ? (exitCode: 0, stdout: Data("/Users/u/Projects/app\n\n".utf8))
+                    ? (exitCode: 0, stdout: Data("\(repo.path)\n\n".utf8))
                     : (exitCode: 0, stdout: Data())
             }
         )
 
-        _ = await inspector.statuses(for: [URL(fileURLWithPath: "/Users/u/Projects/app/build")])
+        _ = await inspector.statuses(for: [repo.appending(path: "build")])
 
         XCTAssertEqual(recorder.calls.count, 3, "rev-parse, check-ignore, ls-files")
         for call in recorder.calls {
