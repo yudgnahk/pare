@@ -122,6 +122,7 @@ final class ProjectArtifactsGitGateTests: XCTestCase {
             pathStore: ProjectScanPathStore(defaults: defaults),
             gitInspector: inspector
         )
-        return try XCTUnwrap(await rule.customScanResult(environment: ScanEnvironment.current()))
+        let result = await rule.customScanResult(environment: ScanEnvironment.current())
+        return try XCTUnwrap(result)
     }
 }
