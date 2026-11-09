@@ -74,7 +74,22 @@ struct PareCLI {
             print("   Check each path and use the appropriate native tool to clean it.")
         }
 
+        printDiagnosticNotes(report.findings)
         printDockerBuildCacheHint(profile: profile)
+    }
+
+    /// Explain-only notes have size 0, so the size-sorted lists above never show them.
+    private static func printDiagnosticNotes(_ findings: [ScanFinding]) {
+        let notes = findings.filter { $0.category == .diagnostics }
+        guard !notes.isEmpty else { return }
+        print("")
+        print("Worth knowing:")
+        for finding in notes {
+            print("- \(finding.reason)")
+            for case .explainOnly(let action) in finding.annotations {
+                print("  → \(action)")
+            }
+        }
     }
 
     /// Emits a Docker reclaim advisory when running the developer profile and Docker
