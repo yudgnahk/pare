@@ -386,7 +386,7 @@ struct ScanDashboardView: View {
                 isExpanded: isExpanded,
                 selection: triState(selectionState),
                 isSelectable: group.isSelectable,
-                selectHelp: "Select all folders under \(group.toolName)",
+                selectHelp: "Select safe folders under \(group.toolName)",
                 onToggleSelect: { viewModel.toggleToolGroup(group) },
                 onToggleExpand: { viewModel.toggleToolGroupExpanded(group) }
             ) {
