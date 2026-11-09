@@ -122,7 +122,8 @@ extension SnapshotRenderer {
             },
             Scene(name: "03d-smart-scan-by-app", destination: .smartScan, height: 2400) { store in
                 store.scan.applySnapshotResults(
-                    SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity, owners: SnapshotFixtures.ownerInputs
+                    SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity,
+                    projectActivity: SnapshotFixtures.projectActivity, owners: SnapshotFixtures.ownerInputs
                 )
                 store.scan.setBrowseMode(.apps)
                 store.scan.ownerSections.flatMap(\.groups)
@@ -131,7 +132,8 @@ extension SnapshotRenderer {
             },
             Scene(name: "03e-smart-scan-categories", destination: .smartScan, height: 1800) { store in
                 store.scan.applySnapshotResults(
-                    SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity, owners: SnapshotFixtures.ownerInputs
+                    SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity,
+                    projectActivity: SnapshotFixtures.projectActivity, owners: SnapshotFixtures.ownerInputs
                 )
                 store.scan.setBrowseMode(.categories)
                 store.scan.toggleCategoryExpanded(.projectArtifacts)

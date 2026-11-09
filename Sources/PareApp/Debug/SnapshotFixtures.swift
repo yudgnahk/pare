@@ -45,6 +45,19 @@ enum SnapshotFixtures {
         ]
     }
 
+    /// `shop` edited 4 hours ago (its builds start unticked), `blog` idle for 9 days; no real files are read.
+    static var projectActivity: [String: ProjectActivityLabel] {
+        let now = Date()
+        let edits = [
+            projectsRoot + "/shop": now.addingTimeInterval(-4 * 3_600),
+            projectsRoot + "/blog": now.addingTimeInterval(-86_400 * 9),
+        ]
+        return ProjectActivityLabeler.labels(
+            forRoots: Array(edits.keys), homeDirectory: URL(fileURLWithPath: home),
+            now: { now }, probe: { root, _ in edits[root.path] }
+        )
+    }
+
     private struct Row {
         let category: ScanCategory
         let risk: RiskLevel

@@ -236,7 +236,13 @@ struct ScanSelectionModel {
         return hotSelected > 0 ? .partial : .none
     }
 
-    private func isFullyHot(_ folderId: String) -> Bool {
+    /// Hot paths under one folder row.
+    func hotPaths(inFolder folderId: String) -> Set<String> {
+        hotPathsByFolderId[folderId] ?? []
+    }
+
+    /// True when every member of the folder row is hot, so its own checkbox is the only way to tick it.
+    func isFullyHot(_ folderId: String) -> Bool {
         guard let hot = hotPathsByFolderId[folderId], let meta = metaByFolderId[folderId] else { return false }
         return hot.count >= meta.itemCount
     }

@@ -29,6 +29,9 @@ extension ScanDashboardView {
         if let notice = viewModel.heldOutHotNotice(includeReview: false) {
             lines.append(.init(icon: "clock.arrow.circlepath", color: AppTheme.textSecondary, text: notice))
         }
+        if let notice = viewModel.heldOutProjectNotice(includeReview: false) {
+            lines.append(.init(icon: "clock.arrow.circlepath", color: AppTheme.textSecondary, text: notice))
+        }
         if viewModel.quickCleanMayTriggerSpotlightWork {
             lines.append(.init(
                 icon: "magnifyingglass",
@@ -67,8 +70,8 @@ extension ScanDashboardView {
             .init(
                 icon: "checklist",
                 color: AppTheme.review,
-                text: viewModel.heldOutHotCount(includeReview: true) > 0
-                    ? "Deep Clean ignores your selection: every Safe and Review item is included, even ones you unticked, except recently written caches."
+                text: viewModel.heldOutHotCount(includeReview: true) + viewModel.heldOutProjectCount(includeReview: true) > 0
+                    ? "Deep Clean ignores your selection: every Safe and Review item is included, even ones you unticked, except recently used caches and builds."
                     : "Deep Clean ignores your selection: every Safe and Review item is included, even ones you unticked."
             ),
             .init(
@@ -78,6 +81,9 @@ extension ScanDashboardView {
             )
         ]
         if let notice = viewModel.heldOutHotNotice(includeReview: true) {
+            lines.append(.init(icon: "clock.arrow.circlepath", color: AppTheme.textSecondary, text: notice))
+        }
+        if let notice = viewModel.heldOutProjectNotice(includeReview: true) {
             lines.append(.init(icon: "clock.arrow.circlepath", color: AppTheme.textSecondary, text: notice))
         }
         if viewModel.deepCleanMayTriggerSpotlightWork {

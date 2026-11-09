@@ -33,6 +33,7 @@ struct OwnerGroupSection: View {
                 isExpanded: isExpanded,
                 selection: state,
                 activityText: viewModel.projectActivityText(for: group),
+                selectHelp: viewModel.groupHoldReason(safeFolderIds: group.safeFolderIds) ?? Self.selectHelp(group),
                 onToggleSelect: { viewModel.toggleOwnerGroup(group) },
                 onToggleExpand: { viewModel.toggleOwnerGroupExpanded(group) }
             )
@@ -45,7 +46,7 @@ struct OwnerGroupSection: View {
                 isExpanded: isExpanded,
                 selection: state,
                 isSelectable: group.isSelectable,
-                selectHelp: Self.selectHelp(group),
+                selectHelp: viewModel.groupHoldReason(safeFolderIds: group.safeFolderIds) ?? Self.selectHelp(group),
                 onToggleSelect: { viewModel.toggleOwnerGroup(group) },
                 onToggleExpand: { viewModel.toggleOwnerGroupExpanded(group) }
             ) {
@@ -66,7 +67,8 @@ struct OwnerGroupSection: View {
                     onToggle: { viewModel.toggleFolder(ownerRow.row) },
                     onReveal: { viewModel.revealInFinder(path: ownerRow.row.folderPath) },
                     chip: CategoryStyle.chipLabel(for: ownerRow.category),
-                    label: ownerRow.label
+                    label: ownerRow.label,
+                    holdReason: viewModel.holdReason(forFolderId: ownerRow.id)
                 )
             }
             if group.hiddenRowCount > 0 {

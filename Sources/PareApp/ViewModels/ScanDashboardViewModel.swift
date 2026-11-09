@@ -26,6 +26,10 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var cacheActivity: [String: CacheActivityLabel] = [:]
     /// True from results appearing until the labels land; clean actions wait so no hot row slips through.
     @Published private(set) var isLabelingCacheActivity = false
+    /// Newest-edit label per project root, filled with the cache labels; active projects' rows start unticked.
+    @Published private(set) var projectActivity: [String: ProjectActivityLabel] = [:]
+    /// Finding paths held out because their project was edited recently or its activity is unknown.
+    private(set) var heldProjectPaths: Set<String> = []
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
     @Published private(set) var perToolRollups: [ToolRollup] = []
@@ -80,6 +84,7 @@ final class ScanDashboardViewModel: ObservableObject {
     private var scanTask: Task<Void, Never>?
     private let growthStore: GrowthSnapshotStore
     private let cacheActivityLabeler: @Sendable ([ScanFinding]) async -> [String: CacheActivityLabel]
+    private let projectActivityLabeler: @Sendable ([String]) async -> [String: ProjectActivityLabel]
     /// Bumped per scan so growth lines or labels computed for an older scan cannot land after a newer one started.
     private var scanGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
@@ -90,11 +95,17 @@ final class ScanDashboardViewModel: ObservableObject {
         cacheActivityLabeler: @escaping @Sendable ([ScanFinding]) async -> [String: CacheActivityLabel] = {
             CacheActivityLabeler.labels(for: $0)
         },
+        projectActivityLabeler: @escaping @Sendable ([String]) async -> [String: ProjectActivityLabel] = {
+            ProjectActivityLabeler.labels(
+                forRoots: $0, homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+            )
+        },
         browseModes: BrowseModeStore = BrowseModeStore()
     ) {
         self.cleanup = cleanup
         self.growthStore = growthStore
         self.cacheActivityLabeler = cacheActivityLabeler
+        self.projectActivityLabeler = projectActivityLabeler
         self.browseModes = browseModes
         self.browseMode = SmartScanFeatures.ownerView ? browseModes.mode : .categories
         // Child observable objects publish through the dashboard so existing
@@ -492,9 +503,11 @@ final class ScanDashboardViewModel: ObservableObject {
         }
     }
 
-    /// Growth recording and cache-activity labeling run side by side; each lands only while its scan is current.
+    /// Growth recording and cache and project labeling run side by side; each lands only while its scan is current.
+    /// The clean hold lasts until both label sets are applied.
     func publishPostScanDetails(report: ScanReport, generation: Int) async {
         cacheActivity = [:]
+        projectActivity = [:]
         isLabelingCacheActivity = true
         let store = growthStore
         // Only the rows "Largest items" shows can display a label.
@@ -502,9 +515,16 @@ final class ScanDashboardViewModel: ObservableObject {
         let growthJob = Task.detached(priority: .utility) { Self.recordGrowth(report: report, store: store) }
         let labeler = cacheActivityLabeler
         let activityJob = Task.detached(priority: .utility) { await labeler(shown) }
+        let projectLabeler = projectActivityLabeler
+        let roots = projectRootsForActivity()
+        let projectJob = Task.detached(priority: .utility) { await projectLabeler(roots) }
 
         let activity = await activityJob.value
-        if !Task.isCancelled { applyCacheActivity(activity, generation: generation) }
+        let projects = await projectJob.value
+        if !Task.isCancelled {
+            applyProjectActivity(projects, generation: generation)
+            applyCacheActivity(activity, generation: generation)
+        }
         if generation == scanGeneration { isLabelingCacheActivity = false }
         let growth = await growthJob.value
         if generation == scanGeneration, !Task.isCancelled { growthSinceLastScan = growth }
@@ -516,6 +536,23 @@ final class ScanDashboardViewModel: ObservableObject {
         isLabelingCacheActivity = false
         cacheActivity = labels
         selection.applyHotPaths(Set(labels.filter { $0.value.activity == .hot }.keys))
+        candidateStats = CandidateStats.compute(from: bulkCleanFindings)
+    }
+
+    /// Unticks artifact rows of projects edited recently; a project with no label counts as active.
+    func applyProjectActivity(_ labels: [String: ProjectActivityLabel], generation: Int, now: Date = Date()) {
+        guard generation == scanGeneration else { return }
+        projectActivity = labels
+        var held: Set<String> = []
+        for group in ownerSections.flatMap(\.groups) where group.owner.kind == .project {
+            let isActive = group.owner.projectRoot.flatMap { labels[$0] }?.isActive(now: now) ?? true
+            guard isActive else { continue }
+            for id in group.folderIds {
+                held.formUnion((pathsByFolderId[id] ?? []).filter { selection.isSelectable(path: $0) })
+            }
+        }
+        heldProjectPaths = held
+        selection.applyHotPaths(held)
         candidateStats = CandidateStats.compute(from: bulkCleanFindings)
     }
 
@@ -584,6 +621,8 @@ final class ScanDashboardViewModel: ObservableObject {
         categoryToolGroups = prepared.aggregate.toolGroupsByCategory
         ownerSections = prepared.ownerSections
         ownerByFolderPath = prepared.ownerByFolderPath
+        projectActivity = [:]
+        heldProjectPaths = []
         totalReclaimableBytes = prepared.totalReclaimableBytes
         isTotalSizePartial = prepared.isTotalSizePartial
         scanWarnings = prepared.scanWarnings
@@ -786,12 +825,14 @@ extension ScanDashboardViewModel {
     func applySnapshotResults(
         _ report: ScanReport,
         cacheActivity: [String: CacheActivityLabel] = [:],
+        projectActivity: [String: ProjectActivityLabel] = [:],
         duration: TimeInterval = 14.2,
         owners: OwnerInputs = OwnerInputs()
     ) {
         let prepared = Self.prepareScanResults(from: report, owners: SmartScanFeatures.ownerView ? owners : nil)
         let finishedAt = Date()
         applyPreparedScanResults(prepared, startedAt: finishedAt.addingTimeInterval(-duration), finishedAt: finishedAt)
+        if !projectActivity.isEmpty { applyProjectActivity(projectActivity, generation: scanGeneration) }
         if !cacheActivity.isEmpty { applyCacheActivity(cacheActivity, generation: scanGeneration) }
     }
 
