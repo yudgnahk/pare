@@ -15,7 +15,8 @@ final class DockerMemoryRuleTests: XCTestCase {
     private func scan(
         files: [String: String],
         hostGiB: UInt64 = 16,
-        swap: Int64? = 2 * DockerMemoryRuleTests.gb
+        swap: Int64? = 2 * DockerMemoryRuleTests.gb,
+        installed: Bool = true
     ) async -> (findings: [ScanFinding], swapCalls: Int) {
         let counter = Counter()
         let rule = DockerMemoryRule(
@@ -24,7 +25,8 @@ final class DockerMemoryRuleTests: XCTestCase {
             swapUsedBytes: {
                 counter.increment()
                 return swap
-            }
+            },
+            isDockerInstalled: { _ in installed }
         )
         let findings = await rule.customScan(environment: Self.environment) ?? []
         return (findings, counter.value)
@@ -43,6 +45,12 @@ final class DockerMemoryRuleTests: XCTestCase {
     func testUnparseableFileIsSilentAndSwapIsNeverQueried() async {
         let result = await scan(files: store("not json"))
         XCTAssertTrue(result.findings.isEmpty)
+        XCTAssertEqual(result.swapCalls, 0)
+    }
+
+    func testSettingsLeftAfterUninstallAreSilentAndSwapIsNeverQueried() async {
+        let result = await scan(files: store(Self.defaults), installed: false)
+        XCTAssertTrue(result.findings.isEmpty, "a removed Docker cannot hold RAM")
         XCTAssertEqual(result.swapCalls, 0)
     }
 
@@ -156,7 +164,8 @@ final class DockerMemoryRuleTests: XCTestCase {
         let rule = DockerMemoryRule(
             readFile: { _ in Data(Self.defaults.utf8) },
             hostMemoryBytes: { 16 * Self.gib },
-            swapUsedBytes: { 2 * Self.gb }
+            swapUsedBytes: { 2 * Self.gb },
+            isDockerInstalled: { _ in true }
         )
         let report = await ScanRunner(environment: Self.environment).run(rules: [rule])
         XCTAssertEqual(report.findings.count, 1)

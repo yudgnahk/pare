@@ -17,20 +17,25 @@ public struct DockerMemoryRule: ScanRule {
     static let smallHostBytes: UInt64 = 16 * 1024 * 1024 * 1024
     static let settingsDirectory = "Library/Group Containers/group.com.docker"
     static let settingsFiles = ["settings-store.json", "settings.json"]
+    static let appBundleName = "Docker.app"
     private static let mib: UInt64 = 1024 * 1024
 
     public typealias FileReader = @Sendable (URL) -> Data?
+    public typealias InstallCheck = @Sendable (URL) -> Bool
 
     private let readFile: FileReader
     private let hostMemoryBytes: @Sendable () -> UInt64
     private let swapUsedBytes: @Sendable () async -> Int64?
+    private let isDockerInstalled: InstallCheck
 
     public init(
         readFile: FileReader? = nil,
         hostMemoryBytes: (@Sendable () -> UInt64)? = nil,
-        swapUsedBytes: (@Sendable () async -> Int64?)? = nil
+        swapUsedBytes: (@Sendable () async -> Int64?)? = nil,
+        isDockerInstalled: InstallCheck? = nil
     ) {
         self.readFile = readFile ?? { try? Data(contentsOf: $0) }
+        self.isDockerInstalled = isDockerInstalled ?? { Self.appBundleExists(home: $0) }
         self.hostMemoryBytes = hostMemoryBytes ?? { ProcessInfo.processInfo.physicalMemory }
         self.swapUsedBytes = swapUsedBytes ?? { await SwapUsageRule.currentUsedBytes() }
     }
@@ -39,7 +44,9 @@ public struct DockerMemoryRule: ScanRule {
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool { false }
 
     public func customScan(environment: ScanEnvironment) async -> [ScanFinding]? {
-        guard let (path, settings) = loadSettings(home: environment.homeDirectory) else { return [] }
+        let home = environment.homeDirectory
+        // Uninstalling Docker leaves its Group Container behind.
+        guard let (path, settings) = loadSettings(home: home), isDockerInstalled(home) else { return [] }
         let hostBytes = hostMemoryBytes()
         let hostMiB = Int(hostBytes / Self.mib)
         let defaultMiB = hostMiB / Int(Self.defaultLimitDivisor)
@@ -85,6 +92,11 @@ public struct DockerMemoryRule: ScanRule {
             return DockerDesktopSettingsParser.parse(data).map { (url.path, $0) }
         }
         return nil
+    }
+
+    private static func appBundleExists(home: URL) -> Bool {
+        let roots = [URL(fileURLWithPath: "/Applications"), home.appending(path: "Applications")]
+        return roots.contains { FileManager.default.fileExists(atPath: $0.appending(path: appBundleName).path) }
     }
 
     private static func tip(hostMiB: Int, saverOff: Bool, kubernetes: Bool) -> String {
