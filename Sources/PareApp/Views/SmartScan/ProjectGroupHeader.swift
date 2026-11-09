@@ -8,6 +8,7 @@ struct ProjectGroupHeader: View {
     let isExpanded: Bool
     let selection: TriSelectionState
     let activityText: String?
+    let selectHelp: String
     let onToggleSelect: () -> Void
     let onToggleExpand: () -> Void
     @Environment(\.pareDisplayScale) private var scale
@@ -22,7 +23,7 @@ struct ProjectGroupHeader: View {
             isExpanded: isExpanded,
             selection: selection,
             isSelectable: group.isSelectable,
-            selectHelp: OwnerGroupSection.selectHelp(group),
+            selectHelp: selectHelp,
             onToggleSelect: onToggleSelect,
             onToggleExpand: onToggleExpand
         ) {

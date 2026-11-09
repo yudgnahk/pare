@@ -15,6 +15,8 @@ struct CategoryFolderRowView: View, Equatable {
     var chip: String? = nil
     /// Replaces the `~/` path, e.g. with a path relative to the project root.
     var label: String? = nil
+    /// Why the row started unticked (recent writes or edits); nil when it is not held.
+    var holdReason: String? = nil
     @Environment(\.pareDisplayScale) private var scale
 
     nonisolated static func == (lhs: CategoryFolderRowView, rhs: CategoryFolderRowView) -> Bool {
@@ -25,6 +27,7 @@ struct CategoryFolderRowView: View, Equatable {
             && lhs.canReveal == rhs.canReveal
             && lhs.chip == rhs.chip
             && lhs.label == rhs.label
+            && lhs.holdReason == rhs.holdReason
     }
 
     var body: some View {
@@ -63,9 +66,7 @@ struct CategoryFolderRowView: View, Equatable {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .help(label == nil ? "" : row.displayPath)
 
-                Text(row.itemCount == 1
-                     ? "1 item · \(riskLabel)"
-                     : "\(row.itemCount) items rolled up · \(riskLabel)")
+                Text(metaText)
                     .font(scale.rowMeta)
                     .foregroundStyle(AppTheme.textSecondary)
             }
@@ -104,6 +105,12 @@ struct CategoryFolderRowView: View, Equatable {
                 Label("Show in Finder", systemImage: "folder")
             }
         }
+    }
+
+    private var metaText: String {
+        let base = row.itemCount == 1 ? "1 item · \(riskLabel)" : "\(row.itemCount) items rolled up · \(riskLabel)"
+        guard let holdReason else { return base }
+        return "\(base) · \(holdReason)"
     }
 
     private var checkboxIcon: String {

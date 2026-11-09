@@ -116,7 +116,7 @@ extension ScanDashboardViewModel {
 
     /// Activity line for a project header; nil until project activity is known.
     func projectActivityText(for group: OwnerGroup) -> String? {
-        nil
+        group.owner.projectRoot.flatMap { projectActivity[$0] }?.text(now: Date())
     }
 
     /// "≥ X" when any member's size is a lower bound.

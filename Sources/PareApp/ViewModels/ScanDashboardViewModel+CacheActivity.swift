@@ -6,9 +6,9 @@ import PareCore
 extension ScanDashboardViewModel {
     var selectedHotCount: Int { selection.selectedHotCount }
 
-    /// Hot rows Quick Clean (safe only) or Deep Clean (safe + review) leaves for their own checkbox.
+    /// Hot cache rows (project builds are counted apart) Quick Clean (safe only) or Deep Clean (safe + review) leaves for their own checkbox.
     func heldOutHotCount(includeReview: Bool) -> Int {
-        selection.hotPaths.filter { path in
+        selection.hotPaths.subtracting(heldProjectPaths).filter { path in
             guard let risk = selection.riskLevel(for: path) else { return false }
             return risk == .safe || (includeReview && risk == .review)
         }.count

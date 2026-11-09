@@ -83,7 +83,8 @@ struct CategoryBrowserList: View {
                             selectionState: viewModel.folderSelectionState(row),
                             canReveal: viewModel.canReveal(path: row.folderPath),
                             onToggle: { viewModel.toggleFolder(row) },
-                            onReveal: { viewModel.revealInFinder(path: row.folderPath) }
+                            onReveal: { viewModel.revealInFinder(path: row.folderPath) },
+                            holdReason: viewModel.holdReason(forFolderId: row.id)
                         )
                     }
                     let rolled = rows.reduce(0) { $0 + $1.itemCount }
@@ -114,7 +115,8 @@ struct CategoryBrowserList: View {
                 isExpanded: isExpanded,
                 selection: TriSelectionState(selectionState),
                 isSelectable: group.isSelectable,
-                selectHelp: "Select safe folders under \(group.toolName)",
+                selectHelp: viewModel.groupHoldReason(safeFolderIds: group.safeFolderIds)
+                    ?? "Select safe folders under \(group.toolName)",
                 onToggleSelect: { viewModel.toggleToolGroup(group) },
                 onToggleExpand: { viewModel.toggleToolGroupExpanded(group) }
             ) {
@@ -135,7 +137,8 @@ struct CategoryBrowserList: View {
                             selectionState: viewModel.folderSelectionState(row),
                             canReveal: viewModel.canReveal(path: row.folderPath),
                             onToggle: { viewModel.toggleFolder(row) },
-                            onReveal: { viewModel.revealInFinder(path: row.folderPath) }
+                            onReveal: { viewModel.revealInFinder(path: row.folderPath) },
+                            holdReason: viewModel.holdReason(forFolderId: row.id)
                         )
                     }
                     if rows.isEmpty {
