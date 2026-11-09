@@ -99,10 +99,15 @@ extension SnapshotRenderer {
                 store.scan.applySnapshotFinalizing(total: 36)
             },
             Scene(name: "03-smart-scan-results", destination: .smartScan) { store in
-                store.scan.applySnapshotResults(SnapshotFixtures.scanReport)
+                store.scan.applySnapshotResults(SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity)
             },
             Scene(name: "03b-smart-scan-results-full", destination: .smartScan, height: 1500) { store in
-                store.scan.applySnapshotResults(SnapshotFixtures.scanReport)
+                store.scan.applySnapshotResults(SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity)
+            },
+            Scene(name: "03c-smart-scan-hot-cache", destination: .smartScan, height: 2600) { store in
+                store.scan.applySnapshotResults(SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity)
+                store.scan.toggleCategoryExpanded(.developerPackageCaches)
+                store.scan.toolGroups(for: .developerPackageCaches).forEach(store.scan.toggleToolGroupExpanded)
             },
             Scene(name: "04-smart-scan-cleaned", destination: .smartScan) { store in
                 store.scan.applySnapshotResults(SnapshotFixtures.scanReport)
