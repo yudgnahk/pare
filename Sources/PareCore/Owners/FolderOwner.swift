@@ -54,12 +54,3 @@ public struct ProjectRef: Hashable, Sendable {
         self.name = name
     }
 }
-
-/// Phase A stub: detection arrives in a later phase, so nothing is a project yet.
-public struct ProjectIndex: Sendable {
-    public static let empty = ProjectIndex()
-
-    public init() {}
-
-    public func project(containing folderPath: String) -> ProjectRef? { nil }
-}
