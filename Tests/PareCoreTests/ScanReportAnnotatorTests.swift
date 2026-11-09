@@ -3,7 +3,36 @@ import XCTest
 
 final class ScanReportAnnotatorTests: XCTestCase {
 
-    // MARK: - sourceApp attribution
+    // MARK: - sourceApp (owner resolver)
+
+    private let home = FileManager.default.homeDirectoryForCurrentUser.path
+
+    func testSourceAppUsesOwnerNames() {
+        let cases: [(path: String, expected: String)] = [
+            ("/Library/Application Support/Code/Cache", "VS Code"),
+            ("/Library/Developer/Xcode/DerivedData/App", "Xcode"),
+            ("/Library/Caches/Google", "Chrome"),
+            ("/Library/Caches/Homebrew", "Homebrew"),
+            ("/.cargo/registry", "Cargo"),
+            ("/.npm/_npx/h/node_modules", "npm"),
+            ("/Library/Logs/DiagnosticReports", "macOS"),
+            ("/Library/Caches/TemporaryItems", "macOS"),
+            ("/Library/Caches/com.apple.akd", "macOS"),
+            ("/Library/Caches/us.zoom.xos", "Zoom"),
+            ("/Library/Caches/com.unknown.app", "Other"),
+        ]
+        for testCase in cases {
+            XCTAssertEqual(ScanReportAnnotator.sourceApp(forPath: home + testCase.path), testCase.expected, testCase.path)
+        }
+    }
+
+    func testSourceAppNoLongerMatchesSubstrings() {
+        for path in ["/Code/proj/.next", "/Projects/xcode-tools/build", "/Code/zoom-clone/dist", "/Code/a/node_modules"] {
+            XCTAssertEqual(ScanReportAnnotator.sourceApp(forPath: home + path), "Other", path)
+        }
+    }
+
+    // MARK: - legacySourceApp attribution (kept for one release)
 
     func testVSCodeAttribution() {
         XCTAssertEqual(attribution("/Users/user/Library/Caches/com.microsoft.vscode/foo"), "VS Code")
@@ -64,9 +93,9 @@ final class ScanReportAnnotatorTests: XCTestCase {
 
     func testRollupsAggregateByApp() {
         let findings = [
-            makeFinding(path: "/Library/Caches/Xcode/foo", size: 1_200_000),
-            makeFinding(path: "/Library/Caches/Xcode/bar", size: 2_000_000),
-            makeFinding(path: "/Library/Caches/com.microsoft.vscode/baz", size: 1_100_000),
+            makeFinding(path: home + "/Library/Developer/Xcode/DerivedData/foo", size: 1_200_000),
+            makeFinding(path: home + "/Library/Developer/Xcode/DerivedData/bar", size: 2_000_000),
+            makeFinding(path: home + "/Library/Caches/com.microsoft.vscode/baz", size: 1_100_000),
         ]
         let rollups = ScanReportAnnotator.appRollups(from: findings)
 
@@ -83,8 +112,8 @@ final class ScanReportAnnotatorTests: XCTestCase {
 
     func testRollupsSortedBySize() {
         let findings = [
-            makeFinding(path: "/Library/Caches/com.microsoft.vscode/foo", size: 1_100_000),
-            makeFinding(path: "/Library/Caches/Xcode/bar", size: 2_000_000),
+            makeFinding(path: home + "/Library/Caches/com.microsoft.vscode/foo", size: 1_100_000),
+            makeFinding(path: home + "/Library/Developer/Xcode/bar", size: 2_000_000),
         ]
         let rollups = ScanReportAnnotator.appRollups(from: findings)
         XCTAssertEqual(rollups.first?.app, "Xcode")
@@ -98,15 +127,16 @@ final class ScanReportAnnotatorTests: XCTestCase {
     /// Pins the full appRollups output (fold-into-Other, top files, ordering) for a mixed input.
     func testRollupsPinnedOutputForMixedFindings() {
         let mb: Int64 = 1_048_576
+        let u = home
         var findings = (1...40).map {
-            makeFinding(path: "/Users/u/Library/Caches/Google/Chrome/Default/Cache/f_\($0)", size: Int64($0) * mb / 4)
+            makeFinding(path: u + "/Library/Caches/Google/Chrome/Default/Cache/f_\($0)", size: Int64($0) * mb / 4)
         }
         findings += [
-            makeFinding(path: "/Users/u/Library/Developer/Xcode/DerivedData/App/a", size: 3 * mb),
-            makeFinding(path: "/Users/u/Library/Developer/Xcode/DerivedData/App/b", size: 2 * mb + 5),
-            makeFinding(path: "/Users/u/Library/Caches/Slack/tiny", size: 1_000),
-            makeFinding(path: "/Users/u/Library/Caches/com.unknown.app/blob", size: 5 * mb),
-            makeFinding(path: "/Users/u/Library/Caches/com.apple.Maps/tile", size: 700),
+            makeFinding(path: u + "/Library/Developer/Xcode/DerivedData/App/a", size: 3 * mb),
+            makeFinding(path: u + "/Library/Developer/Xcode/DerivedData/App/b", size: 2 * mb + 5),
+            makeFinding(path: u + "/Library/Caches/com.tinyspeck.slackmacgap/tiny", size: 1_000),
+            makeFinding(path: u + "/Library/Caches/com.unknown.app/blob", size: 5 * mb),
+            makeFinding(path: u + "/Library/Caches/com.apple.Maps/tile", size: 700),
         ]
         let rollups = ScanReportAnnotator.appRollups(from: findings)
 
@@ -116,9 +146,9 @@ final class ScanReportAnnotatorTests: XCTestCase {
         XCTAssertEqual(rollups[1].totalBytes, 5 * mb + 1_700)
         XCTAssertEqual(rollups[2].totalBytes, 5 * mb + 5)
         XCTAssertEqual(rollups[0].topFiles.count, 10)
-        XCTAssertEqual(rollups[0].topFiles.first?.path, "/Users/u/Library/Caches/Google/Chrome/Default/Cache/f_40")
-        XCTAssertEqual(rollups[0].topFiles.last?.path, "/Users/u/Library/Caches/Google/Chrome/Default/Cache/f_31")
-        XCTAssertEqual(rollups[1].topFiles.map(\.path), ["/Users/u/Library/Caches/com.unknown.app/blob"])
+        XCTAssertEqual(rollups[0].topFiles.first?.path, u + "/Library/Caches/Google/Chrome/Default/Cache/f_40")
+        XCTAssertEqual(rollups[0].topFiles.last?.path, u + "/Library/Caches/Google/Chrome/Default/Cache/f_31")
+        XCTAssertEqual(rollups[1].topFiles.map(\.path), [u + "/Library/Caches/com.unknown.app/blob"])
         XCTAssertEqual(rollups[2].topFiles.map(\.sizeBytes), [3 * mb, 2 * mb + 5])
     }
 
@@ -136,8 +166,7 @@ final class ScanReportAnnotatorTests: XCTestCase {
     // MARK: - Helpers
 
     private func attribution(_ path: String) -> String {
-        let finding = makeFinding(path: path, size: 0)
-        return ScanReportAnnotator.sourceApp(for: finding)
+        ScanReportAnnotator.legacySourceApp(forPath: path)
     }
 
     private func makeFinding(path: String, size: Int64) -> ScanFinding {
