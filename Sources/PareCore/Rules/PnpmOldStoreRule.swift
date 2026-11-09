@@ -60,16 +60,10 @@ public enum PnpmStoreLocator {
         return ScanPolicy.pnpmStoreVersion(url.lastPathComponent) == nil ? nil : url
     }
 
-    /// Nil when pnpm is absent, fails, times out, or prints something unexpected.
-    public static func activeStore(home: URL) async -> URL? {
-        var environment = ProcessInfo.processInfo.environment
-        environment["HOME"] = home.path
-        let runner = ToolCommandRunner()
-        guard let pnpm = runner.resolveExecutable(named: "pnpm", environmentVariables: environment) else { return nil }
-        // A Node-based pnpm runs `#!/usr/bin/env node`, so the child needs the widened PATH too.
-        let path = ToolSearchPath.pathValue(environment: environment)
-        return activeStore(fromStorePathOutput: await runner.capture(
-            executable: pnpm, arguments: ["store", "path"], environment: ["PATH": path]
+    /// Nil when pnpm is unconfirmed or changed, fails, times out, or prints something unexpected.
+    public static func activeStore(home: URL, registry: ConfirmedToolRegistry = .shared) async -> URL? {
+        activeStore(fromStorePathOutput: await ToolCommandRunner().captureConfirmed(
+            .pnpm, arguments: ["store", "path"], registry: registry, environment: ["HOME": home.path]
         ))
     }
 }

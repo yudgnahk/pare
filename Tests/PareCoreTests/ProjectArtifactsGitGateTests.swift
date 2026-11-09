@@ -6,7 +6,7 @@ final class ProjectArtifactsGitGateTests: XCTestCase {
 
     private static let allStatuses: [GitArtifactStatus?] = [
         .ignoredUntracked, .notIgnored, .containsTrackedFiles,
-        .notInRepository, .gitUnavailable, .failed, nil,
+        .notInRepository, .gitUnavailable, .gitTooOld, .failed, nil,
     ]
 
     private var tmp: URL!
@@ -69,6 +69,17 @@ final class ProjectArtifactsGitGateTests: XCTestCase {
         XCTAssertEqual(risk, ["build": .review, "dist": .review, "target": .safe])
     }
 
+    func testTooOldGitIsSurfacedAsANoticeNotASilentEmptyList() async throws {
+        try makeArtifacts(["build", "dist"])
+
+        let old = try await scanResult(with: StubGitInspector(status: .gitTooOld))
+        let failed = try await scanResult(with: StubGitInspector(status: .failed))
+
+        XCTAssertTrue(old.findings.isEmpty)
+        XCTAssertTrue(try XCTUnwrap(old.incompleteMessage).contains("2.45"))
+        XCTAssertNil(failed.incompleteMessage, "other git failures keep their existing handling")
+    }
+
     func testInspectorCalledOnceWithGatedCandidatesOnly() async throws {
         try makeArtifacts(["build", "dist", ".cache", "__pycache__"])
         let inspector = StubGitInspector(status: .ignoredUntracked)
@@ -93,6 +104,10 @@ final class ProjectArtifactsGitGateTests: XCTestCase {
     }
 
     private func scan(with inspector: StubGitInspector) async -> [ScanFinding] {
+        (try? await scanResult(with: inspector).findings) ?? []
+    }
+
+    private func scanResult(with inspector: StubGitInspector) async throws -> ScanRuleResult {
         let storeURL = tmp.appending(path: "store-\(UUID().uuidString)/project-roots.json")
         try? FileManager.default.createDirectory(
             at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true
@@ -107,6 +122,7 @@ final class ProjectArtifactsGitGateTests: XCTestCase {
             pathStore: ProjectScanPathStore(defaults: defaults),
             gitInspector: inspector
         )
-        return await rule.customScan(environment: ScanEnvironment.current()) ?? []
+        let result = try await rule.customScanResult(environment: ScanEnvironment.current())
+        return try XCTUnwrap(result)
     }
 }
