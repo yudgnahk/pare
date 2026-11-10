@@ -8,6 +8,7 @@ and moves what you choose to the Trash, where you can undo it.
 ## What it does
 
 - **Smart Scan**: about 50 rules for app, browser, developer, AI tool and system caches, logs, installers, old app versions and leftovers. Each finding is marked Safe, Review or Advanced.
+- **Grouped by owner**: results are listed by app, project and developer tool (or by category, if you prefer). Builds of projects you edited in the last 3 days start unticked.
 - **Developer depth**: package manager caches (npm, pnpm, Yarn, Bun, Cargo, CocoaPods, SwiftPM, Homebrew), Xcode, JetBrains and VS Code leftovers, and dependency folders of projects you have stopped working on, checked against git before they are offered.
 - **Worth knowing**: notes about problems Pare will not clean for you, such as heavy swap, memory pressure, files held open after deletion, or a launch agent stuck in a restart loop.
 - **App Manager**: uninstall apps together with their leftovers.
@@ -28,7 +29,13 @@ See [`docs/architecture/cleanup-safety.md`](docs/architecture/cleanup-safety.md)
 
 ## Install
 
-Download the latest `.dmg` from [Releases](https://github.com/yudgnahk/pare/releases).
+Download the latest `.dmg` from [Releases](https://github.com/yudgnahk/pare/releases), or use Homebrew:
+
+```bash
+brew install --cask yudgnahk/tap/pare
+```
+
+Builds are universal: Apple silicon and Intel Macs, macOS 13 or later.
 
 Current builds are **ad-hoc signed and not notarized**, so macOS blocks the first launch:
 
