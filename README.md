@@ -32,7 +32,9 @@ See [`docs/architecture/cleanup-safety.md`](docs/architecture/cleanup-safety.md)
 Download the latest `.dmg` from [Releases](https://github.com/yudgnahk/pare/releases), or use Homebrew:
 
 ```bash
-brew install --cask yudgnahk/tap/pare
+brew tap yudgnahk/tap
+brew trust yudgnahk/tap      # Homebrew 7+ only; older Homebrew skips this step
+brew install --cask pare
 ```
 
 Builds are universal: Apple silicon and Intel Macs, macOS 13 or later.
