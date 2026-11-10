@@ -12,9 +12,16 @@ public struct InstalledAppIndex: Sendable {
 
     private let names: [String: String]
     private let fallback: (any AppCopyLocating)?
+    private let budget: FallbackBudget
 
-    /// Keys are matched case-insensitively. `fallbackLocator` is asked only for IDs the map lacks.
-    public init(namesByBundleID: [String: String], fallbackLocator: (any AppCopyLocating)? = nil) {
+    /// Keys are matched case-insensitively. `fallbackLocator` is asked only for IDs the map lacks,
+    /// until `fallbackBudgetSeconds` of lookups in total have been spent.
+    public init(
+        namesByBundleID: [String: String],
+        fallbackLocator: (any AppCopyLocating)? = nil,
+        fallbackBudgetSeconds: TimeInterval = 1
+    ) {
+        self.budget = FallbackBudget(seconds: fallbackBudgetSeconds)
         var lowered: [String: String] = [:]
         for (id, name) in namesByBundleID { lowered[id.lowercased()] = name }
         self.names = lowered
@@ -22,16 +29,23 @@ public struct InstalledAppIndex: Sendable {
     }
 
     /// Scans app folders (one nested level) until `deadline`; never throws, partial on timeout.
-    public static func load(roots: [URL], locator: any AppCopyLocating, deadline: Date) -> InstalledAppIndex {
+    /// An index that found nothing gets no fallback, so a failed load labels the same every time.
+    public static func load(
+        roots: [URL],
+        locator: any AppCopyLocating,
+        deadline: Date,
+        isCancelled: @escaping @Sendable () -> Bool = { false }
+    ) -> InstalledAppIndex {
+        let expired = { Date() >= deadline || isCancelled() }
         var found: [String: String] = [:]
         for root in roots {
-            for app in appBundles(in: root, deadline: deadline) {
-                if Date() >= deadline { break }
+            for app in appBundles(in: root, expired: expired) {
+                if expired() { break }
                 if let info = AppBundleInfo.read(app) { found[info.id] = info.name }
             }
-            if Date() >= deadline { break }
+            if expired() { break }
         }
-        return InstalledAppIndex(namesByBundleID: found, fallbackLocator: locator)
+        return InstalledAppIndex(namesByBundleID: found, fallbackLocator: found.isEmpty ? nil : locator)
     }
 
     public func name(forBundleID id: String) -> String? { match(forBundleID: id)?.name }
@@ -44,7 +58,10 @@ public struct InstalledAppIndex: Sendable {
         }
         guard let fallback else { return nil }
         for candidate in candidates {
-            if let url = fallback.appURLs(forBundleID: candidate).first {
+            guard budget.hasTime else { return nil }
+            let urls = budget.timed { fallback.appURLs(forBundleID: candidate) }
+            // A removed app sits in the Trash and belongs in Other.
+            if let url = urls.first(where: { !AppUninstaller.isInTrash($0.path) }) {
                 let name = AppBundleInfo.read(url)?.name ?? url.deletingPathExtension().lastPathComponent
                 return InstalledAppMatch(id: candidate, name: name)
             }
@@ -58,7 +75,7 @@ public struct InstalledAppIndex: Sendable {
         return stride(from: parts.count, through: 3, by: -1).map { parts.prefix($0).joined(separator: ".") }
     }
 
-    private static func appBundles(in root: URL, deadline: Date) -> [URL] {
+    private static func appBundles(in root: URL, expired: () -> Bool) -> [URL] {
         let fm = FileManager.default
         let options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles]
         guard let top = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil, options: options) else {
@@ -66,7 +83,7 @@ public struct InstalledAppIndex: Sendable {
         }
         var apps: [URL] = []
         for url in top {
-            if Date() >= deadline { break }
+            if expired() { break }
             if url.pathExtension == "app" {
                 apps.append(url)
             } else if let nested = try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: options) {
@@ -88,5 +105,24 @@ enum AppBundleInfo {
             ?? (dict["CFBundleName"] as? String)
             ?? appURL.deletingPathExtension().lastPathComponent
         return (id.lowercased(), name)
+    }
+}
+
+/// Total time the fallback may spend per index; a call that overruns still ends the lookups.
+final class FallbackBudget: @unchecked Sendable {
+    private let lock = NSLock()
+    private var remaining: TimeInterval
+
+    init(seconds: TimeInterval) { remaining = seconds }
+
+    var hasTime: Bool { lock.lock(); defer { lock.unlock() }; return remaining > 0 }
+
+    func timed<T>(_ work: () -> T) -> T {
+        let start = Date()
+        let result = work()
+        lock.lock()
+        remaining -= Date().timeIntervalSince(start)
+        lock.unlock()
+        return result
     }
 }

@@ -257,7 +257,7 @@ struct ScanDashboardView: View {
 
     private var categoryBrowser: some View {
         let ownerView = viewModel.isOwnerViewEnabled
-        let byApp = viewModel.browseMode == .apps
+        let byApp = ownerView && viewModel.browseMode == .apps
         return GlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 12) {
@@ -282,7 +282,7 @@ struct ScanDashboardView: View {
                     EmptyStateView(
                         icon: "tray",
                         title: "No scan results yet",
-                        message: "Start a scan to browse reclaimable storage by category.",
+                        message: BrowseModeSwitch.emptyMessage(byApp: byApp),
                         layout: .inline
                     )
                 } else if byApp {

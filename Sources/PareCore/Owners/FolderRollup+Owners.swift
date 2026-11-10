@@ -42,12 +42,19 @@ extension FolderRollup {
         ownerByFolderId: [String: FolderOwner]
     ) -> FolderAggregate {
         var result = aggregate
+        let keys = ownerByFolderId.mapValues(\.key)
+        var details: [String: String] = [:]
+        for owner in ownerByFolderId.values {
+            details[owner.key] = owner.projectRoot.map(abbreviatePath)
+        }
         for (category, rows) in aggregate.rowsByCategory {
             let relabeled = rows.map { row in
                 ownerByFolderId[row.id].map { row.withToolName($0.displayName) } ?? row
             }
             result.rowsByCategory[category] = relabeled
-            result.toolGroupsByCategory[category] = makeToolGroups(category: category, rows: relabeled)
+            result.toolGroupsByCategory[category] = makeToolGroups(
+                category: category, rows: relabeled, ownerKeyByFolderId: keys, detailByOwnerKey: details
+            )
         }
         return result
     }

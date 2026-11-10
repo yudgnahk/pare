@@ -43,6 +43,8 @@ struct CategoryFolderRowView: View, Equatable {
             .help(row.isSafeFolder
                   ? "Select this entire folder for Clean selected"
                   : "Select cleanable items in this folder")
+            .accessibilityLabel(SelectAccessibility.folderLabel(path: label ?? row.displayPath))
+            .accessibilityValue(SelectAccessibility.stateText(TriSelectionState(selectionState)))
 
             IconTile(category: category, size: 18)
 
@@ -85,6 +87,7 @@ struct CategoryFolderRowView: View, Equatable {
             .buttonStyle(.plain)
             .disabled(!canReveal)
             .help("Show folder in Finder")
+            .accessibilityLabel("Show \(label ?? row.displayPath) in Finder")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

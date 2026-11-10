@@ -22,11 +22,21 @@ struct BrowseModeSwitch: View {
                         )
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel(Self.accessibilityLabel(option))
+                .accessibilityAddTraits(mode == option ? .isSelected : [])
             }
         }
         .padding(3)
         .background(AppTheme.Fill.subtle, in: RoundedRectangle(cornerRadius: AppTheme.Radius.row, style: .continuous))
         .help("Group results")
+    }
+
+    static func emptyMessage(byApp: Bool) -> String {
+        "Start a scan to browse reclaimable storage by \(byApp ? "app" : "category")."
+    }
+
+    static func accessibilityLabel(_ mode: BrowseMode) -> String {
+        "Browse by \(mode == .apps ? "app" : "category")"
     }
 
     static func title(_ mode: BrowseMode) -> String {
