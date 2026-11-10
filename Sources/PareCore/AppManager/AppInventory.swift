@@ -27,17 +27,21 @@ public actor AppInventory {
         // Supplement with metadata-indexed apps (Setapp, etc.)
         let metadataApps = await Self.discoverViaMetadataQuery()
         let knownPaths = Set(apps.map { $0.path })
-        for app in metadataApps where !knownPaths.contains(app.path) {
+        for app in metadataApps
+        where !knownPaths.contains(app.path)
+            && ScanPolicy.isInstalledAppLocation(URL(fileURLWithPath: app.path)) {
             apps.append(app)
         }
 
         // Mark Homebrew-managed apps using Caskroom receipts (cheap).
         let caskTokens = HomebrewCaskroom.installedTokens()
+        let caskArtifacts = HomebrewCaskroom.installedArtifactPaths()
         for i in apps.indices {
             if HomebrewCaskroom.manages(
                 appName: apps[i].name,
                 path: apps[i].path,
-                installedTokens: caskTokens
+                installedTokens: caskTokens,
+                installedArtifactPaths: caskArtifacts
             ) {
                 apps[i].isHomebrewManaged = true
             }

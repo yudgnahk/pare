@@ -32,66 +32,77 @@ public enum HomebrewCaskroom: Sendable {
         return tokens
     }
 
-    /// Whether an app path / name looks managed by a known Caskroom token.
+    /// Resolved targets of the artifact symlinks Caskroom keeps in each `<token>/<version>/` (lowercased paths).
+    public static func installedArtifactPaths(roots: [String] = searchPaths) -> Set<String> {
+        var targets = Set<String>()
+        let fm = FileManager.default
+        for root in roots {
+            for token in (try? fm.contentsOfDirectory(atPath: root)) ?? [] where !token.hasPrefix(".") {
+                let tokenDir = "\(root)/\(token)"
+                for version in (try? fm.contentsOfDirectory(atPath: tokenDir)) ?? [] where !version.hasPrefix(".") {
+                    let versionDir = "\(tokenDir)/\(version)"
+                    for entry in (try? fm.contentsOfDirectory(atPath: versionDir)) ?? [] {
+                        guard let dest = try? fm.destinationOfSymbolicLink(atPath: "\(versionDir)/\(entry)"),
+                              dest.hasPrefix("/") else { continue }
+                        targets.insert(dest.lowercased())
+                    }
+                }
+            }
+        }
+        return targets
+    }
+
+    /// Whether this exact bundle was installed by a cask: a Caskroom path, an installed artifact target, or a top-level app named exactly like a token.
     public static func manages(
         appName: String,
         path: String,
-        installedTokens: Set<String>? = nil
+        installedTokens: Set<String>? = nil,
+        installedArtifactPaths: Set<String>? = nil
     ) -> Bool {
-        if path.contains("/Caskroom/") { return true }
-
-        let tokens = installedTokens ?? Self.installedTokens()
-        guard !tokens.isEmpty else { return false }
-
-        let normalized = normalizeAppName(appName)
-        let pathBase = URL(fileURLWithPath: path)
-            .deletingPathExtension()
-            .lastPathComponent
-        let normalizedPath = normalizeAppName(pathBase)
-
-        for token in tokens {
-            let t = token.lowercased()
-            if t == normalized || t == normalizedPath { return true }
-            // e.g. token "google-chrome" vs app "Google Chrome"
-            if normalized.contains(t) || t.contains(normalized) { return true }
-            if normalizedPath.contains(t) || t.contains(normalizedPath) { return true }
-        }
-        return false
+        if isCaskroomPath(path) { return true }
+        let artifacts = installedArtifactPaths ?? Self.installedArtifactPaths()
+        if artifacts.contains(path.lowercased()) { return true }
+        return exactToken(
+            appName: appName, path: path, tokens: installedTokens ?? Self.installedTokens()
+        ) != nil
     }
 
-    /// Best-effort cask token for an app, if any Caskroom entry matches.
+    /// Best-effort cask token for an app: Caskroom path, else an exact top-level name match.
     public static func token(
         forAppName appName: String,
         path: String,
         installedTokens: Set<String>? = nil
     ) -> String? {
-        if path.contains("/Caskroom/") {
+        if isCaskroomPath(path) {
             // …/Caskroom/<token>/<version>/App.app
             let parts = path.split(separator: "/").map(String.init)
-            if let idx = parts.firstIndex(of: "Caskroom"), idx + 1 < parts.count {
+            if let idx = parts.firstIndex(where: { $0.lowercased() == "caskroom" }), idx + 1 < parts.count {
                 return parts[idx + 1]
             }
         }
+        return exactToken(appName: appName, path: path, tokens: installedTokens ?? Self.installedTokens())
+    }
 
-        let tokens = installedTokens ?? Self.installedTokens()
-        let normalized = normalizeAppName(appName)
-        let pathBase = normalizeAppName(
-            URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
-        )
+    private static func isCaskroomPath(_ path: String) -> Bool {
+        path.split(separator: "/").contains { $0.lowercased() == "caskroom" }
+    }
 
-        // Prefer exact matches
-        for token in tokens {
-            let t = token.lowercased()
-            if t == normalized || t == pathBase { return token }
-        }
-        for token in tokens {
-            let t = token.lowercased()
-            if normalized.contains(t) || t.contains(normalized)
-                || pathBase.contains(t) || t.contains(pathBase) {
-                return token
-            }
-        }
-        return nil
+    /// Exact normalized-name match, only for apps sitting directly in /Applications or ~/Applications.
+    private static func exactToken(appName: String, path: String, tokens: Set<String>) -> String? {
+        guard !tokens.isEmpty else { return nil }
+        let url = URL(fileURLWithPath: path)
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let parent = url.deletingLastPathComponent()
+        let topLevel = [URL(fileURLWithPath: "/Applications"), home.appendingPathComponent("Applications")]
+            .contains { $0.standardizedFileURL.pathComponents.map { $0.lowercased() }
+                == parent.standardizedFileURL.pathComponents.map { $0.lowercased() } }
+        guard topLevel else { return nil }
+
+        let names: Set<String> = [
+            normalizeAppName(appName),
+            normalizeAppName(url.deletingPathExtension().lastPathComponent)
+        ]
+        return tokens.first { names.contains($0.lowercased()) }
     }
 
     public static func normalizeAppName(_ name: String) -> String {
