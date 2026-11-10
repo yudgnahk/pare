@@ -84,6 +84,7 @@ struct ScanDashboardView: View {
                     onManageProjectPaths: { showProjectPaths = true }
                 )
                 .modifier(RevealOnAppear(appeared: resultsAppeared, index: 0))
+                DiagnosticsBlock(lines: DiagnosticLine.lines(from: viewModel.latestFindingsSnapshot))
                 permissionCoachingSection
                 scanWarningsSection
                 deviceBackupsSection

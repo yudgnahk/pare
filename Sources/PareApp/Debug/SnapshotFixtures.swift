@@ -22,7 +22,7 @@ enum SnapshotFixtures {
                 lastUsed: Date().addingTimeInterval(-86_400 * 21),
                 confidence: 0.9
             )
-        }
+        } + diagnosticFindings
         let grouped = Dictionary(grouping: findings, by: \.category)
         let summaries = grouped.map { category, items in
             ScanCategorySummary(
@@ -57,6 +57,21 @@ enum SnapshotFixtures {
             now: { now }, probe: { root, _ in edits[root.path] }
         )
     }
+
+    private static let diagnosticFindings: [ScanFinding] = [
+        ScanFinding(
+            category: .diagnostics, riskLevel: .advanced,
+            reason: "4.1 GB of swap in use — close memory-heavy apps or restart to release it",
+            path: "/private/var/vm", sizeBytes: 4 * gb + 100 * mb, lastUsed: nil, confidence: 1,
+            annotations: [.explainOnly(action: "Restart Chrome")]
+        ),
+        ScanFinding(
+            category: .diagnostics, riskLevel: .advanced,
+            reason: "1.2 GB held by deleted files — restart node to reclaim it",
+            path: "/private/var/folders/deleted-open-files/node", sizeBytes: 1 * gb + 200 * mb, lastUsed: nil, confidence: 1,
+            annotations: [.explainOnly(action: "Restart node to reclaim the space")]
+        ),
+    ]
 
     private struct Row {
         let category: ScanCategory
