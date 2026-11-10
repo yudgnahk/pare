@@ -1,0 +1,108 @@
+name: Release
+
+# Push a tag such as v1.0.0 or v1.0.0-rc.1 to build, publish and update the Homebrew tap.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ad-hoc package and publish release
+    runs-on: macos-26
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.version.outputs.full }}
+      dmg: ${{ steps.assets.outputs.dmg }}
+      sha256: ${{ steps.assets.outputs.sha256 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Read version from tag
+        id: version
+        run: |
+          full="${GITHUB_REF_NAME#v}"
+          short="${full%%-*}"
+          [[ "$short" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "Tag $GITHUB_REF_NAME is not vX.Y[.Z][-suffix]" >&2; exit 1; }
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+          echo "short=$short" >> "$GITHUB_OUTPUT"
+          [[ "$full" == *-* ]] && echo "prerelease=true" >> "$GITHUB_OUTPUT" || echo "prerelease=false" >> "$GITHUB_OUTPUT"
+
+      - name: Build universal ad-hoc package
+        env:
+          # Info.plist needs a numeric version; the tag suffix only names the files.
+          VERSION: ${{ steps.version.outputs.short }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          SKIP_DISK_CHECK: '1'
+        run: bash scripts/release-adhoc.sh
+
+      - name: Name assets after the tag
+        id: assets
+        env:
+          SHORT: ${{ steps.version.outputs.short }}
+          FULL: ${{ steps.version.outputs.full }}
+        run: |
+          cd dist/adhoc
+          if [[ "$SHORT" != "$FULL" ]]; then
+            mv "Pare-$SHORT-adhoc.dmg" "Pare-$FULL-adhoc.dmg"
+            mv "Pare-$SHORT-adhoc.zip" "Pare-$FULL-adhoc.zip"
+          fi
+          shasum -a 256 "Pare-$FULL-adhoc.zip" "Pare-$FULL-adhoc.dmg" > SHA256SUMS
+          echo "dmg=Pare-$FULL-adhoc.dmg" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "Pare-$FULL-adhoc.dmg" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FULL: ${{ steps.version.outputs.full }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          cat > notes.md <<EOF
+          Universal build for Apple silicon and Intel Macs, macOS 13 or later.
+
+          **Ad-hoc signed and not notarized.** macOS blocks the first launch: open Pare once, then go to
+          System Settings → Privacy & Security and click **Open Anyway**. Grant Full Disk Access when asked.
+
+          Homebrew: \`brew install --cask yudgnahk/tap/pare\`
+
+          Verify downloads with \`shasum -a 256 -c SHA256SUMS\`.
+          EOF
+          flags=()
+          [[ "$PRERELEASE" == "true" ]] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/adhoc/Pare-$FULL-adhoc.dmg" "dist/adhoc/Pare-$FULL-adhoc.zip" dist/adhoc/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --title "Pare $FULL" --notes-file notes.md "${flags[@]}"
+
+  tap:
+    name: Update Homebrew tap
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - name: Skip when no tap token is configured
+        if: env.TAP_TOKEN == ''
+        run: echo "HOMEBREW_TAP_TOKEN is not set; update yudgnahk/homebrew-tap by hand."
+
+      - name: Bump Casks/pare.rb
+        if: env.TAP_TOKEN != ''
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          SHA256: ${{ needs.build.outputs.sha256 }}
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/yudgnahk/homebrew-tap.git" tap
+          cd tap
+          sed -i -E "s/^  version \".*\"/  version \"${VERSION}\"/; s/^  sha256 \".*\"/  sha256 \"${SHA256}\"/" Casks/pare.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "pare ${VERSION}"
+          git push
