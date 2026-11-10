@@ -21,7 +21,8 @@ struct OwnerTable: Sendable {
         for entry in catalog.entries where !knownNames.contains(entry.displayName.lowercased()) {
             add(KnownOwner(
                 entry.id, entry.displayName, .app,
-                home: entry.libraryPaths.map { "Library/\($0)" } + entry.homePaths
+                home: entry.libraryPaths.map { "Library/\($0)" } + entry.homePaths,
+                traits: entry.category == "ai" ? [.ai] : []
             ))
         }
     }

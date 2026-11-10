@@ -45,7 +45,7 @@ final class ScanDashboardViewModel: ObservableObject {
     /// Every reclaimable folder grouped by owner; feeds project activity, labels and chips, not the list.
     @Published private(set) var ownerSections: [OwnerSection] = []
     /// The Smart Scan list: rows grouped by what cleaning costs, narrowed by `ownerFilter`.
-    @Published private(set) var consequenceSections: [ConsequenceSection] = []
+    @Published private(set) var cleanSections: [CleanSection] = []
     @Published private(set) var ownerChips: [OwnerChip] = []
     /// Chip id of the active owner filter; nil shows every owner. UI state only, reset per scan.
     @Published private(set) var ownerFilter: String?
@@ -68,7 +68,7 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Cached clean-candidate totals (recomputed per scan / exclusion — not per sheet render).
     private(set) var candidateStats = CandidateStats()
-    /// Everything the scan found, held rows included; the decision cards show this.
+    /// Everything the scan found, held rows included; the hero line shows this.
     private(set) var foundCandidateStats = CandidateStats()
 
     /// Raw findings kept after scan so cleanup can reference them.
@@ -81,8 +81,8 @@ final class ScanDashboardViewModel: ObservableObject {
     private var pathsByFolderId: [String: [String]] = [:]
     /// Owners resolved at scan finish, replayed when an exclusion rebuilds the groups.
     private var ownerByFolderPath: [String: FolderOwner] = [:]
-    /// Every consequence row of the scan, unfiltered.
-    private(set) var consequenceRows: [ConsequenceRow] = []
+    /// Every clean-list row of the scan, unfiltered.
+    private(set) var cleanRows: [CleanRow] = []
     /// Installed app bundle path per app owner key, for row and chip icons.
     private(set) var appIconPathByOwnerKey: [String: String] = [:]
     private let exclusionStore: ExclusionStore
@@ -304,14 +304,14 @@ final class ScanDashboardViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Consequence list (state changes; copy and readers live in +Consequences)
+    // MARK: - Clean list (state changes; copy and readers live in +CleanList)
 
     /// Swaps in a scan's rows and rebuilds chips; a filter whose owner is gone falls back to All.
-    func applyConsequenceRows(_ rows: [ConsequenceRow]) {
-        consequenceRows = rows
+    func applyCleanRows(_ rows: [CleanRow]) {
+        cleanRows = rows
         ownerChips = Self.makeChips(from: rows)
         if let filter = ownerFilter, !ownerChips.contains(where: { $0.id == filter }) { ownerFilter = nil }
-        rebuildConsequenceSections()
+        rebuildCleanSections()
     }
 
     /// Narrows the list to one chip's rows; selection is untouched.
@@ -319,30 +319,30 @@ final class ScanDashboardViewModel: ObservableObject {
         let valid = chipId.flatMap { id in ownerChips.contains { $0.id == id } ? id : nil }
         guard valid != ownerFilter else { return }
         ownerFilter = valid
-        rebuildConsequenceSections()
+        rebuildCleanSections()
     }
 
-    private func rebuildConsequenceSections() {
-        let visible = ownerFilter.map { id in consequenceRows.filter { Self.chipId(for: $0.owner) == id } }
-        consequenceSections = ConsequenceListing.sections(rows: visible ?? consequenceRows)
+    private func rebuildCleanSections() {
+        let visible = ownerFilter.map { id in cleanRows.filter { Self.chipId(for: $0.owner) == id } }
+        cleanSections = CleanListing.sections(rows: visible ?? cleanRows)
     }
 
     /// Bulk tick: the visible section's safe ids only; hot rows stay with their own checkbox.
-    func toggleConsequenceSection(_ section: ConsequenceSection) {
+    func toggleCleanSection(_ section: CleanSection) {
         guard section.isSelectable else { return }
         selection.toggleFolderIds(section.safeFolderIds)
     }
 
     /// Fold-row tick: same rule, limited to the folded rows.
-    func toggleSmallRows(_ section: ConsequenceSection) {
+    func toggleSmallRows(_ section: CleanSection) {
         guard !section.smallSafeFolderIds.isEmpty else { return }
         selection.toggleFolderIds(section.smallSafeFolderIds)
     }
 
-    func toggleConsequenceExpanded(_ group: ConsequenceGroup) {
+    func toggleCleanExpanded(_ group: CleanCategory) {
         let id = Self.expansionId(group)
-        if !selection.flippedConsequenceGroups.insert(id).inserted {
-            selection.flippedConsequenceGroups.remove(id)
+        if !selection.flippedCleanCategories.insert(id).inserted {
+            selection.flippedCleanCategories.remove(id)
         }
     }
 
@@ -664,7 +664,7 @@ final class ScanDashboardViewModel: ObservableObject {
         ownerByFolderPath = prepared.ownerByFolderPath
         appIconPathByOwnerKey = prepared.appIconPathByOwnerKey
         ownerFilter = nil
-        applyConsequenceRows(prepared.consequenceRows)
+        applyCleanRows(prepared.cleanRows)
         projectActivity = [:]
         heldProjectPaths = []
         totalReclaimableBytes = prepared.totalReclaimableBytes
@@ -796,7 +796,7 @@ final class ScanDashboardViewModel: ObservableObject {
         categoryFolderRows = aggregate.rowsByCategory
         categoryToolGroups = aggregate.toolGroupsByCategory
         ownerSections = owned.sections
-        applyConsequenceRows(owned.consequenceRows)
+        applyCleanRows(owned.cleanRows)
         // Only the excluded finding's category loses bytes/count; `.advanced` findings
         // were never counted as reclaimable, so they don't reduce totals (R0.6).
         let excludedBytes = excluded?.sizeBytes ?? 0

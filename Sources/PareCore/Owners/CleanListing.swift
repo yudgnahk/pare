@@ -1,10 +1,10 @@
 import Foundation
 
-/// One folder row of the consequence list, with the owner that names and icons it.
-public struct ConsequenceRow: Identifiable, Equatable, Sendable {
+/// One folder row of the clean list, with the owner that names and icons it.
+public struct CleanRow: Identifiable, Equatable, Sendable {
     public let record: FolderRecord
     public let owner: FolderOwner
-    public let group: ConsequenceGroup
+    public let group: CleanCategory
 
     public var id: String { record.id }
     /// Path below the project root for project rows (`.next`, `apps/web/dist`), else nil.
@@ -14,21 +14,21 @@ public struct ConsequenceRow: Identifiable, Equatable, Sendable {
     }
     public var isSelectable: Bool { group.isSelectable && record.itemCount > 0 }
 
-    public init(record: FolderRecord, owner: FolderOwner, group: ConsequenceGroup) {
+    public init(record: FolderRecord, owner: FolderOwner, group: CleanCategory) {
         self.record = record
         self.owner = owner
         self.group = group
     }
 }
 
-/// One consequence group: large rows listed, small rows folded, totals over every row.
-public struct ConsequenceSection: Identifiable, Equatable, Sendable {
-    public let group: ConsequenceGroup
+/// One clean category: large rows listed, small rows folded, totals over every row.
+public struct CleanSection: Identifiable, Equatable, Sendable {
+    public let group: CleanCategory
     /// Rows at or above `smallRowMaxBytes`, largest first, capped; the rest are counted in `hiddenRowCount`.
-    public let rows: [ConsequenceRow]
+    public let rows: [CleanRow]
     public let hiddenRowCount: Int
     /// Rows under `smallRowMaxBytes`, largest first, capped.
-    public let smallRows: [ConsequenceRow]
+    public let smallRows: [CleanRow]
     public let hiddenSmallRowCount: Int
     /// Selectable row ids, folded and hidden rows included; empty for size-only.
     public let folderIds: Set<String>
@@ -40,14 +40,14 @@ public struct ConsequenceSection: Identifiable, Equatable, Sendable {
     public let hasPartialSize: Bool
     public let smallHasPartialSize: Bool
 
-    public var id: ConsequenceGroup { group }
+    public var id: CleanCategory { group }
     public var smallRowCount: Int { smallRows.count + hiddenSmallRowCount }
     public var isSelectable: Bool { !safeFolderIds.isEmpty }
 }
 
-/// Builds the consequence list from folder records and their owners. Pure; safe off the main actor.
-public enum ConsequenceListing {
-    /// Rows under this fold into one row per group; decimal MB, as sizes are displayed.
+/// Builds the clean list from folder records and their owners. Pure; safe off the main actor.
+public enum CleanListing {
+    /// Rows under this fold into one row per category; decimal MB, as sizes are displayed.
     public static let smallRowMaxBytes: Int64 = 50_000_000
     public static let defaultMaxRowsShown = 100
     static let sizeOnlyIdPrefix = "size-only|"
@@ -73,26 +73,27 @@ public enum ConsequenceListing {
         }
     }
 
-    /// One row per record that has a consequence group; a record with no owner is `Other`.
-    public static func rows(records: [FolderRecord], owners: [String: FolderOwner]) -> [ConsequenceRow] {
+    /// One row per record that has a clean category; a record with no owner is `Other`.
+    public static func rows(records: [FolderRecord], owners: [String: FolderOwner]) -> [CleanRow] {
         records.compactMap { record in
-            ConsequenceGroup.of(category: record.category, risk: record.riskLevel).map {
-                ConsequenceRow(record: record, owner: owners[record.id] ?? .other, group: $0)
+            let owner = owners[record.id] ?? .other
+            return CleanCategory.classify(category: record.category, risk: record.riskLevel, owner: owner).map {
+                CleanRow(record: record, owner: owner, group: $0)
             }
         }
     }
 
-    /// Sections in group order; groups with no rows are left out.
+    /// Sections in category order; empty categories are left out.
     public static func sections(
-        rows: [ConsequenceRow],
+        rows: [CleanRow],
         maxRowsShown: Int = defaultMaxRowsShown
-    ) -> [ConsequenceSection] {
+    ) -> [CleanSection] {
         Dictionary(grouping: rows, by: \.group)
             .map { group, members in makeSection(group, members, cap: max(maxRowsShown, 0)) }
             .sorted { $0.group < $1.group }
     }
 
-    private static func makeSection(_ group: ConsequenceGroup, _ members: [ConsequenceRow], cap: Int) -> ConsequenceSection {
+    private static func makeSection(_ group: CleanCategory, _ members: [CleanRow], cap: Int) -> CleanSection {
         let sorted = members.sorted {
             $0.record.bytes != $1.record.bytes ? $0.record.bytes > $1.record.bytes : $0.id < $1.id
         }
@@ -100,7 +101,7 @@ public enum ConsequenceListing {
         let small = sorted.filter { $0.record.bytes < smallRowMaxBytes }
         let selectable = sorted.filter(\.isSelectable)
         let smallSelectable = small.filter(\.isSelectable)
-        return ConsequenceSection(
+        return CleanSection(
             group: group,
             rows: Array(large.prefix(cap)),
             hiddenRowCount: max(large.count - cap, 0),
@@ -117,7 +118,7 @@ public enum ConsequenceListing {
         )
     }
 
-    private static func safeIds(_ rows: [ConsequenceRow]) -> Set<String> {
+    private static func safeIds(_ rows: [CleanRow]) -> Set<String> {
         Set(rows.filter { $0.record.riskLevel == .safe }.map(\.id))
     }
 }

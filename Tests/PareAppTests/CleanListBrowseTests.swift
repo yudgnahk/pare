@@ -3,12 +3,12 @@ import XCTest
 import PareCore
 @testable import PareApp
 
-/// The consequence list, owner chips and fold rows are views of the same folder rows: no bulk tick may reach
+/// The clean list, owner chips and fold rows are views of the same folder rows: no bulk tick may reach
 /// review, hot, advanced or explain-only rows, and nothing here may change what a clean would trash.
 @MainActor
-final class ConsequenceBrowseTests: XCTestCase {
+final class CleanListBrowseTests: XCTestCase {
 
-    private static let home = "/nonexistent/pare-consequence/home"
+    private static let home = "/nonexistent/pare-clean-list/home"
     private static let mb: Int64 = 1_000_000
     private let chromeCache = home + "/Library/Caches/Google/Chrome/Default/Cache/f1"
     private let chromeSite = home + "/Library/Application Support/Google/Chrome/Default/Local Storage/x"
@@ -21,7 +21,7 @@ final class ConsequenceBrowseTests: XCTestCase {
     private let installer = home + "/Downloads/Setup.dmg"
     private let goModules = home + "/go/pkg/mod/x"
     private let swap = "/private/var/vm"
-    private let chromeApp = URL(fileURLWithPath: "/nonexistent/pare-consequence/Applications/Google Chrome.app")
+    private let chromeApp = URL(fileURLWithPath: "/nonexistent/pare-clean-list/Applications/Google Chrome.app")
 
     private var findings: [ScanFinding] {
         [
@@ -68,16 +68,16 @@ final class ConsequenceBrowseTests: XCTestCase {
         )
     }
 
-    private func section(_ group: ConsequenceGroup, in vm: ScanDashboardViewModel) throws -> ConsequenceSection {
-        try XCTUnwrap(vm.consequenceSections.first { $0.group == group }, "\(group)")
+    private func section(_ group: CleanCategory, in vm: ScanDashboardViewModel) throws -> CleanSection {
+        try XCTUnwrap(vm.cleanSections.first { $0.group == group }, "\(group)")
     }
 
-    private func allRows(_ vm: ScanDashboardViewModel) -> [ConsequenceRow] {
-        vm.consequenceSections.flatMap { $0.rows + $0.smallRows }
+    private func allRows(_ vm: ScanDashboardViewModel) -> [CleanRow] {
+        vm.cleanSections.flatMap { $0.rows + $0.smallRows }
     }
 
-    private func row(_ path: String, in vm: ScanDashboardViewModel) throws -> ConsequenceRow {
-        try XCTUnwrap(vm.consequenceRows.first {
+    private func row(_ path: String, in vm: ScanDashboardViewModel) throws -> CleanRow {
+        try XCTUnwrap(vm.cleanRows.first {
             path == $0.record.folderPath || path.hasPrefix($0.record.folderPath + "/")
         }, path)
     }
@@ -90,84 +90,88 @@ final class ConsequenceBrowseTests: XCTestCase {
 
     // MARK: - Groups
 
-    func testRowsLandInTheirConsequenceGroup() throws {
+    func testRowsLandInTheirCleanCategory() throws {
         let vm = loaded()
 
-        XCTAssertEqual(vm.consequenceSections.map(\.group), [.rebuildsItself, .slowerNextBuild, .needsALook, .sizeOnly])
-        XCTAssertEqual(try row(chromeCache, in: vm).group, .rebuildsItself)
-        XCTAssertEqual(try row(crashLog, in: vm).group, .rebuildsItself)
-        XCTAssertEqual(try row(npm, in: vm).group, .slowerNextBuild)
-        XCTAssertEqual(try row(shopNext, in: vm).group, .slowerNextBuild)
-        for path in reviewPaths { XCTAssertEqual(try row(path, in: vm).group, .needsALook, path) }
+        XCTAssertEqual(vm.cleanSections.map(\.group), [.appCaches, .developerTools, .projects, .siteData, .oldVersions, .system, .sizeOnly])
+        XCTAssertEqual(try row(chromeCache, in: vm).group, .appCaches)
+        XCTAssertEqual(try row(small, in: vm).group, .appCaches)
+        XCTAssertEqual(try row(crashLog, in: vm).group, .system)
+        XCTAssertEqual(try row(npm, in: vm).group, .developerTools)
+        XCTAssertEqual(try row(shopNext, in: vm).group, .projects)
+        XCTAssertEqual(try row(shopModules, in: vm).group, .projects)
+        XCTAssertEqual(try row(chromeSite, in: vm).group, .siteData)
+        XCTAssertEqual(try row(installer, in: vm).group, .oldVersions)
         XCTAssertEqual(try row(goModules, in: vm).group, .sizeOnly)
-        XCTAssertFalse(vm.consequenceRows.contains { $0.record.folderPath.hasPrefix(swap) })
+        XCTAssertFalse(vm.cleanRows.contains { $0.record.folderPath.hasPrefix(swap) })
     }
 
     func testTotalsCoverEveryFolderIncludingFoldedOnes() throws {
         let vm = loaded()
         let aggregate = FolderRollup.buildAggregate(from: findings)
-        let ids = vm.consequenceSections.flatMap(\.folderIds)
+        let ids = vm.cleanSections.flatMap(\.folderIds)
         let reclaimable = findings.filter { $0.riskLevel != .advanced }.reduce(Int64(0)) { $0 + $1.sizeBytes }
-        let selectable = vm.consequenceSections.filter(\.group.isSelectable)
+        let selectable = vm.cleanSections.filter(\.group.isSelectable)
 
         XCTAssertEqual(ids.count, Set(ids).count)
         XCTAssertEqual(Set(ids), Set(aggregate.recordsByFolderId.keys))
         XCTAssertEqual(selectable.reduce(Int64(0)) { $0 + $1.totalBytes }, reclaimable)
         XCTAssertEqual(try section(.sizeOnly, in: vm).totalBytes, 4_000 * Self.mb)
-        XCTAssertEqual(try section(.rebuildsItself, in: vm).smallBytes, 35 * Self.mb)
+        XCTAssertEqual(try section(.appCaches, in: vm).smallBytes, 30 * Self.mb)
         XCTAssertEqual(vm.allChipBytes, reclaimable)
     }
 
     func testExpansionDefaultsAndToggles() {
         let vm = loaded()
 
-        XCTAssertTrue(vm.isConsequenceExpanded(.rebuildsItself))
-        XCTAssertTrue(vm.isConsequenceExpanded(.needsALook))
-        XCTAssertFalse(vm.isConsequenceExpanded(.sizeOnly))
-        XCTAssertFalse(vm.isSmallRowsExpanded(.rebuildsItself))
+        XCTAssertTrue(vm.isCleanExpanded(.appCaches))
+        XCTAssertTrue(vm.isCleanExpanded(.siteData))
+        XCTAssertFalse(vm.isCleanExpanded(.sizeOnly))
+        XCTAssertFalse(vm.isSmallRowsExpanded(.appCaches))
 
-        vm.toggleConsequenceExpanded(.rebuildsItself)
-        vm.toggleConsequenceExpanded(.sizeOnly)
-        vm.toggleSmallRowsExpanded(.rebuildsItself)
+        vm.toggleCleanExpanded(.appCaches)
+        vm.toggleCleanExpanded(.sizeOnly)
+        vm.toggleSmallRowsExpanded(.appCaches)
 
-        XCTAssertFalse(vm.isConsequenceExpanded(.rebuildsItself))
-        XCTAssertTrue(vm.isConsequenceExpanded(.sizeOnly))
-        XCTAssertTrue(vm.isSmallRowsExpanded(.rebuildsItself))
+        XCTAssertFalse(vm.isCleanExpanded(.appCaches))
+        XCTAssertTrue(vm.isCleanExpanded(.sizeOnly))
+        XCTAssertTrue(vm.isSmallRowsExpanded(.appCaches))
     }
 
     // MARK: - Bulk ticks
 
     func testGroupTickSelectsSafeIdsOnlyAndUntickRemovesThem() {
         let vm = loaded()
-        for section in vm.consequenceSections where section.isSelectable {
+        for section in vm.cleanSections where section.isSelectable {
             vm.clearSelection()
 
-            vm.toggleConsequenceSection(section)
+            vm.toggleCleanSection(section)
 
             XCTAssertEqual(vm.selection.selectedFolderIds, section.safeFolderIds, "\(section.group)")
-            XCTAssertEqual(vm.consequenceSelectionState(section), .all, "\(section.group)")
+            XCTAssertEqual(vm.cleanSelectionState(section), .all, "\(section.group)")
             XCTAssertEqual(vm.selectedReviewCount, 0, "\(section.group)")
             XCTAssertTrue(reviewPaths.allSatisfy { !vm.isSelected(path: $0) }, "\(section.group)")
 
-            vm.toggleConsequenceSection(section)
+            vm.toggleCleanSection(section)
 
             XCTAssertTrue(vm.selection.selectedFolderIds.isEmpty, "\(section.group)")
         }
     }
 
-    func testReviewAndSizeOnlyGroupsTickNothingInBulk() throws {
+    func testCategoriesWithoutSafeRowsTickNothingInBulk() throws {
         let vm = loaded()
         vm.clearSelection()
 
-        for group in [ConsequenceGroup.needsALook, .sizeOnly] {
-            let section = try section(group, in: vm)
+        for group in [CleanCategory.siteData, .oldVersions, .sizeOnly] {
+            let section = try self.section(group, in: vm)
             XCTAssertFalse(section.isSelectable, "\(group)")
-            vm.toggleConsequenceSection(section)
+            vm.toggleCleanSection(section)
             vm.toggleSmallRows(section)
         }
 
         XCTAssertEqual(vm.selectedCandidatesCount, 0)
-        XCTAssertEqual(vm.consequenceSelectHelp(try section(.needsALook, in: vm)), "Review items: tick one by one")
+        XCTAssertEqual(vm.cleanSelectHelp(try section(.siteData, in: vm)), "Review items: tick one by one")
+        XCTAssertEqual(vm.cleanSelectHelp(try section(.sizeOnly, in: vm)), "Pare won't clean these")
     }
 
     func testSizeOnlyRowCannotBeTicked() throws {
@@ -185,21 +189,22 @@ final class ConsequenceBrowseTests: XCTestCase {
     func testFoldTickSelectsSmallSafeIdsAndNeverAHotRow() throws {
         let vm = loaded()
         markHot(smallHot, in: vm)
-        let rebuilds = try section(.rebuildsItself, in: vm)
+        let apps = try section(.appCaches, in: vm)
         vm.clearSelection()
 
-        XCTAssertEqual(Set(rebuilds.smallRows.map(\.record.folderPath)).count, 3)
-        vm.toggleSmallRows(rebuilds)
+        XCTAssertEqual(Set(apps.smallRows.map(\.record.folderPath)).count, 2)
+        vm.toggleSmallRows(apps)
 
-        XCTAssertTrue(vm.selection.selectedFolderIds.isSubset(of: rebuilds.smallSafeFolderIds))
+        XCTAssertTrue(vm.selection.selectedFolderIds.isSubset(of: apps.smallSafeFolderIds))
         XCTAssertTrue(vm.isSelected(path: small))
-        XCTAssertTrue(vm.isSelected(path: crashLog))
         XCTAssertFalse(vm.isSelected(path: smallHot))
         XCTAssertFalse(vm.isSelected(path: chromeCache))
-        XCTAssertEqual(vm.smallRowsSelectionState(rebuilds), .partial)
+        XCTAssertFalse(vm.isSelected(path: crashLog))
+        XCTAssertEqual(vm.smallRowsSelectionState(apps), .partial)
 
-        vm.toggleConsequenceSection(rebuilds)
+        vm.toggleCleanSection(apps)
         XCTAssertFalse(vm.isSelected(path: smallHot))
+        XCTAssertTrue(vm.isSelected(path: chromeCache))
     }
 
     // MARK: - Owner chips
@@ -211,11 +216,11 @@ final class ConsequenceBrowseTests: XCTestCase {
 
         XCTAssertEqual(vm.ownerFilter, "app:chrome")
         XCTAssertTrue(allRows(vm).allSatisfy { $0.owner.key == "app:chrome" })
-        XCTAssertEqual(vm.consequenceSections.map(\.group), [.rebuildsItself, .needsALook])
-        XCTAssertEqual(try section(.rebuildsItself, in: vm).totalBytes, 200 * Self.mb)
-        XCTAssertEqual(try section(.needsALook, in: vm).totalBytes, 3_000 * Self.mb)
+        XCTAssertEqual(vm.cleanSections.map(\.group), [.appCaches, .siteData])
+        XCTAssertEqual(try section(.appCaches, in: vm).totalBytes, 200 * Self.mb)
+        XCTAssertEqual(try section(.siteData, in: vm).totalBytes, 3_000 * Self.mb)
         XCTAssertEqual(
-            vm.consequenceSizeText(try section(.rebuildsItself, in: vm)),
+            vm.cleanSizeText(try section(.appCaches, in: vm)),
             ScanDashboardViewModel.selectedOfTotal(selected: 200 * Self.mb, total: ScanReportPresenter.formatBytes(200 * Self.mb))
         )
     }
@@ -226,7 +231,7 @@ final class ConsequenceBrowseTests: XCTestCase {
         vm.setOwnerFilter("app:chrome")
         vm.clearSelection()
 
-        vm.toggleConsequenceSection(try section(.rebuildsItself, in: vm))
+        vm.toggleCleanSection(try section(.appCaches, in: vm))
 
         XCTAssertEqual(vm.selection.selectedFolderIds, [chromeId])
         XCTAssertFalse(vm.isSelected(path: chromeSite))
@@ -250,7 +255,7 @@ final class ConsequenceBrowseTests: XCTestCase {
         XCTAssertEqual(Set(allRows(vm).map(\.record.folderPath)), [shopNext, shopModules])
 
         vm.setOwnerFilter(ScanDashboardViewModel.toolsChipId)
-        XCTAssertEqual(vm.consequenceSections.map(\.group), [.slowerNextBuild, .sizeOnly])
+        XCTAssertEqual(vm.cleanSections.map(\.group), [.developerTools, .sizeOnly])
     }
 
     func testChipsSplitIntoTopSixAndMore() {
@@ -266,7 +271,7 @@ final class ConsequenceBrowseTests: XCTestCase {
         vm.setOwnerFilter("app:not-here")
 
         XCTAssertNil(vm.ownerFilter)
-        XCTAssertEqual(vm.consequenceSections.count, 4)
+        XCTAssertEqual(vm.cleanSections.count, 7)
     }
 
     func testSelectionSurvivesFilterChanges() throws {
@@ -290,7 +295,7 @@ final class ConsequenceBrowseTests: XCTestCase {
         vm.applySnapshotResults(report, owners: inputs)
 
         XCTAssertNil(vm.ownerFilter)
-        XCTAssertEqual(vm.consequenceSections.map(\.group), [.rebuildsItself, .slowerNextBuild, .needsALook, .sizeOnly])
+        XCTAssertEqual(vm.cleanSections.map(\.group), [.appCaches, .developerTools, .projects, .siteData, .oldVersions, .system, .sizeOnly])
     }
 
     // MARK: - Clean sets
@@ -301,8 +306,8 @@ final class ConsequenceBrowseTests: XCTestCase {
         let before = try cleanSets(vm)
 
         vm.setOwnerFilter(ScanDashboardViewModel.toolsChipId)
-        vm.toggleSmallRowsExpanded(.rebuildsItself)
-        vm.toggleConsequenceExpanded(.sizeOnly)
+        vm.toggleSmallRowsExpanded(.appCaches)
+        vm.toggleCleanExpanded(.sizeOnly)
         vm.setOwnerFilter("app:chrome")
         vm.setOwnerFilter(nil)
 
@@ -316,16 +321,12 @@ final class ConsequenceBrowseTests: XCTestCase {
 
     func testHeaderShowsSelectedOverTotal() throws {
         let vm = loaded()
-        let review = try section(.needsALook, in: vm)
-        let sizeOnly = try section(.sizeOnly, in: vm)
-        let rebuilds = try section(.rebuildsItself, in: vm)
+        let format = ScanReportPresenter.formatBytes
 
-        XCTAssertEqual(
-            vm.consequenceSizeText(rebuilds),
-            "\(ScanReportPresenter.formatBytes(235 * Self.mb)) / \(ScanReportPresenter.formatBytes(235 * Self.mb))"
-        )
-        XCTAssertEqual(vm.consequenceSizeText(review), "0 / \(ScanReportPresenter.formatBytes(3_830 * Self.mb))")
-        XCTAssertEqual(vm.consequenceSizeText(sizeOnly), ScanReportPresenter.formatBytes(4_000 * Self.mb))
+        XCTAssertEqual(vm.cleanSizeText(try section(.appCaches, in: vm)), "\(format(230 * Self.mb)) / \(format(230 * Self.mb))")
+        XCTAssertEqual(vm.cleanSizeText(try section(.projects, in: vm)), "\(format(300 * Self.mb)) / \(format(1_100 * Self.mb))")
+        XCTAssertEqual(vm.cleanSizeText(try section(.siteData, in: vm)), "0 / \(format(3_000 * Self.mb))")
+        XCTAssertEqual(vm.cleanSizeText(try section(.sizeOnly, in: vm)), format(4_000 * Self.mb))
         XCTAssertEqual(ScanDashboardViewModel.smallRowsTitle(1), "1 small item")
         XCTAssertEqual(ScanDashboardViewModel.smallRowsTitle(3), "3 small items")
     }
@@ -374,20 +375,43 @@ final class ConsequenceBrowseTests: XCTestCase {
         XCTAssertNil(cache.cachedIcon(forPath: "/c.app"))
     }
 
-    func testSafeCardCountsHeldRowsAndSaysHowMany() {
+    func testHeroLineCountsEverythingFoundAndHowManyAreHeld() {
         let vm = loaded()
         markHot(smallHot, in: vm)
+        let format = ScanReportPresenter.formatBytes
 
         XCTAssertEqual(vm.foundCandidateStats.safeCount, 6)
         XCTAssertEqual(vm.foundCandidateStats.safeBytes, 1_035 * Self.mb)
+        XCTAssertEqual(vm.foundCandidateStats.reviewBytes, 3_830 * Self.mb)
         XCTAssertEqual(vm.quickCleanCandidatesCount, 5)
         XCTAssertEqual(vm.heldSafeCount, 1)
-        XCTAssertEqual(vm.foundCandidateStats.reviewCount, 3)
         XCTAssertEqual(
-            ScanDashboardViewModel.safeCardDetail(count: 6, heldCount: 1),
-            "6 items marked Safe\n1 held back — used or edited recently"
+            vm.heroSummaryLine,
+            "of \(format(4_865 * Self.mb)) found · \(format(1_035 * Self.mb)) safe · \(format(3_830 * Self.mb)) needs review"
+                + " · 1 held back — used or edited in the last 3 days"
         )
-        XCTAssertEqual(ScanDashboardViewModel.safeCardDetail(count: 6, heldCount: 0), "6 items marked Safe")
+    }
+
+    func testHeroLineLeavesOutZeroParts() {
+        let safeOnly = CandidateStats(safeCount: 2, safeBytes: 5_000, reviewCount: 0, reviewBytes: 0)
+        let format = ScanReportPresenter.formatBytes
+
+        XCTAssertEqual(
+            ScanDashboardViewModel.heroSummaryLine(stats: safeOnly, heldCount: 0, isPartial: false),
+            "of \(format(5_000)) found · \(format(5_000)) safe"
+        )
+        XCTAssertEqual(
+            ScanDashboardViewModel.heroSummaryLine(stats: CandidateStats(), heldCount: 0, isPartial: true),
+            "of ≥ \(format(0)) found"
+        )
+    }
+
+    func testHeroNumberIsWhatTheCleanBarSelects() throws {
+        let vm = loaded()
+        vm.toggleFolder(ScanDashboardViewModel.folderRow(try row(npm, in: vm)))
+
+        XCTAssertEqual(vm.selectedCandidatesBytes, vm.selection.selectedBytes)
+        XCTAssertEqual(vm.selectedCandidatesBytes, (200 + 10 + 20 + 5 + 300) * Self.mb)
     }
 
     // MARK: - Helpers

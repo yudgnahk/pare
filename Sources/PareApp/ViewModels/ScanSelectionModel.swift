@@ -29,8 +29,8 @@ struct ScanSelectionModel {
     var expandedCategories: Set<String> = []
     /// Expanded tool groups (e.g. Developer Package Caches → JetBrains).
     var expandedToolGroups: Set<String> = []
-    /// Consequence groups the user flipped from their default open/closed state.
-    var flippedConsequenceGroups: Set<String> = []
+    /// Clean categories the user flipped from their default open/closed state.
+    var flippedCleanCategories: Set<String> = []
 
     /// Per-path size/risk for individual selections (rebuilt per scan).
     struct PathMeta: Sendable {

@@ -16,7 +16,7 @@ extension ScanDashboardViewModel {
         /// Resolved owners, reused when an exclusion rebuilds the groups.
         let ownerByFolderPath: [String: FolderOwner]
         /// Empty when `SmartScanFeatures.ownerView` is off.
-        let consequenceRows: [ConsequenceRow]
+        let cleanRows: [CleanRow]
         let appIconPathByOwnerKey: [String: String]
         let candidateStats: CandidateStats
         let totalReclaimableBytes: Int64
@@ -48,10 +48,10 @@ extension ScanDashboardViewModel {
         let sortedTopFindings = largestItemsSorted(from: findings, limit: 40)
         let (revealablePaths, folderFindingPaths) = revealabilityIndex(
             aggregate: aggregate,
-            consequenceRows: owned.consequenceRows,
+            cleanRows: owned.cleanRows,
             topFindings: sortedTopFindings
         )
-        let iconPaths = owners.map { appIconPaths(for: owned.consequenceRows, index: $0.installedApps) } ?? [:]
+        let iconPaths = owners.map { appIconPaths(for: owned.cleanRows, index: $0.installedApps) } ?? [:]
         return PreparedScanResults(
             findings: findings,
             findingsByPath: pathIndex,
@@ -61,7 +61,7 @@ extension ScanDashboardViewModel {
             toolRollups: owned.toolRollups,
             ownerSections: owned.sections,
             ownerByFolderPath: owned.ownerByFolderPath,
-            consequenceRows: owned.consequenceRows,
+            cleanRows: owned.cleanRows,
             appIconPathByOwnerKey: iconPaths,
             candidateStats: CandidateStats.compute(from: findings),
             totalReclaimableBytes: report.totalReclaimableBytes,
@@ -95,12 +95,12 @@ extension ScanDashboardViewModel {
     /// (any owner filter can show any of them), top findings capped at 40.
     nonisolated static func revealabilityIndex(
         aggregate: FolderAggregate,
-        consequenceRows: [ConsequenceRow],
+        cleanRows: [CleanRow],
         topFindings: [FindingItem]
     ) -> (revealable: Set<String>, folders: Set<String>) {
         let fm = FileManager.default
         var folderPaths = Set(aggregate.rowsByCategory.values.flatMap { $0.map(\.folderPath) })
-        folderPaths.formUnion(consequenceRows.map(\.record.folderPath))
+        folderPaths.formUnion(cleanRows.map(\.record.folderPath))
         var revealable = folderPaths.filter { fm.fileExists(atPath: $0) }
         var folders: Set<String> = []
         for item in topFindings {

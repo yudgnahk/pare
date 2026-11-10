@@ -86,11 +86,9 @@ struct ScanDashboardView: View {
                 .modifier(RevealOnAppear(appeared: resultsAppeared, index: 0))
                 permissionCoachingSection
                 scanWarningsSection
-                decisionTiles
-                    .modifier(RevealOnAppear(appeared: resultsAppeared, index: 1))
                 deviceBackupsSection
                 categoryBrowser
-                    .modifier(RevealOnAppear(appeared: resultsAppeared, index: 2))
+                    .modifier(RevealOnAppear(appeared: resultsAppeared, index: 1))
                 toolShareSection
                 largestItemsSection
             }
@@ -118,40 +116,6 @@ struct ScanDashboardView: View {
     private func openExclusions() {
         exclusionListViewModel.load()
         showSettings = true
-    }
-
-    private var decisionTiles: some View {
-        LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: AppTheme.Spacing.md), count: 3),
-            spacing: AppTheme.Spacing.md
-        ) {
-            // Found totals, held rows included; "Selected" is what a clean would move.
-            MetricTile(
-                label: "Safe to clean",
-                icon: "checkmark.shield.fill",
-                bytes: viewModel.foundCandidateStats.safeBytes,
-                detail: ScanDashboardViewModel.safeCardDetail(
-                    count: viewModel.foundCandidateStats.safeCount, heldCount: viewModel.heldSafeCount
-                ),
-                tint: AppTheme.success
-            )
-            MetricTile(
-                label: "Needs review",
-                icon: "eye.fill",
-                bytes: viewModel.foundCandidateStats.reviewBytes,
-                detail: viewModel.foundCandidateStats.reviewCount == 0
-                    ? "Nothing needs a second opinion"
-                    : "\(viewModel.foundCandidateStats.reviewCount) Review items — may sign you out of sites or apps",
-                tint: AppTheme.warning
-            )
-            MetricTile(
-                label: "Selected",
-                icon: "checkmark.circle.fill",
-                bytes: viewModel.selectedCandidatesBytes,
-                detail: "\(viewModel.selectedCandidatesCount) items will go to the Trash when you clean",
-                tint: AppTheme.accentText
-            )
-        }
     }
 
     /// Scan warnings — rule failures and unreadable locations (R1.2/R1.3).
@@ -278,11 +242,11 @@ struct ScanDashboardView: View {
                     EmptyStateView(
                         icon: "tray",
                         title: "No scan results yet",
-                        message: ConsequenceBrowserView.emptyMessage(byConsequence: ownerView),
+                        message: CleanListView.emptyMessage(grouped: ownerView),
                         layout: .inline
                     )
                 } else if ownerView {
-                    ConsequenceBrowserView(viewModel: viewModel)
+                    CleanListView(viewModel: viewModel)
                 } else {
                     CategoryBrowserList(viewModel: viewModel)
                 }

@@ -56,13 +56,14 @@ final class SnapshotFixturesTests: XCTestCase {
         XCTAssertTrue(names.isSuperset(of: ["Whisper", "VS Code", "shop", "blog", "npm"]), "\(names)")
     }
 
-    func testConsequenceSceneShowsEveryGroupAndAFoldRow() {
+    func testCategoriesSceneShowsEveryCategoryReviewRowsAndAFoldRow() {
         let vm = ScanDashboardViewModel()
         vm.applySnapshotResults(SnapshotFixtures.scanReport, owners: SnapshotFixtures.ownerInputs)
-        let sections = vm.consequenceSections
+        let sections = vm.cleanSections
 
-        XCTAssertEqual(sections.map(\.group), [.rebuildsItself, .slowerNextBuild, .needsALook, .sizeOnly])
+        XCTAssertEqual(sections.map(\.group), CleanCategory.allCases)
         XCTAssertTrue(sections.contains { $0.smallRowCount > 0 })
+        XCTAssertTrue(vm.cleanRows.contains { $0.record.riskLevel == .review })
         XCTAssertEqual(vm.appIconPath(for: FolderOwner(kind: .app, key: "app:com.acme.whisper", displayName: "Whisper")),
                        SnapshotFixtures.fixtureIconApp)
         XCTAssertGreaterThan(vm.ownerChips.count, ScanDashboardViewModel.primaryChipCount)

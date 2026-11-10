@@ -170,9 +170,9 @@ final class OwnerBrowseTests: XCTestCase {
 
         XCTAssertEqual(app.owner.displayName, "W")
         XCTAssertTrue(app.hasPartialSize)
-        let section = try XCTUnwrap(vm.consequenceSections.first { $0.group == .rebuildsItself })
+        let section = try XCTUnwrap(vm.cleanSections.first { $0.group == .appCaches })
         XCTAssertTrue(section.hasPartialSize)
-        XCTAssertTrue(vm.consequenceSizeText(section).contains("≥ "))
+        XCTAssertTrue(vm.cleanSizeText(section).contains("≥ "))
     }
 
     func testExplainOnlyAndAdvancedFindingsAreInNoGroupOrTotal() {

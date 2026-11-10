@@ -11,10 +11,11 @@ public struct KnownOwner: Sendable {
     public let rootPrefixes: [String]
     /// Lowercase bundle-ID prefixes, matched on dot boundaries.
     public let bundleIDs: [String]
+    public let traits: Set<OwnerTrait>
 
     init(
         _ id: String, _ name: String, _ kind: OwnerKind,
-        home: [String] = [], root: [String] = [], bundle: [String] = []
+        home: [String] = [], root: [String] = [], bundle: [String] = [], traits: Set<OwnerTrait> = []
     ) {
         self.id = id
         self.name = name
@@ -22,20 +23,26 @@ public struct KnownOwner: Sendable {
         self.homePrefixes = home
         self.rootPrefixes = root
         self.bundleIDs = bundle
+        self.traits = traits
+    }
+
+    /// The same owner with an extra trait.
+    func with(_ trait: OwnerTrait) -> KnownOwner {
+        KnownOwner(id, name, kind, home: homePrefixes, root: rootPrefixes, bundle: bundleIDs, traits: traits.union([trait]))
     }
 
     var owner: FolderOwner {
         switch kind {
         case .macOS: return .macOS
-        case .tool: return FolderOwner(kind: .tool, key: "tool:\(id)", displayName: name)
-        default: return FolderOwner(kind: .app, key: "app:\(id)", displayName: name)
+        case .tool: return FolderOwner(kind: .tool, key: "tool:\(id)", displayName: name, traits: traits)
+        default: return FolderOwner(kind: .app, key: "app:\(id)", displayName: name, traits: traits)
         }
     }
 }
 
 /// Data-only table of the owners Pare's rules already touch. Earlier entries win ties.
 public enum KnownOwners {
-    public static let all: [KnownOwner] = browsers + communication + editors + creative + aiTools + devTools + system
+    public static let all: [KnownOwner] = browsers + communication + productivity + editors + creative + aiTools + devTools + system
 
     static func app(_ id: String, _ name: String, home: [String] = [], root: [String] = [], bundle: [String] = []) -> KnownOwner {
         KnownOwner(id, name, .app, home: home, root: root, bundle: bundle)

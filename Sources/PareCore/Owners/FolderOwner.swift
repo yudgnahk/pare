@@ -7,6 +7,11 @@ public enum OwnerKind: Int, Sendable, CaseIterable, Comparable {
     public static func < (lhs: OwnerKind, rhs: OwnerKind) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
+/// What kind of app an owner is, where that decides its clean category.
+public enum OwnerTrait: Sendable, Hashable {
+    case communication, ai
+}
+
 /// Who a scan folder belongs to: an app, a project, a developer tool, macOS itself, or nobody known.
 public struct FolderOwner: Hashable, Sendable {
     public let kind: OwnerKind
@@ -14,12 +19,16 @@ public struct FolderOwner: Hashable, Sendable {
     public let key: String
     public let displayName: String
     public let projectRoot: String?
+    public let traits: Set<OwnerTrait>
 
-    public init(kind: OwnerKind, key: String, displayName: String, projectRoot: String? = nil) {
+    public init(
+        kind: OwnerKind, key: String, displayName: String, projectRoot: String? = nil, traits: Set<OwnerTrait> = []
+    ) {
         self.kind = kind
         self.key = key
         self.displayName = displayName
         self.projectRoot = projectRoot
+        self.traits = traits
     }
 
     public static let macOS = FolderOwner(kind: .macOS, key: "macos", displayName: "macOS")

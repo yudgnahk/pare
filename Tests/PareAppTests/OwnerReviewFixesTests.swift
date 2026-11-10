@@ -180,9 +180,9 @@ final class OwnerReviewFixesTests: XCTestCase {
     // MARK: - Copy and accessibility
 
     func testEmptyMessageNamesTheActiveList() {
-        XCTAssertEqual(ConsequenceBrowserView.emptyMessage(byConsequence: true), "Start a scan to see what you can clean.")
+        XCTAssertEqual(CleanListView.emptyMessage(grouped: true), "Start a scan to see what you can clean.")
         XCTAssertEqual(
-            ConsequenceBrowserView.emptyMessage(byConsequence: false),
+            CleanListView.emptyMessage(grouped: false),
             "Start a scan to browse reclaimable storage by category."
         )
     }

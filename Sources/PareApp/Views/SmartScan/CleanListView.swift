@@ -1,13 +1,13 @@
 import SwiftUI
 import PareCore
 
-/// Smart Scan results grouped by what cleaning costs, narrowed by owner chips. No animation on this tree.
-struct ConsequenceBrowserView: View {
+/// Smart Scan results by clean category, narrowed by owner chips. No animation on this tree.
+struct CleanListView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
     @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
-        if viewModel.consequenceRows.isEmpty {
+        if viewModel.cleanRows.isEmpty {
             Text("Nothing to clean.")
                 .font(scale.caption)
                 .foregroundStyle(AppTheme.textSecondary)
@@ -15,24 +15,24 @@ struct ConsequenceBrowserView: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 OwnerChipsBar(viewModel: viewModel)
-                ForEach(viewModel.consequenceSections) { section in
-                    ConsequenceSectionView(viewModel: viewModel, section: section)
+                ForEach(viewModel.cleanSections) { section in
+                    CleanSectionView(viewModel: viewModel, section: section)
                 }
             }
         }
     }
 
-    static func emptyMessage(byConsequence: Bool) -> String {
-        byConsequence
+    static func emptyMessage(grouped: Bool) -> String {
+        grouped
             ? "Start a scan to see what you can clean."
             : "Start a scan to browse reclaimable storage by category."
     }
 }
 
 #if DEBUG
-struct ConsequenceBrowserView_Previews: PreviewProvider {
+struct CleanListView_Previews: PreviewProvider {
     static var previews: some View {
-        ConsequenceBrowserView(viewModel: makeModel())
+        CleanListView(viewModel: makeModel())
             .padding(24)
             .frame(width: 760)
             .background(AppTheme.base)

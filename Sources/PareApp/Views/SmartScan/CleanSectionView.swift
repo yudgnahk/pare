@@ -1,27 +1,27 @@
 import SwiftUI
 import PareCore
 
-/// One consequence group: header with a safe-only checkbox and `selected / total`, its rows, then the fold row.
-struct ConsequenceSectionView: View {
+/// One clean category: header with a safe-only checkbox and `selected / total`, its rows, then the fold row.
+struct CleanSectionView: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
-    let section: ConsequenceSection
+    let section: CleanSection
     @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
         let group = section.group
-        let isExpanded = viewModel.isConsequenceExpanded(group)
+        let isExpanded = viewModel.isCleanExpanded(group)
         VStack(alignment: .leading, spacing: 6) {
             DisclosureSelectRow(
                 style: .category,
-                title: ScanDashboardViewModel.consequenceTitle(group),
-                subtitle: ScanDashboardViewModel.consequenceSubtitle(group),
-                sizeText: viewModel.consequenceSizeText(section),
+                title: ScanDashboardViewModel.cleanTitle(group),
+                subtitle: ScanDashboardViewModel.cleanSubtitle(group),
+                sizeText: viewModel.cleanSizeText(section),
                 isExpanded: isExpanded,
-                selection: TriSelectionState(viewModel.consequenceSelectionState(section)),
+                selection: TriSelectionState(viewModel.cleanSelectionState(section)),
                 isSelectable: section.isSelectable,
-                selectHelp: viewModel.consequenceSelectHelp(section),
-                onToggleSelect: { viewModel.toggleConsequenceSection(section) },
-                onToggleExpand: { viewModel.toggleConsequenceExpanded(group) }
+                selectHelp: viewModel.cleanSelectHelp(section),
+                onToggleSelect: { viewModel.toggleCleanSection(section) },
+                onToggleExpand: { viewModel.toggleCleanExpanded(group) }
             ) {
                 Self.groupIcon(group, scale: scale)
             }
@@ -59,7 +59,7 @@ struct ConsequenceSectionView: View {
             isExpanded: isExpanded,
             selection: TriSelectionState(viewModel.smallRowsSelectionState(section)),
             isSelectable: !section.smallSafeFolderIds.isEmpty,
-            selectHelp: viewModel.consequenceSelectHelp(section),
+            selectHelp: viewModel.cleanSelectHelp(section),
             onToggleSelect: { viewModel.toggleSmallRows(section) },
             onToggleExpand: { viewModel.toggleSmallRowsExpanded(group) }
         ) {
@@ -77,9 +77,9 @@ struct ConsequenceSectionView: View {
         }
     }
 
-    private func rowView(_ row: ConsequenceRow) -> some View {
+    private func rowView(_ row: CleanRow) -> some View {
         let folder = ScanDashboardViewModel.folderRow(row)
-        return ConsequenceRowView(
+        return CleanRowView(
             row: folder,
             owner: row.owner,
             appPath: viewModel.appIconPath(for: row.owner),
@@ -88,6 +88,7 @@ struct ConsequenceSectionView: View {
             sizeText: viewModel.formattedFolderSize(folder),
             selectionState: viewModel.folderSelectionState(folder),
             canReveal: viewModel.canReveal(path: row.record.folderPath),
+            isReview: row.record.riskLevel == .review,
             onToggle: { viewModel.toggleFolder(folder) },
             onReveal: { viewModel.revealInFinder(path: row.record.folderPath) }
         )
@@ -102,12 +103,17 @@ struct ConsequenceSectionView: View {
             .padding(.top, 2)
     }
 
-    static func groupIcon(_ group: ConsequenceGroup, scale: DisplayScale) -> some View {
+    static func groupIcon(_ group: CleanCategory, scale: DisplayScale) -> some View {
         let (symbol, tint): (String, Color) = {
             switch group {
-            case .rebuildsItself: return ("arrow.triangle.2.circlepath", AppTheme.success)
-            case .slowerNextBuild: return ("hammer.fill", AppTheme.accent)
-            case .needsALook: return ("eye.fill", AppTheme.warning)
+            case .appCaches: return ("tray.full.fill", AppTheme.accent)
+            case .communication: return ("message.fill", AppTheme.accent)
+            case .developerTools: return ("hammer.fill", AppTheme.accent)
+            case .projects: return ("folder.fill", AppTheme.accent)
+            case .aiTools: return ("brain.head.profile", AppTheme.accent)
+            case .siteData: return ("globe", AppTheme.warning)
+            case .oldVersions: return ("archivebox.fill", AppTheme.warning)
+            case .system: return ("applelogo", AppTheme.textSecondary)
             case .sizeOnly: return ("ruler", AppTheme.textTertiary)
             }
         }()

@@ -1,8 +1,8 @@
 import SwiftUI
 import PareCore
 
-/// One folder in a consequence group: checkbox, owner icon, `Owner · kind`, path line, size, reveal.
-struct ConsequenceRowView: View, Equatable {
+/// One folder in a clean category: checkbox, owner icon, `Owner · kind`, Review tag, path line, size, reveal.
+struct CleanRowView: View, Equatable {
     let row: CategoryFolderRow
     let owner: FolderOwner
     let appPath: String?
@@ -11,14 +11,15 @@ struct ConsequenceRowView: View, Equatable {
     let sizeText: String
     let selectionState: CategorySelectState
     let canReveal: Bool
+    let isReview: Bool
     let onToggle: () -> Void
     let onReveal: () -> Void
     @Environment(\.pareDisplayScale) private var scale
 
-    nonisolated static func == (lhs: ConsequenceRowView, rhs: ConsequenceRowView) -> Bool {
+    nonisolated static func == (lhs: CleanRowView, rhs: CleanRowView) -> Bool {
         lhs.row == rhs.row && lhs.owner == rhs.owner && lhs.appPath == rhs.appPath
             && lhs.title == rhs.title && lhs.subtitle == rhs.subtitle && lhs.sizeText == rhs.sizeText
-            && lhs.selectionState == rhs.selectionState && lhs.canReveal == rhs.canReveal
+            && lhs.selectionState == rhs.selectionState && lhs.canReveal == rhs.canReveal && lhs.isReview == rhs.isReview
     }
 
     var body: some View {
@@ -41,11 +42,23 @@ struct ConsequenceRowView: View, Equatable {
             OwnerIconView(owner: owner, appPath: appPath, size: 20)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(scale.rowTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(scale.rowTitle)
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if isReview {
+                        Text("Review")
+                            .font(scale.badge)
+                            .foregroundStyle(AppTheme.warning)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AppTheme.warning.opacity(0.16), in: Capsule())
+                            .fixedSize()
+                            .help("Starts unticked. May sign you out or remove data.")
+                    }
+                }
                 Text(subtitle)
                     .font(scale.rowMeta)
                     .foregroundStyle(AppTheme.textSecondary)

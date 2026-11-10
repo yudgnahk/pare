@@ -119,13 +119,13 @@ extension SnapshotRenderer {
                 store.scan.applySnapshotResults(SnapshotFixtures.scanReport, owners: SnapshotFixtures.ownerInputs)
                 store.scan.cleanup.applySnapshotState(.done(bytesFreed: 12_884_901_888, skippedCount: 0))
             },
-            Scene(name: "03d-smart-scan-by-consequence", destination: .smartScan, height: 2600) { store in
+            Scene(name: "03d-smart-scan-categories", destination: .smartScan, height: 2800) { store in
                 store.scan.applySnapshotResults(
                     SnapshotFixtures.scanReport, cacheActivity: SnapshotFixtures.cacheActivity,
                     projectActivity: SnapshotFixtures.projectActivity, owners: SnapshotFixtures.ownerInputs
                 )
-                store.scan.toggleConsequenceExpanded(.sizeOnly)
-                store.scan.toggleSmallRowsExpanded(.rebuildsItself)
+                store.scan.toggleCleanExpanded(.sizeOnly)
+                store.scan.toggleSmallRowsExpanded(.appCaches)
             },
             Scene(name: "05-disk-analyzer-empty", destination: .disk) { _ in },
             Scene(name: "05b-disk-analyzer-folder", destination: .disk, settleSeconds: 5) { store in

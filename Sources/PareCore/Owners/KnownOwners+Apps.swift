@@ -25,6 +25,7 @@ extension KnownOwners {
         app("opera", "Opera", bundle: ["com.operasoftware.opera"]),
     ]
 
+    /// Chat apps; their caches get the Communication category.
     static let communication: [KnownOwner] = [
         app("slack", "Slack", home: ["Library/Application Support/Slack"], bundle: ["com.tinyspeck.slackmacgap"]),
         app("zoom", "Zoom", home: ["Library/Application Support/zoom.us"], bundle: ["us.zoom.xos"]),
@@ -37,6 +38,12 @@ extension KnownOwners {
             bundle: ["ru.keepcoder.telegram"]),
         app("whatsapp", "WhatsApp", bundle: ["net.whatsapp.whatsapp"]),
         app("signal", "Signal", home: ["Library/Application Support/Signal"]),
+        app("messages", "Messages", bundle: ["com.apple.mobilesms"]),
+        app("skype", "Skype", home: ["Library/Application Support/Skype"], bundle: ["com.skype.skype"]),
+        app("webex", "Webex", bundle: ["com.webex.meetingmanager", "com.cisco.webexmeetingsapp", "cisco-systems.spark"]),
+    ].map { $0.with(.communication) }
+
+    static let productivity: [KnownOwner] = [
         app("notion", "Notion",
             home: ["Library/Application Support/Notion", "Library/Caches/notion.id"]),
         app("spotify", "Spotify", home: ["Library/Application Support/Spotify"], bundle: ["com.spotify.client"]),
@@ -53,9 +60,9 @@ extension KnownOwners {
             bundle: ["com.microsoft.vscode", "com.visualstudio.code"]),
         app("cursor", "Cursor",
             home: ["Library/Application Support/Cursor", "Library/Caches/Cursor", ".cursor"],
-            bundle: ["com.todesktop.230313mzl4w4u92"]),
+            bundle: ["com.todesktop.230313mzl4w4u92"]).with(.ai),
         app("windsurf", "Windsurf",
-            home: ["Library/Application Support/Windsurf", "Library/Caches/Windsurf", ".windsurf"]),
+            home: ["Library/Application Support/Windsurf", "Library/Caches/Windsurf", ".windsurf"]).with(.ai),
         app("jetbrains", "JetBrains",
             home: [
                 "Library/Application Support/JetBrains", "Library/Caches/JetBrains",
@@ -104,13 +111,14 @@ extension KnownOwners {
             bundle: ["com.apple.finalcut"]),
     ]
 
+    /// AI apps; their caches get the AI tools category.
     static let aiTools: [KnownOwner] = [
         app("claude", "Claude",
             home: ["Library/Application Support/Claude", "Library/Caches/Claude", "Library/Logs/Claude", ".claude"],
-            bundle: ["com.anthropic.claudefordesktop"]),
-        app("chatgpt", "ChatGPT", bundle: ["com.openai.chat"]),
-        app("codex", "Codex", home: [".codex"], bundle: ["com.openai.codex"]),
+            bundle: ["com.anthropic.claudefordesktop"]).with(.ai),
+        app("chatgpt", "ChatGPT", bundle: ["com.openai.chat"]).with(.ai),
+        app("codex", "Codex", home: [".codex"], bundle: ["com.openai.codex"]).with(.ai),
         app("opencode", "OpenCode",
-            home: [".cache/opencode", ".local/share/opencode", "Library/Caches/opencode", ".opencode"]),
+            home: [".cache/opencode", ".local/share/opencode", "Library/Caches/opencode", ".opencode"]).with(.ai),
     ]
 }
