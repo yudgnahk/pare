@@ -60,6 +60,14 @@ Spec and decisions: `docs/features/process-monitor.md`.
 - [x] **Slice 1 — Processes tab, view only.** Current user's processes as a ppid tree with branch memory (`phys_footprint`) and CPU, derived names (never raw command lines), optional Paseo session details; samples only while the tab is visible.
 - [ ] **Slice 2 — Kill with confirmation.** Blocked for system processes and Pare itself.
 
+Required before v1.0.0 final (owner, 2026-11-10); not needed for rc.3:
+
+- [ ] **Paseo deep link.** Replace the first-message snippet with project name + "Open in Paseo" via the `paseo://` scheme (link format to verify).
+- [ ] **Idle time.** Paseo agents: "idle 52 min" from `lastActivityAt`. Other processes: only "0 % CPU for the last N min" while the tab is open.
+- [ ] **Select and quit.** Slice 2 above; Paseo agents close through Paseo, not by signal.
+- [ ] **Rename or drop "Repeated processes".** Owner could not read it; e.g. "Running many copies".
+- [ ] **Status-style layout, tree kept.** Top cards (CPU, Memory + pressure, Swap, Free space), app icons, inline CPU bar, one Memory column, less subtitle text.
+
 ## Engineering follow-ups
 
 - [ ] Run the whole test suite under XCTest. Nothing from #38–#69 has run locally (Command Line Tools only); CI must confirm `integration/2026-10-07` before merging to `master`.
