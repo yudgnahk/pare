@@ -1,250 +1,59 @@
-# Homebrew Manager Feature
+# Homebrew Manager
 
-Manage all Homebrew casks and formulae: list, update, upgrade, uninstall, and recommend migrating existing apps to Homebrew.
+Lists formulae and casks, upgrades, uninstalls, migrates manually installed apps to Homebrew, detaches
+casks, and runs `brew cleanup`. Code: `Sources/PareCore/Homebrew/`.
 
-## Goals
+## Running `brew`
 
-- Show all installed casks and formulae with metadata
-- One-click upgrade for outdated packages (including `auto_updates: true` casks)
-- Uninstall with optional `--zap` (removes user data)
-- Recommend migrating manually-installed macOS apps to Homebrew casks
+- GUI apps don't have `/opt/homebrew/bin` on `PATH`, so `BrewRunner` checks `/opt/homebrew/bin/brew`
+  then `/usr/local/bin/brew`. No `uname`/`sysctl` needed.
+- Every call sets `HOMEBREW_NO_AUTO_UPDATE=1` and `HOME`.
+- stdout and stderr are read concurrently: `brew info --json=v2 --installed` exceeds the 64 KB pipe
+  buffer and deadlocks a sequential read.
 
----
+## Inventory and outdated
 
-## Homebrew Process Execution
+- One `brew info --json=v2 --installed` call. Formulae default to user-requested only
+  (`installed_on_request`), with a toggle for dependencies.
+- Outdated uses `brew outdated --json=v2 --greedy` so self-updating casks (`auto_updates: true`) stay
+  visible, badged "(auto)". Pinned packages are never offered.
 
-### Finding the binary
+## Upgrade policy
 
-`PATH` in GUI apps does not include `/opt/homebrew/bin`. Detect the prefix explicitly:
+- **Upgrade All runs plain `brew upgrade`, not `--greedy`.** Upgrading a self-updating cask swaps the
+  bundle under a running app and can break its session. "Self-updating too" (`--greedy`) is opt-in
+  behind a confirmation. Upgrade All counts only what plain `brew upgrade` touches.
+- Uninstall never passes `--zap`.
 
-```swift
-func homebrewPrefix() -> String {
-    // Apple Silicon
-    if FileManager.default.fileExists(atPath: "/opt/homebrew/bin/brew") {
-        return "/opt/homebrew"
-    }
-    // Intel
-    return "/usr/local"
-}
+## Review before mutations
 
-var brewPath: String { homebrewPrefix() + "/bin/brew" }
-```
+Every mutating action, single row or bulk, opens a review sheet first: operation, packages, command,
+and the restart warning for self-updating casks. Bulk runs go one item at a time and keep a
+success/failure summary. Selection survives filtering and clears only when the inventory refreshes.
 
-Do NOT run `uname -m` or call `sysctl` from Swift — just check both paths. The first one that exists wins.
+## Last Used
 
-### Process wrapper
-
-Every `brew` invocation must:
-
-1. Set `HOMEBREW_NO_AUTO_UPDATE=1` to prevent auto-update hijacking the output
-2. Set `HOME` explicitly (may be missing in sandboxed contexts)
-3. Read stdout and stderr **concurrently** — macOS pipe buffer is ~64 KB; `brew info --installed` JSON easily exceeds this and will deadlock if you call `readDataToEndOfFile()` sequentially
-
-```swift
-func runBrew(_ args: [String]) async throws -> (stdout: Data, stderr: Data) {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: brewPath)
-    process.arguments = args
-    process.environment = [
-        "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
-        "PATH": "\(homebrewPrefix())/bin:/usr/bin:/bin",
-        "HOMEBREW_NO_AUTO_UPDATE": "1",
-    ]
-    let outPipe = Pipe(), errPipe = Pipe()
-    process.standardOutput = outPipe
-    process.standardError = errPipe
-
-    try process.run()
-
-    // Read concurrently to avoid pipe-buffer deadlock
-    async let outData = Task.detached { outPipe.fileHandleForReading.readDataToEndOfFile() }.value
-    async let errData = Task.detached { errPipe.fileHandleForReading.readDataToEndOfFile() }.value
-    process.waitUntilExit()
-    return try await (outData, errData)
-}
-```
-
----
-
-## Discovery
-
-### All installed packages
-
-```
-brew info --json=v2 --installed
-```
-
-Returns a single JSON blob with `formulae` and `casks` arrays. Parse once; all metadata is in-band.
-
-Key fields per formula:
-- `name`, `full_name`, `version` (installed), `desc`, `homepage`
-- `installed[].installed_on_request` — true = user-installed, false = dependency
-- `installed[].time` — ISO8601 install timestamp
-- `keg_only` — whether it's in the PATH or not
-
-Key fields per cask:
-- `token`, `version`, `desc`, `homepage`
-- `installed` (version string or null)
-- `auto_updates` — if true, the app self-updates; `brew outdated` skips it by default
-- `artifacts` — contains `app` entries with the `.app` names installed to `/Applications`
-
----
-
-## Outdated Detection
-
-```
-brew outdated --json=v2 --greedy
-```
-
-`--greedy` is mandatory — without it, casks with `auto_updates: true` (Chrome, VS Code, Slack, etc.) are excluded. We want to show all packages that have a newer version available, even if the app auto-updates itself.
-
-Response fields per outdated entry:
-- `name` / `cask` token
-- `installed_versions` — array of currently installed versions
-- `current_version` — latest available version
-- `pinned` — if true, the user has pinned this version; do not offer upgrade
-
----
-
-## Operations
-
-### Upgrade
-
-```swift
-// Single package
-try await runBrew(["upgrade", name])                    // formula
-try await runBrew(["upgrade", "--cask", token])          // cask
-
-// Upgrade All (default) — formulae + non-auto casks only
-// Does NOT pass --greedy, so auto_updates casks (Chrome, VS Code, …) are skipped.
-try await runBrew(["upgrade"])
-
-// Optional “self-updating too” (confirm first) — may break open app sessions
-try await runBrew(["upgrade", "--greedy"])
-```
-
-Outdated discovery still uses `brew outdated --json=v2 --greedy` so self-updating casks remain visible and labeled `auto`. Upgrade All counts only packages Brew will actually touch without `--greedy`.
-
-Show live output in a streaming log sheet (pipe to a `@Published var log: String`).
-
-### Uninstall
-
-```swift
-// Formula
-try await runBrew(["uninstall", name])
-
-// Cask — without user data
-try await runBrew(["uninstall", "--cask", token])
-
-// Cask — with user data (zap stanza)
-try await runBrew(["uninstall", "--cask", "--zap", token])
-```
-
-Always ask before `--zap`. Show a confirmation sheet listing what the zap stanza will remove (fetch from `brew info --cask --json=v2 <token>`, parse `artifacts[].zap`).
-
-### Review before mutations and bulk actions
-
-Formulae, Casks, Outdated, and Migrate support checkbox selection. Selection is retained while
-filtering/searching and is cleared only when the corresponding inventory is refreshed. Each tab
-offers Select All Visible, Clear Selection, and only the operation valid for that tab.
-
-Every mutating operation, including a single row, opens a review sheet before invoking Homebrew.
-The sheet identifies the operation, affected packages, the command, and the self-updating-cask
-restart/session warning when relevant. Confirmed bulk operations run deterministically one item at
-a time and retain a success/failure summary in the operation log.
-
-The Casks table reports **Last Used** from Spotlight's `kMDItemLastUsedDate` for the matched app
-bundle. Missing Spotlight activity is shown as **Never**; a cask without a matched app is shown as
-**Orphaned**. Formulae intentionally have no Last Used column: Homebrew does not provide reliable
-command-execution history, and Pare does not infer it from shell history or file dates.
-
-### Leave Homebrew (detach, keep app)
-
-Inverse of Migrate / `--adopt`. Stops Brew from managing a cask without deleting the application — so terminal `brew upgrade --greedy` cannot replace the bundle.
-
-```swift
-// Implemented by CaskLeaveHomebrew:
-// 1. Resolve app paths under /Applications and ~/Applications
-// 2. Refuse if running (or force-quit when confirmed)
-// 3. Stage .app copy aside
-// 4. brew uninstall --cask <token>   // never --zap
-// 5. Restore .app to original path
-```
-
-Orphaned casks (receipt, no app): only step 4. UI: per-cask **Leave Homebrew** with confirmation.
-### Hide dependencies
-
-By default show only user-requested formulae (`installed_on_request: true`). Provide a toggle to show all (including dependencies).
-
----
+Casks show `kMDItemLastUsedDate` of the matched app: "Never" when missing, "Orphaned" when no app is
+matched. Formulae have no Last Used on purpose: Homebrew keeps no reliable execution history, and Pare
+does not guess from shell history or file dates.
 
 ## Migrate to Homebrew
 
-Recommend that manually-installed apps (discovered by App Manager) can be managed by Homebrew.
+`MigrationAdvisor` matches installed apps against `https://formulae.brew.sh/api/cask.json` (24-hour
+disk cache) by artifact app name, then by bundle IDs in `uninstall[].quit`, skipping apps Homebrew
+already manages. Migration runs `brew install --cask --adopt <token>`, which takes over the existing
+app without reinstalling it.
 
-### Matching algorithm
+## Leave Homebrew
 
-1. Fetch full cask catalog: `https://formulae.brew.sh/api/cask.json` (cache for 24 h)
-2. For each cask, extract app name from `artifacts[].app[]` values (e.g. `"Visual Studio Code.app"`)
-3. For each installed app (from App Manager), match against cask artifact names
-4. Secondary match: compare cask bundle IDs — each cask's `artifacts[].uninstall[].quit` values contain bundle IDs; match against the installed app's `CFBundleIdentifier`
-5. Filter out apps already installed via Homebrew (check `$(brew --caskroom)/<token>/` exists)
+The inverse of adopt: stop Homebrew managing a cask but keep the app, so a terminal
+`brew upgrade --greedy` can't replace it. `CaskLeaveHomebrew` refuses while the app runs (or
+force-quits after confirmation), stages the `.app` aside, runs `brew uninstall --cask` (never `--zap`)
+and puts the app back. Orphaned casks only get the uninstall. Per cask only, never bulk.
 
-### Recommendation UI
+## `brew cleanup`
 
-Show a "Move to Homebrew" section in the Homebrew Manager. Each row:
-- App name + current version
-- Matched cask token + Homebrew version
-- "Migrate" button → runs: `brew install --cask <token>` (Homebrew installs the new copy, then `brew uninstall` removes the old one if you used `--adopt` flag)
-
-```swift
-// Adopt the already-installed app into Homebrew management without reinstalling
-try await runBrew(["install", "--cask", "--adopt", token])
-```
-
-`--adopt` (Homebrew 3.5+) tells Homebrew to take ownership of an already-installed app without re-downloading it. This is the preferred migration path.
-
----
-
-## Architecture
-
-New module: `Sources/PareCore/HomebrewManager/`
-
-```
-HomebrewManager/
-  BrewRunner.swift            # Process wrapper, prefix detection
-  BrewInventory.swift         # Discovery (actor)
-  BrewOutdatedChecker.swift   # Outdated detection
-  MigrationAdvisor.swift      # Cask catalog fetch + app matching
-  Models/
-    BrewFormula.swift         # Decoded from brew info JSON
-    BrewCask.swift
-    OutdatedPackage.swift
-    MigrationCandidate.swift  # installedApp + matchedCask
-```
-
----
-
-## SwiftUI Integration
-
-Tab alongside App Manager. Split view:
-- Left sidebar: Formulae / Casks / Outdated / Migrate (segments)
-- Right: package list with sort/filter
-
-`HomebrewManagerViewModel` (`@MainActor ObservableObject`) — same ViewModel pattern as `ScanDashboardViewModel`.
-
-Operations (upgrade/uninstall/migrate) open a `BrewOperationSheet` showing streaming log output.
-
----
-
-## Risks & Mitigations
-
-| Risk | Mitigation |
-|------|-----------|
-| Homebrew not installed | Check `brewPath` exists before any operation; show "Homebrew not installed" placeholder with install instructions |
-| Pipe deadlock on large JSON | Always read stdout + stderr concurrently (see process wrapper above) |
-| `--adopt` requires Homebrew ≥ 3.5 | Check `brew --version` at startup; fall back to standard install + manual trash if older |
-| Cask catalog fetch fails (offline) | Cache previous response; show "Last updated X ago" and proceed with cached data |
-| `--zap` deletes too much | Always preview zap artifacts before confirming; never zap without explicit user confirmation |
-| Auto-updating apps show false positives | Respect `pinned: true` in outdated results; mark `auto_updates: true` casks with an "(auto)" badge |
-| Sandbox restrictions | `PareApp` is not sandboxed (disk access required). Ensure entitlements include `com.apple.security.temporary-exception.files.home-relative-path.read-write` if notarizing |
+`BrewCleanup` previews with `brew cleanup -n` and runs only after confirmation. Before running it
+re-runs the preview and refuses when nothing is left. Never `--prune=all`, never sudo. It deletes
+directly, not through the Trash, and has no Undo: Homebrew owns those files, and moving kegs behind
+its back would leave stale links.

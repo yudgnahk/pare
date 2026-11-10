@@ -170,7 +170,7 @@ final class UvCacheRuleTests: XCTestCase {
 
         let storeDir = makeTempDir()
         defer { try? FileManager.default.removeItem(at: storeDir) }
-        let engine = CleanupEngine(store: CleanupTransactionStore(directory: storeDir))
+        let engine = CleanupEngineFixture.make(store: CleanupTransactionStore(directory: storeDir))
 
         // Direct clean: hard-blocked because the finding is .advanced.
         let result = try await engine.clean(findings: findings, profileName: "test")
@@ -244,29 +244,24 @@ final class ToolCommandRunnerTests: XCTestCase {
         XCTAssertNil(output)
     }
 
-    func testMissingExecutableIsSkipped() async {
-        let runner = ToolCommandRunner()
-        XCTAssertNil(runner.resolveExecutable(
+    func testMissingExecutableIsSkipped() {
+        XCTAssertNil(ToolSearchPath.firstExecutable(
             named: "definitely-not-a-real-tool-\(UUID().uuidString)",
-            environmentVariables: ["PATH": "/usr/bin:/bin"]
+            environment: ["PATH": "/usr/bin:/bin"]
         ))
-        let output = await runner.captureOutput(
-            of: ToolCacheCommand(
-                executableName: "definitely-not-a-real-tool-\(UUID().uuidString)",
-                arguments: ["cache", "dir"]
-            ),
-            environmentVariables: ["PATH": "/usr/bin:/bin"]
-        )
-        XCTAssertNil(output, "Absent tool must be skipped, never fatal")
     }
 
-    func testResolvesExecutableFromPath() {
-        let runner = ToolCommandRunner()
-        let resolved = runner.resolveExecutable(
-            named: "ls",
-            environmentVariables: ["PATH": "/bin"]
+    func testFindsCandidateOnPath() {
+        XCTAssertEqual(ToolSearchPath.firstExecutable(named: "ls", environment: ["PATH": "/bin"])?.path, "/bin/ls")
+    }
+
+    func testDefaultProviderNeverRunsAnUnconfirmedUv() async {
+        let provider = UvCacheRule.makeDefaultProvider(
+            environmentVariables: ["PATH": "/usr/bin:/bin"],
+            registry: ConfirmedToolRegistry(store: InMemoryConfirmedToolStore())
         )
-        XCTAssertEqual(resolved?.path, "/bin/ls")
+        let output = await provider()
+        XCTAssertNil(output, "unconfirmed uv behaves as absent")
     }
 }
 

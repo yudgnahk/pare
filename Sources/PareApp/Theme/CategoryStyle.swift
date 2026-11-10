@@ -42,7 +42,8 @@ enum CategoryStyle {
             return ThemeSwatch(light: RGBA(0x3F6F8F), dark: RGBA(0x5585A6))
         case .productivityCaches:
             return ThemeSwatch(light: RGBA(0x5E7F1E), dark: RGBA(0x6E9028))
-        case .launchAgents:
+        case .launchAgents, .diagnostics:
+            // Diagnostics reuses the slate tile; its stethoscope symbol keeps the pair unique.
             return ThemeSwatch(light: RGBA(0x5E6B78), dark: RGBA(0x6E7C8A))
         }
     }
@@ -84,6 +85,33 @@ enum CategoryStyle {
             return "briefcase.fill"
         case .launchAgents:
             return "gearshape.2.fill"
+        case .diagnostics:
+            return "stethoscope"
+        }
+    }
+
+    // MARK: - Chip
+
+    /// One-word category chip on owner-browser rows.
+    static func chipLabel(for category: ScanCategory) -> String {
+        switch category {
+        case .userCaches, .productivityCaches: return "Cache"
+        case .browserCaches: return "Browser"
+        case .logsAndCrashReports: return "Logs"
+        case .temporaryFiles: return "Temp"
+        case .developerBuildArtifacts: return "Build"
+        case .developerPackageCaches: return "Packages"
+        case .developerSimulatorCaches: return "Simulator"
+        case .designerCaches: return "Design"
+        case .videoBuilderCaches: return "Video"
+        case .aiToolCaches: return "AI"
+        case .installerFiles: return "Installer"
+        case .applications: return "App"
+        case .projectArtifacts: return "Project"
+        case .deviceBackups: return "Backup"
+        case .launchAgents: return "Agent"
+        // Diagnostics never reach an owner group.
+        case .diagnostics: return category.rawValue
         }
     }
 

@@ -17,13 +17,13 @@ final class AppManagerViewModel: ObservableObject {
         case idle
         case confirming
         case uninstalling
-        case done(trashed: Int, failed: Int)
+        case done(trashed: Int, failed: Int, undoSaved: Bool = true)
         case error(String)
 
         static func == (lhs: UninstallState, rhs: UninstallState) -> Bool {
             switch (lhs, rhs) {
             case (.idle, .idle), (.confirming, .confirming), (.uninstalling, .uninstalling): return true
-            case (.done(let t1, let f1), .done(let t2, let f2)): return t1 == t2 && f1 == f2
+            case (.done(let t1, let f1, let u1), .done(let t2, let f2, let u2)): return t1 == t2 && f1 == f2 && u1 == u2
             case (.error(let a), .error(let b)): return a == b
             default: return false
             }
@@ -50,7 +50,7 @@ final class AppManagerViewModel: ObservableObject {
     // Uninstall flow
     @Published var selectedApp: InstalledApp?
     @Published var pendingLeftovers: [AppLeftover] = []
-    @Published var includeGroupContainers = false
+    @Published var selectedLeftoverIDs: Set<UUID> = []
     @Published var showUninstallSheet = false
 
     // MARK: - Private
@@ -210,34 +210,67 @@ final class AppManagerViewModel: ObservableObject {
 
     func requestUninstall(for app: InstalledApp) {
         selectedApp = app
-        pendingLeftovers = uninstaller.findLeftovers(for: app)
-        includeGroupContainers = false
-        uninstallState = .confirming
+        // Other installed IDs keep e.g. Chrome Canary's files out of Chrome's uninstall.
+        let otherBundleIDs = Set(apps.compactMap(\.bundleID)).subtracting([app.bundleID].compactMap { $0 })
+        pendingLeftovers = uninstaller.findLeftovers(
+            for: app,
+            otherBundleIDs: otherBundleIDs,
+            otherCopyPaths: AppUninstaller.otherCopies(of: app, in: apps)
+        )
+        selectedLeftoverIDs = Set(pendingLeftovers.filter(\.isSelectedByDefault).map(\.id))
+        uninstallState = AppUninstaller.linkRefusal(for: app).map { .error($0.localizedDescription) } ?? .confirming
         showUninstallSheet = true
+    }
+
+    func isLeftoverSelected(_ leftover: AppLeftover) -> Bool {
+        selectedLeftoverIDs.contains(leftover.id)
+    }
+
+    func setLeftover(_ leftover: AppLeftover, selected: Bool) {
+        guard !leftover.isReportOnly else { return }
+        selectedLeftoverIDs = selected
+            ? selectedLeftoverIDs.union([leftover.id])
+            : selectedLeftoverIDs.subtracting([leftover.id])
+    }
+
+    var selectedLeftovers: [AppLeftover] {
+        pendingLeftovers.filter { !$0.isReportOnly && selectedLeftoverIDs.contains($0.id) }
     }
 
     func confirmUninstall() {
         guard let app = selectedApp else { return }
+        let chosen = selectedLeftovers
+        let otherCopies = AppUninstaller.otherCopies(of: app, in: apps)
         uninstallState = .uninstalling
         Task {
-            let (trashed, failed) = await uninstaller.uninstall(
-                app: app,
-                leftovers: pendingLeftovers,
-                includeGroupContainers: includeGroupContainers
-            )
-            self.apps.removeAll { $0.path == app.path }
-            self.uninstallState = .done(trashed: trashed.count, failed: failed.count)
-            self.showUninstallSheet = false
-            self.selectedApp = nil
-            self.pendingLeftovers = []
+            do {
+                let result = try await uninstaller.uninstall(app: app, leftovers: chosen, otherCopyPaths: otherCopies)
+                if result.trashed.contains(app.path) {
+                    self.apps.removeAll { $0.path == app.path }
+                }
+                self.uninstallState = .done(
+                    trashed: result.trashed.count,
+                    failed: result.failed.count + result.skipped.count,
+                    undoSaved: result.undoSaveError == nil
+                )
+                self.resetUninstallFlow()
+            } catch {
+                // Keep the sheet open so the user sees why nothing moved.
+                self.uninstallState = .error(error.localizedDescription)
+            }
         }
     }
 
     func cancelUninstall() {
         uninstallState = .idle
+        resetUninstallFlow()
+    }
+
+    private func resetUninstallFlow() {
         showUninstallSheet = false
         selectedApp = nil
         pendingLeftovers = []
+        selectedLeftoverIDs = []
     }
 
     // MARK: - Private

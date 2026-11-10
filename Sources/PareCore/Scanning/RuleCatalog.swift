@@ -34,6 +34,16 @@ public enum RuleCatalog {
             MobileSyncBackupsRule(),
             ProductivityCachesRule(),
             OrphanedLaunchAgentsRule(),
+            DeletedOpenFilesRule(),
+            SwapUsageRule(),
+            MemoryPressureRule(),
+            LaunchdRestartLoopRule(),
+            TinyFileQueueRule(),
+            CrashLoopRule(),
+            RunawayLogsRule(),
+            StaleUpgradeBackupsRule(),
+            VersionSiblingsRule(),
+            CodexStagingRule(),
         ]
     }
 
@@ -59,7 +69,9 @@ public enum RuleCatalog {
             JavaBuildCachesRule(),
             RustCachesRule(),
             GoCachesRule(),
+            PnpmOldStoreRule(),
             ProjectArtifactsRule(),
+            ProjectDependenciesRule(),
         ] + baseline
     }
 

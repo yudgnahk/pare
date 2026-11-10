@@ -2,6 +2,7 @@ import Foundation
 
 /// Scans `~/Library/LaunchAgents/` for `.plist` files whose declared program binary
 /// no longer exists on disk — left behind by apps that did not clean up on uninstall.
+/// Report-only (`.advanced`): a missing binary may just have moved or live on an unmounted volume.
 ///
 /// Skipped plists:
 ///   - Less than 30 days old (recently installed, binary may still be on its way)
@@ -12,7 +13,7 @@ public struct OrphanedLaunchAgentsRule: ScanRule {
     public let title = "Orphaned Launch Agents"
     public let reason = "Launch agent whose binary no longer exists on disk"
     public let category: ScanCategory = .launchAgents
-    public let riskLevel: RiskLevel = .review
+    public let riskLevel: RiskLevel = .advanced
     public let confidence: Double = 0.85
 
     public init() {}
@@ -54,7 +55,7 @@ public struct OrphanedLaunchAgentsRule: ScanRule {
             findings.append(ScanFinding(
                 category: category,
                 riskLevel: riskLevel,
-                reason: "Missing binary: \(programPath)",
+                reason: "Missing binary: \(programPath) — the binary may have moved or live on an unmounted volume",
                 path: plist.path,
                 sizeBytes: sizeBytes,
                 lastUsed: effectiveDate,

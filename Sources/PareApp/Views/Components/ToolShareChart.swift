@@ -6,6 +6,9 @@ import PareCore
 struct ToolShareChart: View {
     let rollups: [ToolRollup]
     let formatBytes: (Int64) -> String
+    var subtitle = "Share of reclaimable storage by app or tool. Use Browse by category or Largest items to select what to clean."
+    /// Word under the slice count in the donut's hole.
+    var countLabel = "tools"
     @Environment(\.pareDisplayScale) private var scale
 
     var body: some View {
@@ -15,7 +18,7 @@ struct ToolShareChart: View {
                     Text("Where space goes")
                         .font(scale.sectionTitle)
                         .foregroundStyle(AppTheme.textPrimary)
-                    Text("Share of reclaimable storage by app or tool. Use Browse by category or Largest items to select what to clean.")
+                    Text(subtitle)
                         .font(scale.caption)
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -93,7 +96,7 @@ struct ToolShareChart: View {
                 Text("\(rollups.count)")
                     .font(scale.font(18, weight: .bold, design: .rounded))
                     .foregroundStyle(AppTheme.textPrimary)
-                Text("tools")
+                Text(countLabel)
                     .font(scale.micro)
                     .foregroundStyle(AppTheme.textSecondary)
             }

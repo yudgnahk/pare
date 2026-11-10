@@ -9,6 +9,7 @@ scripts/compare-app-a.sh
 scripts/compare-peer.LOCAL.sh
 docs/features/comparison-app-a.LOCAL.md
 docs/features/comparison-app-a.md.local
+docs/features/comparison-app-*.md
 .build/compare/
 
 # Local screenshots / scratch
@@ -16,3 +17,8 @@ image.png
 by_tool.png
 *.LOCAL.md
 .DS_Store
+# Release/orchestration working notes (kept locally, never committed)
+.scratch/
+
+# Local agent tool config (opencode)
+/config.json

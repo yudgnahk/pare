@@ -17,12 +17,23 @@ public enum ScanCategory: String, CaseIterable, Sendable {
     case deviceBackups = "Device Backups"
     case productivityCaches = "Productivity Caches"
     case launchAgents = "Launch Agents"
+    /// Explain-only findings (swap, deleted-but-open files): reported, never reclaimable or cleanable.
+    case diagnostics = "Diagnostics"
 }
 
 public enum RiskLevel: String, Sendable {
     case safe
     case review
     case advanced
+
+    /// Ordering used when overlapping findings must agree on one risk level.
+    var severity: Int {
+        switch self {
+        case .safe: return 0
+        case .review: return 1
+        case .advanced: return 2
+        }
+    }
 }
 
 public struct ScannedFile: Sendable {
@@ -46,6 +57,9 @@ public struct ScanFinding: Sendable {
     public let sizeBytes: Int64
     public let lastUsed: Date?
     public let confidence: Double
+    public let annotations: [FindingAnnotation]
+    /// False when sizing stopped at its deadline: `sizeBytes` is then a lower bound, never a guess.
+    public let isSizeComplete: Bool
 
     public init(
         category: ScanCategory,
@@ -54,7 +68,9 @@ public struct ScanFinding: Sendable {
         path: String,
         sizeBytes: Int64,
         lastUsed: Date?,
-        confidence: Double
+        confidence: Double,
+        annotations: [FindingAnnotation] = [],
+        isSizeComplete: Bool = true
     ) {
         self.category = category
         self.riskLevel = riskLevel
@@ -63,6 +79,29 @@ public struct ScanFinding: Sendable {
         self.sizeBytes = sizeBytes
         self.lastUsed = lastUsed
         self.confidence = confidence
+        self.annotations = annotations
+        self.isSizeComplete = isSizeComplete
+    }
+}
+
+extension ScanFinding {
+    /// A copy with the given fields replaced; every other field, `isSizeComplete` included, carries over.
+    public func copy(
+        riskLevel: RiskLevel? = nil,
+        reason: String? = nil,
+        annotations: [FindingAnnotation]? = nil
+    ) -> ScanFinding {
+        ScanFinding(
+            category: category,
+            riskLevel: riskLevel ?? self.riskLevel,
+            reason: reason ?? self.reason,
+            path: path,
+            sizeBytes: sizeBytes,
+            lastUsed: lastUsed,
+            confidence: confidence,
+            annotations: annotations ?? self.annotations,
+            isSizeComplete: isSizeComplete
+        )
     }
 }
 
@@ -91,6 +130,19 @@ public struct ScanRuleFailure: Sendable {
     }
 }
 
+/// A rule that stopped early: its findings are partial, not a full picture.
+public struct ScanIncompleteRule: Sendable {
+    public let ruleID: String
+    public let ruleTitle: String
+    public let message: String
+
+    public init(ruleID: String, ruleTitle: String, message: String) {
+        self.ruleID = ruleID
+        self.ruleTitle = ruleTitle
+        self.message = message
+    }
+}
+
 public struct ScanReport: Sendable {
     public let findings: [ScanFinding]
     public let summaries: [ScanCategorySummary]
@@ -99,21 +151,34 @@ public struct ScanReport: Sendable {
     /// Distinct locations the traversal could not read — permission gaps,
     /// typically missing Full Disk Access (R1.3). Sorted for stable display.
     public let unreadableLocations: [String]
+    /// Rules that returned partial findings because they stopped early.
+    public let incompleteRules: [ScanIncompleteRule]
 
     public init(
         findings: [ScanFinding],
         summaries: [ScanCategorySummary],
         ruleFailures: [ScanRuleFailure] = [],
-        unreadableLocations: [String] = []
+        unreadableLocations: [String] = [],
+        incompleteRules: [ScanIncompleteRule] = []
     ) {
         self.findings = findings
         self.summaries = summaries
         self.ruleFailures = ruleFailures
         self.unreadableLocations = unreadableLocations
+        self.incompleteRules = incompleteRules
     }
 
     /// Sum of category reclaimable totals. Excludes `.advanced` findings (detect-only);
     /// those remain in `findings` but are not counted as reclaimable by `ScanRunner`.
+    /// True when a reclaimable finding's size is a lower bound, so the total is "at least".
+    public var hasPartialSizes: Bool {
+        Self.hasPartialSizes(in: findings)
+    }
+
+    public static func hasPartialSizes(in findings: [ScanFinding]) -> Bool {
+        findings.contains { !$0.isSizeComplete && $0.riskLevel != .advanced }
+    }
+
     public var totalReclaimableBytes: Int64 {
         summaries.reduce(0) { $0 + $1.reclaimableBytes }
     }

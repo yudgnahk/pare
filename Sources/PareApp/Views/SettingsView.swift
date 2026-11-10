@@ -8,6 +8,7 @@ struct SettingsView: View {
     @StateObject private var exclusionVM = ExclusionListViewModel()
     /// Shared FDA state machine (same implementation the scan dashboard uses).
     @StateObject private var permissions = PermissionCoachingModel()
+    @StateObject private var developerTools = DeveloperToolsViewModel()
     @State private var showExclusions = false
     @State private var showProjectPaths = false
 
@@ -38,6 +39,8 @@ struct SettingsView: View {
                         actionTitle: "Manage…",
                         action: { showProjectPaths = true }
                     )
+
+                    DeveloperToolsCard(model: developerTools)
 
                     GlassCard {
                         VStack(alignment: .leading, spacing: 14) {

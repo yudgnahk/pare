@@ -12,32 +12,24 @@ final class ScanDashboardViewModel: ObservableObject {
         case success
     }
 
-    /// Fully prepared scan UI payload. Built off the main actor so large scans
-    /// do not freeze the app at finalize (macOS “Not Responding”).
-    private struct PreparedScanResults: Sendable {
-        let findings: [ScanFinding]
-        let findingsByPath: [String: ScanFinding]
-        let aggregate: FolderAggregate
-        let summaries: [SummaryItem]
-        let sortedTopFindings: [FindingItem]
-        let toolRollups: [ToolRollup]
-        let candidateStats: CandidateStats
-        let totalReclaimableBytes: Int64
-        /// Human-readable scan warnings (rule failures, unreadable locations — R1.2/R1.3).
-        let scanWarnings: [String]
-        /// Rendered paths that existed on disk at scan finish (reveal button state).
-        /// Precomputed here so SwiftUI row bodies never call FileManager.
-        let revealablePaths: Set<String>
-        /// Rendered top-finding paths that are directories (folder icon state).
-        let folderFindingPaths: Set<String>
-    }
-
     // MARK: - Published scan state
 
     @Published private(set) var state: ScanState = .idle
     @Published private(set) var totalReclaimableBytes: Int64 = 0
+    /// The total is "at least" this much: some folder sizes stopped at their deadline.
+    @Published private(set) var isTotalSizePartial = false
+    /// "Grew since last scan: …" for the results summary; nil on the first scan or when nothing grew.
+    @Published private(set) var growthSinceLastScan: String?
     /// Non-empty when the last scan had rule failures or unreadable locations (R1.2/R1.3).
     @Published private(set) var scanWarnings: [String] = []
+    /// Cache activity by finding path, filled after results appear; hot rows the user has not clicked get unticked.
+    @Published private(set) var cacheActivity: [String: CacheActivityLabel] = [:]
+    /// True from results appearing until the labels land; clean actions wait so no hot row slips through.
+    @Published private(set) var isLabelingCacheActivity = false
+    /// Newest-edit label per project root, filled with the cache labels; active projects' rows start unticked.
+    @Published private(set) var projectActivity: [String: ProjectActivityLabel] = [:]
+    /// Finding paths held out because their project was edited recently or its activity is unknown.
+    private(set) var heldProjectPaths: Set<String> = []
     @Published private(set) var summaries: [SummaryItem] = []
     @Published private(set) var topFindings: [FindingItem] = []
     @Published private(set) var perToolRollups: [ToolRollup] = []
@@ -50,11 +42,16 @@ final class ScanDashboardViewModel: ObservableObject {
     @Published private(set) var categoryFolderRows: [ScanCategory: [CategoryFolderRow]] = [:]
     /// Tool/app groups under a category (e.g. Developer Package Caches → JetBrains, Package Managers).
     @Published private(set) var categoryToolGroups: [ScanCategory: [CategoryToolGroup]] = [:]
+    /// Every reclaimable folder grouped by owner; reuses the category rows' ids and selection.
+    @Published private(set) var ownerSections: [OwnerSection] = []
+    @Published private(set) var browseMode: BrowseMode
     /// Scan progress for 3-step hero (1...3) and status line.
     @Published private(set) var scanStep: Int = 1
     @Published private(set) var scanStepTitle: String = ""
     @Published private(set) var scanRulesCompleted: Int = 0
     @Published private(set) var scanRulesTotal: Int = 0
+    /// True between the last rule finishing and results being applied.
+    @Published private(set) var isFinalizingScan = false
     /// After a successful scan with ~0 reclaimable bytes, coach the user on next steps.
     @Published private(set) var showEmptyScanCoaching: Bool = false
     /// Empty-scan card presentation when `showEmptyScanCoaching` is true.
@@ -76,16 +73,44 @@ final class ScanDashboardViewModel: ObservableObject {
     private var findingsByPath: [String: ScanFinding] = [:]
     /// Private path expansion map — never exposed to SwiftUI views.
     private var pathsByFolderId: [String: [String]] = [:]
+    /// Owners resolved at scan finish, replayed when an exclusion rebuilds the groups.
+    private var ownerByFolderPath: [String: FolderOwner] = [:]
+    private let browseModes: BrowseModeStore
+    private let exclusionStore: ExclusionStore
     /// Precomputed at scan finish (background pass) — see `revealabilityIndex`.
     private var revealablePaths: Set<String> = []
     private var folderFindingPaths: Set<String> = []
     private let scanCache = ScanMetadataCache()
     /// The running scan task — kept so we can cancel it on demand.
     private var scanTask: Task<Void, Never>?
+    private let growthStore: GrowthSnapshotStore
+    private let cacheActivityLabeler: @Sendable ([ScanFinding]) async -> [String: CacheActivityLabel]
+    private let projectActivityLabeler: @Sendable ([String]) async -> [String: ProjectActivityLabel]
+    /// Bumped per scan so growth lines or labels computed for an older scan cannot land after a newer one started.
+    private var scanGeneration = 0
     private var cancellables: Set<AnyCancellable> = []
 
-    init(cleanup: CleanupCoordinator = CleanupCoordinator()) {
+    init(
+        cleanup: CleanupCoordinator = CleanupCoordinator(),
+        growthStore: GrowthSnapshotStore = GrowthSnapshotStore(),
+        cacheActivityLabeler: @escaping @Sendable ([ScanFinding]) async -> [String: CacheActivityLabel] = {
+            CacheActivityLabeler.labels(for: $0)
+        },
+        projectActivityLabeler: @escaping @Sendable ([String]) async -> [String: ProjectActivityLabel] = {
+            ProjectActivityLabeler.labels(
+                forRoots: $0, homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+            )
+        },
+        browseModes: BrowseModeStore = BrowseModeStore(),
+        exclusionStore: ExclusionStore = .shared
+    ) {
         self.cleanup = cleanup
+        self.growthStore = growthStore
+        self.cacheActivityLabeler = cacheActivityLabeler
+        self.projectActivityLabeler = projectActivityLabeler
+        self.browseModes = browseModes
+        self.exclusionStore = exclusionStore
+        self.browseMode = SmartScanFeatures.ownerView ? browseModes.mode : .categories
         // Child observable objects publish through the dashboard so existing
         // `@ObservedObject var viewModel` views keep re-rendering.
         permissions.objectWillChange
@@ -103,16 +128,30 @@ final class ScanDashboardViewModel: ObservableObject {
         state == .scanning
     }
 
+    static let finalizingProgressCap = 0.95
+    static let finalizingTitle = "Preparing results…"
+
+    /// Rule-count progress scaled to the finalize cap so the ring never steps back.
+    var scanProgress: Double {
+        guard scanRulesTotal > 0 else { return 0 }
+        return Double(scanRulesCompleted) / Double(scanRulesTotal) * Self.finalizingProgressCap
+    }
+
     var cleanupState: CleanupCoordinator.CleanupState { cleanup.state }
 
     /// Whether clean actions may be requested; the request methods silently ignore clicks otherwise.
     var canRequestCleanup: Bool {
-        Self.cleanupActionsEnabled(state: state, isCleaning: cleanup.isCleaning, isUndoing: cleanup.isUndoing)
+        Self.cleanupActionsEnabled(
+            state: state, isCleaning: cleanup.isCleaning, isUndoing: cleanup.isUndoing,
+            isLabelingCacheActivity: isLabelingCacheActivity
+        )
     }
 
-    /// Mirrors the `state == .success` guard in `requestQuickClean`/`requestDeepClean`/`requestCleanSelected`.
-    static func cleanupActionsEnabled(state: ScanState, isCleaning: Bool, isUndoing: Bool) -> Bool {
-        state == .success && !isCleaning && !isUndoing
+    /// Mirrors the guard in `requestQuickClean`/`requestDeepClean`/`requestCleanSelected`.
+    static func cleanupActionsEnabled(
+        state: ScanState, isCleaning: Bool, isUndoing: Bool, isLabelingCacheActivity: Bool
+    ) -> Bool {
+        state == .success && !isCleaning && !isUndoing && !isLabelingCacheActivity
     }
     var isCleaning: Bool { cleanup.isCleaning }
     var isUndoing: Bool { cleanup.isUndoing }
@@ -194,14 +233,28 @@ final class ScanDashboardViewModel: ObservableObject {
         selection.folderSelectionState(row)
     }
 
-    /// Toggle every folder under a tool group (e.g. all JetBrains package-cache folders).
+    /// Toggles the group's SAFE folders only; review rows stay one click each.
     func toggleToolGroup(_ group: CategoryToolGroup) {
         guard group.isSelectable else { return }
-        selection.toggleFolderIds(group.folderIds)
+        selection.toggleFolderIds(group.safeFolderIds)
     }
 
+    /// Same rule for owner groups: safe rows only, hot rows left to their own checkbox.
+    func toggleOwnerGroup(_ group: OwnerGroup) {
+        guard group.isSelectable else { return }
+        selection.toggleFolderIds(group.safeFolderIds)
+    }
+
+    /// Changes only how results are grouped; selection and totals stay as they are.
+    func setBrowseMode(_ mode: BrowseMode) {
+        guard SmartScanFeatures.ownerView, mode != browseMode else { return }
+        browseMode = mode
+        browseModes.mode = mode
+    }
+
+    /// Reads the safe rows only, so a hand-ticked review row never flips the group checkbox.
     func toolGroupSelectionState(_ group: CategoryToolGroup) -> CategorySelectState {
-        selection.selectionState(of: group.folderIds)
+        selection.selectionState(of: group.safeFolderIds)
     }
 
     func selectAllSafe() {
@@ -243,8 +296,16 @@ final class ScanDashboardViewModel: ObservableObject {
     }
 
     func toggleToolGroupExpanded(_ group: CategoryToolGroup) {
-        if !selection.expandedToolGroups.insert(group.id).inserted {
-            selection.expandedToolGroups.remove(group.id)
+        toggleExpandedGroup(group.id)
+    }
+
+    func toggleOwnerGroupExpanded(_ group: OwnerGroup) {
+        toggleExpandedGroup(group.id)
+    }
+
+    private func toggleExpandedGroup(_ id: String) {
+        if !selection.expandedToolGroups.insert(id).inserted {
+            selection.expandedToolGroups.remove(id)
         }
     }
 
@@ -256,15 +317,14 @@ final class ScanDashboardViewModel: ObservableObject {
 
     /// Expand folder ids → findings only when cleaning (not during scroll/UI).
     private func selectedFindingsForClean() -> [ScanFinding] {
-        var pathSet = Set<String>()
-        pathSet.reserveCapacity(min(selectedCandidatesCount, 65_536))
-        for id in selection.selectedFolderIds {
-            if let paths = pathsByFolderId[id] {
-                pathSet.formUnion(paths)
-            }
-        }
-        pathSet.formUnion(selection.selectedPaths)
-        return pathSet.compactMap { findingsByPath[$0] }.filter { $0.riskLevel != .advanced }
+        selection.selectedFindingPaths(pathsByFolderId: pathsByFolderId)
+            .compactMap { findingsByPath[$0] }
+            .filter { $0.riskLevel != .advanced }
+    }
+
+    /// Quick and Deep Clean ignore the selection but still leave hot rows to their own checkbox.
+    private var bulkCleanFindings: [ScanFinding] {
+        latestFindings.filter { !selection.hotPaths.contains($0.path) }
     }
 
     // MARK: - Category browser (folder-only) + largest items
@@ -330,13 +390,16 @@ final class ScanDashboardViewModel: ObservableObject {
     // MARK: - Scan lifecycle
 
     func cancelScan() {
+        scanGeneration += 1
         scanTask?.cancel()
         scanTask = nil
+        isLabelingCacheActivity = false
         state = .idle
         scanRulesCompleted = 0
         scanRulesTotal = 0
         scanStepTitle = ""
         scanStep = 1
+        isFinalizingScan = false
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
         refreshPermissionCoaching()
@@ -389,6 +452,10 @@ final class ScanDashboardViewModel: ObservableObject {
     func runScan(forceRescan: Bool = false) {
         guard !isScanning else { return }
 
+        scanGeneration += 1
+        let generation = scanGeneration
+        growthSinceLastScan = nil
+        isLabelingCacheActivity = false
         state = .scanning
         showEmptyScanCoaching = false
         emptyScanCoachingStyle = .genuinelyEmpty
@@ -396,29 +463,25 @@ final class ScanDashboardViewModel: ObservableObject {
         scanStepTitle = "Scanning system & app caches…"
         scanRulesCompleted = 0
         scanRulesTotal = 0
+        isFinalizingScan = false
         let startedAt = Date()
         let cache = scanCache
 
         scanTask = Task(priority: .userInitiated) {
+            if forceRescan {
+                await ProjectRootDiscovery.shared.markStale()
+            }
+            let installedApps = SmartScanFeatures.ownerView ? Self.startInstalledAppsLoad() : nil
+            defer { if Task.isCancelled { installedApps?.cancel() } }
             let rules = RuleCatalog.all
-            let exclusionList = (try? ExclusionStore.shared.load()) ?? .empty
-            let runner = ScanRunner(exclusionList: exclusionList, cache: cache)
+            let exclusionList = (try? exclusionStore.load()) ?? .empty
+            let runner = ScanRunner(exclusionList: exclusionList, cache: cache, regrowth: RegrowthDetector())
             let totalRules = rules.count
             await MainActor.run { self.scanRulesTotal = totalRules }
 
             let report = await runner.run(rules: rules, forceRescan: forceRescan) { completed, total, title in
                 Task { @MainActor in
-                    self.scanRulesCompleted = completed
-                    self.scanRulesTotal = total
-                    self.scanStepTitle = title
-                    let fraction = Double(completed) / Double(max(total, 1))
-                    if fraction < 0.34 {
-                        self.scanStep = 1
-                    } else if fraction < 0.67 {
-                        self.scanStep = 2
-                    } else {
-                        self.scanStep = 3
-                    }
+                    self.applyRuleProgress(completed: completed, total: total, title: title)
                 }
             }
 
@@ -430,87 +493,121 @@ final class ScanDashboardViewModel: ObservableObject {
             // attribution) must run in a detached task or the app beachballs with
             // “Not Responding” while still completing correctly afterward.
             let finishedAt = Date()
+            beginFinalizingScan()
+            let owners = await Self.gatherOwnerInputs(installedApps)
             let prepared = await Task.detached(priority: .userInitiated) {
-                Self.prepareScanResults(from: report)
+                Self.prepareScanResults(from: report, owners: owners)
             }.value
 
             guard !Task.isCancelled else { return }
 
             applyPreparedScanResults(prepared, startedAt: startedAt, finishedAt: finishedAt)
+
+            await publishPostScanDetails(report: report, generation: generation)
         }
     }
 
-    /// Pure post-scan aggregation — safe to call from a background task.
-    nonisolated private static func prepareScanResults(from report: ScanReport) -> PreparedScanResults {
-        let findings = report.findings
-        let aggregate = FolderRollup.buildAggregate(from: findings)
-        let pathIndex = Dictionary(findings.map { ($0.path, $0) }, uniquingKeysWith: { _, last in last })
-        let summaries: [SummaryItem] = report.summaries.map { summary in
-            SummaryItem(
-                summary: summary,
-                folderCount: aggregate.rowsByCategory[summary.category]?.count ?? 0
-            )
+    /// Growth recording and cache and project labeling run side by side; each lands only while its scan is current.
+    /// The clean hold lasts until both label sets are applied.
+    func publishPostScanDetails(report: ScanReport, generation: Int) async {
+        cacheActivity = [:]
+        projectActivity = [:]
+        isLabelingCacheActivity = true
+        let store = growthStore
+        // Only the rows "Largest items" shows can display a label.
+        let shown = largestItems.compactMap { findingsByPath[$0.path] }
+        let growthJob = Task.detached(priority: .utility) { Self.recordGrowth(report: report, store: store) }
+        let labeler = cacheActivityLabeler
+        let activityJob = Task.detached(priority: .utility) { await labeler(shown) }
+        let projectLabeler = projectActivityLabeler
+        let roots = projectRootsForActivity()
+        let projectJob = Task.detached(priority: .utility) { await projectLabeler(roots) }
+
+        let activity = await activityJob.value
+        let projects = await projectJob.value
+        if !Task.isCancelled {
+            applyProjectActivity(projects, generation: generation)
+            applyCacheActivity(activity, generation: generation)
         }
-        let sortedTopFindings = largestItemsSorted(from: findings, limit: 40)
-        let (revealablePaths, folderFindingPaths) = revealabilityIndex(
-            aggregate: aggregate,
-            topFindings: sortedTopFindings
-        )
-        return PreparedScanResults(
-            findings: findings,
-            findingsByPath: pathIndex,
-            aggregate: aggregate,
-            summaries: summaries,
-            sortedTopFindings: sortedTopFindings,
-            toolRollups: FolderRollup.makeToolRollups(from: findings),
-            candidateStats: CandidateStats.compute(from: findings),
-            totalReclaimableBytes: report.totalReclaimableBytes,
-            scanWarnings: makeScanWarnings(from: report),
-            revealablePaths: revealablePaths,
-            folderFindingPaths: folderFindingPaths
-        )
+        if generation == scanGeneration { isLabelingCacheActivity = false }
+        let growth = await growthJob.value
+        if generation == scanGeneration, !Task.isCancelled { growthSinceLastScan = growth }
     }
 
-    /// Builds user-facing warnings from the report's error channels (R1.2/R1.3).
-    nonisolated private static func makeScanWarnings(from report: ScanReport) -> [String] {
-        var warnings: [String] = []
-        if !report.unreadableLocations.isEmpty {
-            let count = report.unreadableLocations.count
-            warnings.append(
-                "\(count) location\(count == 1 ? "" : "s") could not be read — grant Full Disk Access to scan everything."
-            )
-        }
-        for failure in report.ruleFailures {
-            warnings.append("\(failure.ruleTitle) failed: \(failure.message)")
-        }
-        return warnings
+    /// Labels from an older scan are dropped so they cannot change a newer scan's selection.
+    func applyCacheActivity(_ labels: [String: CacheActivityLabel], generation: Int) {
+        guard generation == scanGeneration else { return }
+        isLabelingCacheActivity = false
+        cacheActivity = labels
+        selection.applyHotPaths(Set(labels.filter { $0.value.activity == .hot }.keys))
+        candidateStats = CandidateStats.compute(from: bulkCleanFindings)
     }
 
-    /// Stats every rendered path once, off the main actor, so row bodies can use
-    /// set lookups instead of per-render FileManager calls. Bounded work: folder
-    /// rows are capped per category and top findings are capped at 40.
-    nonisolated private static func revealabilityIndex(
-        aggregate: FolderAggregate,
-        topFindings: [FindingItem]
-    ) -> (revealable: Set<String>, folders: Set<String>) {
-        let fm = FileManager.default
-        var revealable: Set<String> = []
-        var folders: Set<String> = []
-
-        for rows in aggregate.rowsByCategory.values {
-            for row in rows where fm.fileExists(atPath: row.folderPath) {
-                revealable.insert(row.folderPath)
+    /// Unticks artifact rows of projects edited recently; a project with no label counts as active.
+    func applyProjectActivity(_ labels: [String: ProjectActivityLabel], generation: Int, now: Date = Date()) {
+        guard generation == scanGeneration else { return }
+        projectActivity = labels
+        var held: Set<String> = []
+        for group in ownerSections.flatMap(\.groups) where group.owner.kind == .project {
+            let isActive = group.owner.projectRoot.flatMap { labels[$0] }?.isActive(now: now) ?? true
+            guard isActive else { continue }
+            for id in group.folderIds {
+                held.formUnion((pathsByFolderId[id] ?? []).filter { selection.isSelectable(path: $0) })
             }
         }
-        for item in topFindings {
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: item.path, isDirectory: &isDir) else { continue }
-            revealable.insert(item.path)
-            if isDir.boolValue {
-                folders.insert(item.path)
-            }
+        heldProjectPaths = held
+        selection.applyHotPaths(held)
+        candidateStats = CandidateStats.compute(from: bulkCleanFindings)
+    }
+
+    var currentScanGeneration: Int { scanGeneration }
+
+    func cacheActivityText(path: String) -> String? {
+        cacheActivity[path]?.text(now: Date())
+    }
+
+    /// Compares with the last complete snapshot, saves this scan's, and returns the top growth as one line.
+    nonisolated private static func recordGrowth(report: ScanReport, store: GrowthSnapshotStore) -> String? {
+        let current = GrowthSnapshot(report: report)
+        let previous = store.latestComplete()
+        do {
+            try store.save(current)
+        } catch {
+            NSLog("Saving growth snapshot failed: \(error.localizedDescription)")
         }
-        return (revealable, folders)
+        guard let previous else { return nil }
+        let delta = GrowthDelta.compute(previous: previous, current: current)
+        let pathNames = Dictionary(
+            report.findings.map { (GrowthSnapshot.key($0.path), URL(fileURLWithPath: $0.path).lastPathComponent) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let top = (delta.paths.isEmpty ? delta.categories : delta.paths).prefix(5).map { entry in
+            let size = ScanReportPresenter.formatBytes(entry.grewBy)
+            return "\(pathNames[entry.key] ?? entry.key) " + (entry.isNew ? "new \(size)" : "+\(size)")
+        }
+        return top.isEmpty ? nil : "Grew since last scan: " + top.joined(separator: ", ")
+    }
+
+    /// Rule callbacks hop to the main actor unstructured, so one can land after finalize began; drop it.
+    func applyRuleProgress(completed: Int, total: Int, title: String) {
+        guard isScanning, !isFinalizingScan else { return }
+        scanRulesCompleted = completed
+        scanRulesTotal = total
+        scanStepTitle = title
+        let fraction = Double(completed) / Double(max(total, 1))
+        if fraction < 0.34 {
+            scanStep = 1
+        } else if fraction < 0.67 {
+            scanStep = 2
+        } else {
+            scanStep = 3
+        }
+    }
+
+    func beginFinalizingScan() {
+        guard isScanning else { return }
+        isFinalizingScan = true
+        scanStepTitle = Self.finalizingTitle
     }
 
     private func applyPreparedScanResults(
@@ -526,7 +623,12 @@ final class ScanDashboardViewModel: ObservableObject {
         folderFindingPaths = prepared.folderFindingPaths
         categoryFolderRows = prepared.aggregate.rowsByCategory
         categoryToolGroups = prepared.aggregate.toolGroupsByCategory
+        ownerSections = prepared.ownerSections
+        ownerByFolderPath = prepared.ownerByFolderPath
+        projectActivity = [:]
+        heldProjectPaths = []
         totalReclaimableBytes = prepared.totalReclaimableBytes
+        isTotalSizePartial = prepared.isTotalSizePartial
         scanWarnings = prepared.scanWarnings
         summaries = prepared.summaries
         topFindings = prepared.sortedTopFindings
@@ -543,6 +645,7 @@ final class ScanDashboardViewModel: ObservableObject {
         revealFeedback = nil
         scanStep = 3
         scanStepTitle = "Scan complete"
+        isFinalizingScan = false
         state = .success
         // Snapshot FDA at scan finish so later grants can show "rescan needed"
         // instead of a misleading clean-disk empty state.
@@ -577,19 +680,21 @@ final class ScanDashboardViewModel: ObservableObject {
     // MARK: - Cleanup actions
 
     func requestQuickClean() {
-        guard !latestFindings.isEmpty, state == .success else { return }
+        guard !latestFindings.isEmpty, canRequestScanCleanup else { return }
         cleanup.request(.quick)
     }
 
     func requestDeepClean() {
-        guard !latestFindings.isEmpty, state == .success else { return }
+        guard !latestFindings.isEmpty, canRequestScanCleanup else { return }
         cleanup.request(.deep)
     }
 
     func requestCleanSelected() {
-        guard selectedCandidatesCount > 0, state == .success else { return }
+        guard selectedCandidatesCount > 0, canRequestScanCleanup else { return }
         cleanup.request(.selected)
     }
+
+    private var canRequestScanCleanup: Bool { state == .success && !isLabelingCacheActivity }
 
     /// One confirm path for all three cleanup kinds (was three duplicate bodies).
     func confirmPendingCleanup() {
@@ -598,17 +703,22 @@ final class ScanDashboardViewModel: ObservableObject {
             cleanup.pending = nil
             return
         }
-        let findings: [ScanFinding]
+        guard let findings = findingsToClean(for: kind) else { return }
+        cleanup.confirm(kind, findings: findings)
+    }
+
+    /// What `confirmPendingCleanup` sends the engine; nil while labels are pending, so no hot row is sent unlabeled.
+    func findingsToClean(for kind: PendingCleanup) -> [ScanFinding]? {
+        guard !isLabelingCacheActivity else { return nil }
         switch kind {
         case .quick, .deep:
-            findings = latestFindings
+            return bulkCleanFindings
         case .selected:
             // Expand folder ids → paths only here (background-friendly), not during UI scroll.
-            findings = selectedFindingsForClean()
+            return selectedFindingsForClean()
         case .diskReview:
-            return
+            return nil
         }
-        cleanup.confirm(kind, findings: findings)
     }
 
     func cancelPendingCleanup() {
@@ -628,17 +738,23 @@ final class ScanDashboardViewModel: ObservableObject {
 
     func exclude(path: String) {
         let entry = ExclusionEntry(path: path)
-        try? ExclusionStore.shared.addEntry(entry)
+        try? exclusionStore.addEntry(entry)
         // Capture the finding before removal so totals can be adjusted (R0.6).
         let excluded = findingsByPath[path] ?? latestFindings.first { $0.path == path }
         latestFindings.removeAll { $0.path == path }
+        isTotalSizePartial = ScanReport.hasPartialSizes(in: latestFindings)
         findingsByPath.removeValue(forKey: path)
         topFindings.removeAll { $0.path == path }
         // Rebuild private maps + lightweight rows (not on scroll hot path).
-        let aggregate = FolderRollup.buildAggregate(from: latestFindings)
+        let resolver = SmartScanFeatures.ownerView ? CachedOwnerResolver(owners: ownerByFolderPath) : nil
+        let owned = Self.ownerResults(
+            aggregate: FolderRollup.buildAggregate(from: latestFindings), findings: latestFindings, resolver: resolver
+        )
+        let aggregate = owned.aggregate
         pathsByFolderId = aggregate.pathsByFolderId
         categoryFolderRows = aggregate.rowsByCategory
         categoryToolGroups = aggregate.toolGroupsByCategory
+        ownerSections = owned.sections
         // Only the excluded finding's category loses bytes/count; `.advanced` findings
         // were never counted as reclaimable, so they don't reduce totals (R0.6).
         let excludedBytes = excluded?.sizeBytes ?? 0
@@ -671,14 +787,24 @@ final class ScanDashboardViewModel: ObservableObject {
             findingsByPath: findingsByPath,
             resetToSafeSelection: false
         )
-        candidateStats = CandidateStats.compute(from: latestFindings)
-        perToolRollups = FolderRollup.makeToolRollups(from: latestFindings)
+        candidateStats = CandidateStats.compute(from: bulkCleanFindings)
+        perToolRollups = owned.toolRollups
     }
 
     // MARK: - Formatting
 
     func formattedBytes(_ bytes: Int64) -> String {
         ScanReportPresenter.formatBytes(bytes)
+    }
+
+    /// "≥ X" or "size unknown" when a member finding's sizing stopped at its deadline.
+    func formattedFolderSize(_ row: CategoryFolderRow) -> String {
+        ScanReportPresenter.formatFindingSize(bytes: row.totalBytes, isComplete: !row.hasPartialSize)
+    }
+
+    /// "≥ X" or "size unknown" when the finding's sizing stopped at its deadline.
+    func formattedFindingSize(_ finding: FindingItem) -> String {
+        ScanReportPresenter.formatFindingSize(bytes: finding.sizeBytes, isComplete: finding.isSizeComplete)
     }
 
     func formattedDate(_ date: Date?) -> String {
@@ -700,10 +826,29 @@ final class ScanDashboardViewModel: ObservableObject {
 
 extension ScanDashboardViewModel {
     /// Loads a canned report through the real results pipeline so snapshots show production layout.
-    func applySnapshotResults(_ report: ScanReport, duration: TimeInterval = 14.2) {
-        let prepared = Self.prepareScanResults(from: report)
+    func applySnapshotResults(
+        _ report: ScanReport,
+        cacheActivity: [String: CacheActivityLabel] = [:],
+        projectActivity: [String: ProjectActivityLabel] = [:],
+        duration: TimeInterval = 14.2,
+        owners: OwnerInputs = OwnerInputs()
+    ) {
+        let prepared = Self.prepareScanResults(from: report, owners: SmartScanFeatures.ownerView ? owners : nil)
         let finishedAt = Date()
         applyPreparedScanResults(prepared, startedAt: finishedAt.addingTimeInterval(-duration), finishedAt: finishedAt)
+        if !projectActivity.isEmpty { applyProjectActivity(projectActivity, generation: scanGeneration) }
+        if !cacheActivity.isEmpty { applyCacheActivity(cacheActivity, generation: scanGeneration) }
+    }
+
+    /// Holds results in the window between the scan finishing and its labels landing.
+    func applySnapshotLabelingCacheActivity() {
+        isLabelingCacheActivity = true
+    }
+
+    /// Freezes the hero in its finalize state (all rules done, results being prepared).
+    func applySnapshotFinalizing(total: Int) {
+        applySnapshotScanning(step: 3, completed: total, total: total, title: "")
+        beginFinalizingScan()
     }
 
     /// Freezes the hero in its scanning state without starting a real scan.

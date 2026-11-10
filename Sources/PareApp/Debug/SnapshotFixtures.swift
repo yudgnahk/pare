@@ -6,6 +6,7 @@ import PareCore
 enum SnapshotFixtures {
     static let root = "/nonexistent/pare-fixture"
     private static let home = root + "/home"
+    static let projectsRoot = home + "/Code"
     private static let trash = root + "/Trash"
     private static let gb: Int64 = 1_073_741_824
     private static let mb: Int64 = 1_048_576
@@ -34,6 +35,29 @@ enum SnapshotFixtures {
         return ScanReport(findings: findings, summaries: summaries)
     }
 
+    /// One hot row (npm, written today) so results show it unticked, plus a cold and a warm label.
+    static var cacheActivity: [String: CacheActivityLabel] {
+        let now = Date()
+        return [
+            home + "/.npm/_cacache": CacheActivityLabel(activity: .hot, newestEntryDate: now.addingTimeInterval(-3_600)),
+            home + "/Library/Caches/Homebrew": CacheActivityLabel(activity: .cold, newestEntryDate: now.addingTimeInterval(-86_400 * 58)),
+            home + "/Library/Caches/com.spotify.client": CacheActivityLabel(activity: .warm, newestEntryDate: now.addingTimeInterval(-86_400 * 9)),
+        ]
+    }
+
+    /// `shop` edited 4 hours ago (its builds start unticked), `blog` idle for 9 days; no real files are read.
+    static var projectActivity: [String: ProjectActivityLabel] {
+        let now = Date()
+        let edits = [
+            projectsRoot + "/shop": now.addingTimeInterval(-4 * 3_600),
+            projectsRoot + "/blog": now.addingTimeInterval(-86_400 * 9),
+        ]
+        return ProjectActivityLabeler.labels(
+            forRoots: Array(edits.keys), homeDirectory: URL(fileURLWithPath: home),
+            now: { now }, probe: { root, _ in edits[root.path] }
+        )
+    }
+
     private struct Row {
         let category: ScanCategory
         let risk: RiskLevel
@@ -52,10 +76,35 @@ enum SnapshotFixtures {
         Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.spotify.client", bytes: 890 * mb),
         Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.tinyspeck.slackmacgap", bytes: 540 * mb),
         Row(category: .logsAndCrashReports, risk: .safe, path: "/Library/Logs/DiagnosticReports", bytes: 260 * mb),
-        Row(category: .aiToolCaches, risk: .safe, path: "/.cache/huggingface/hub", bytes: 2 * gb + 50 * mb),
+        Row(category: .aiToolCaches, risk: .safe, path: "/.cache/opencode", bytes: 2 * gb + 50 * mb),
         Row(category: .installerFiles, risk: .review, path: "/Downloads/Xcode_16.dmg", bytes: 3 * gb + 700 * mb),
-        Row(category: .temporaryFiles, risk: .safe, path: "/Library/Caches/TemporaryItems", bytes: 150 * mb)
+        Row(category: .temporaryFiles, risk: .safe, path: "/Library/Caches/TemporaryItems", bytes: 150 * mb),
+        Row(category: .projectArtifacts, risk: .safe, path: "/Code/shop/.next", bytes: 1 * gb + 420 * mb),
+        Row(category: .projectArtifacts, risk: .review, path: "/Code/shop/node_modules", bytes: 910 * mb),
+        Row(category: .projectArtifacts, risk: .safe, path: "/Code/blog/target", bytes: 2 * gb + 160 * mb),
+        Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.acme.Whisper", bytes: 640 * mb),
+        Row(category: .userCaches, risk: .safe, path: "/Library/Application Support/Code/Cache", bytes: 480 * mb)
     ]
+
+    /// Owner context for the fake home: one installed app and two projects, found without touching disk.
+    static var ownerInputs: OwnerInputs {
+        OwnerInputs(
+            homeDirectory: URL(fileURLWithPath: home),
+            installedApps: InstalledAppIndex(namesByBundleID: ["com.acme.whisper": "Whisper"]),
+            registeredRoots: [URL(fileURLWithPath: projectsRoot)],
+            probe: FixtureProjectProbe(gitRoots: [projectsRoot + "/shop"], markerRoots: [projectsRoot + "/blog"])
+        )
+    }
+
+    /// Answers project-marker probes from fixed lists.
+    struct FixtureProjectProbe: ProjectMarkerProbing {
+        let gitRoots: Set<String>
+        let markerRoots: Set<String>
+
+        func probe(directory: String) -> (hasGit: Bool, hasMarker: Bool) {
+            (gitRoots.contains(directory), markerRoots.contains(directory))
+        }
+    }
 
     /// Model store whose cleanup and history engines can never move, restore or record a real file.
     @MainActor
@@ -63,7 +112,8 @@ enum SnapshotFixtures {
         let store = CleanupTransactionStore(directory: URL(fileURLWithPath: root + "/transactions"))
         return AppModelStore(
             cleanup: CleanupCoordinator(engine: inertEngine(store: store)),
-            history: HistoryViewModel(store: store, engine: inertEngine(store: store))
+            history: HistoryViewModel(store: store, engine: inertEngine(store: store)),
+            browseModes: .inMemory()
         )
     }
 

@@ -1,4 +1,5 @@
 import XCTest
+import PareCore
 @testable import PareApp
 
 @MainActor
@@ -39,18 +40,82 @@ final class ScanDashboardViewModelTests: XCTestCase {
         XCTAssertEqual(coordinator.state, .confirming)
     }
 
+    func testFinalizeStateCapsProgressAndRelabelsUntilResultsApply() {
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotScanning(step: 3, completed: 36, total: 36, title: "Last rule")
+        XCTAssertFalse(vm.isFinalizingScan)
+        XCTAssertEqual(vm.scanProgress, ScanDashboardViewModel.finalizingProgressCap, accuracy: 0.0001)
+
+        vm.beginFinalizingScan()
+
+        XCTAssertTrue(vm.isFinalizingScan)
+        XCTAssertTrue(vm.isScanning)
+        XCTAssertEqual(vm.scanStepTitle, "Preparing results…")
+        XCTAssertEqual(vm.scanProgress, ScanDashboardViewModel.finalizingProgressCap, accuracy: 0.0001)
+        XCTAssertLessThan(vm.scanProgress, 1.0)
+
+        vm.applySnapshotResults(ScanReport(findings: [], summaries: []))
+
+        XCTAssertFalse(vm.isFinalizingScan)
+        XCTAssertEqual(vm.state, .success)
+    }
+
+    func testProgressNeverExceedsCapBeforeResultsApply() {
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotScanning(step: 1, completed: 0, total: 36, title: "First rule")
+        var previous = vm.scanProgress
+        for completed in 1...36 {
+            vm.applyRuleProgress(completed: completed, total: 36, title: "Rule \(completed)")
+            XCTAssertGreaterThanOrEqual(vm.scanProgress, previous)
+            XCTAssertLessThanOrEqual(vm.scanProgress, ScanDashboardViewModel.finalizingProgressCap)
+            previous = vm.scanProgress
+        }
+        vm.beginFinalizingScan()
+        XCTAssertEqual(vm.scanProgress, previous, accuracy: 0.0001)
+    }
+
+    func testLateRuleCallbackAfterFinalizeIsIgnored() {
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotScanning(step: 3, completed: 35, total: 36, title: "Almost")
+        vm.applyRuleProgress(completed: 36, total: 36, title: "Last rule")
+        vm.beginFinalizingScan()
+
+        vm.applyRuleProgress(completed: 36, total: 36, title: "Late rule")
+
+        XCTAssertEqual(vm.scanStepTitle, ScanDashboardViewModel.finalizingTitle)
+        XCTAssertEqual(vm.scanStep, 3)
+        XCTAssertEqual(vm.scanProgress, ScanDashboardViewModel.finalizingProgressCap, accuracy: 0.0001)
+    }
+
+    func testCancelClearsFinalizeState() {
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotScanning(step: 3, completed: 36, total: 36, title: "Last rule")
+        vm.beginFinalizingScan()
+
+        vm.cancelScan()
+
+        XCTAssertFalse(vm.isFinalizingScan)
+        XCTAssertEqual(vm.scanProgress, 0)
+    }
+
+    func testScanProgressWithoutRulesIsZero() {
+        XCTAssertEqual(ScanDashboardViewModel().scanProgress, 0)
+    }
+
     /// The floating action bar must not look clickable while a (re)scan makes its requests no-ops.
     func testCleanupActionsEnabledOnlyAfterSuccessfulScanWhenIdle() {
-        let cases: [(name: String, state: ScanDashboardViewModel.ScanState, cleaning: Bool, undoing: Bool, expected: Bool)] = [
-            ("success", .success, false, false, true),
-            ("scanning", .scanning, false, false, false),
-            ("idle", .idle, false, false, false),
-            ("success while cleaning", .success, true, false, false),
-            ("success while undoing", .success, false, true, false),
+        let cases: [(name: String, state: ScanDashboardViewModel.ScanState, cleaning: Bool, undoing: Bool, labeling: Bool, expected: Bool)] = [
+            ("success", .success, false, false, false, true),
+            ("scanning", .scanning, false, false, false, false),
+            ("idle", .idle, false, false, false, false),
+            ("success while cleaning", .success, true, false, false, false),
+            ("success while undoing", .success, false, true, false, false),
+            ("success while labeling cache activity", .success, false, false, true, false),
         ]
         for testCase in cases {
             let result = ScanDashboardViewModel.cleanupActionsEnabled(
-                state: testCase.state, isCleaning: testCase.cleaning, isUndoing: testCase.undoing
+                state: testCase.state, isCleaning: testCase.cleaning, isUndoing: testCase.undoing,
+                isLabelingCacheActivity: testCase.labeling
             )
             XCTAssertEqual(result, testCase.expected, testCase.name)
         }
@@ -79,5 +144,23 @@ final class ScanDashboardViewModelTests: XCTestCase {
             XCTAssertNil(coordinator.pending, "\(kind)")
             XCTAssertEqual(coordinator.state, .idle, "\(kind)")
         }
+    }
+
+    func testIncompleteRuleProducesPartialResultsWarning() {
+        let report = ScanReport(
+            findings: [],
+            summaries: [],
+            incompleteRules: [ScanIncompleteRule(
+                ruleID: "project-artifacts-v2",
+                ruleTitle: "Project Local Build Caches",
+                message: "Stopped after 60 s, 3 of 9 project folders fully scanned."
+            )]
+        )
+
+        let warnings = ScanDashboardViewModel.makeScanWarnings(from: report)
+
+        XCTAssertEqual(warnings, [
+            "Project Local Build Caches: scan incomplete, results are partial. Stopped after 60 s, 3 of 9 project folders fully scanned."
+        ])
     }
 }

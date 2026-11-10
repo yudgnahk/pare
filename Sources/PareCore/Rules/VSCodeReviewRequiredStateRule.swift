@@ -23,7 +23,7 @@ public struct VSCodeReviewRequiredStateRule: ScanRule {
     public func include(fileURL: URL, resourceValues: URLResourceValues) -> Bool {
         let path = fileURL.path.lowercased()
 
-        let hasVscodeReviewMarker = ScanPolicy.vscodeReviewStateMarkers.contains { path.contains($0) }
+        let hasVscodeReviewMarker = ScanPolicy.containsAnyMarker(path, ScanPolicy.vscodeReviewStateMarkers)
         guard hasVscodeReviewMarker else {
             return false
         }
@@ -32,7 +32,7 @@ public struct VSCodeReviewRequiredStateRule: ScanRule {
             return false
         }
 
-        let hasExcludedMarker = ScanPolicy.developerReviewExclusionMarkers.contains { path.contains($0) }
+        let hasExcludedMarker = ScanPolicy.containsAnyMarker(path, ScanPolicy.developerReviewExclusionMarkers)
         guard !hasExcludedMarker else {
             return false
         }

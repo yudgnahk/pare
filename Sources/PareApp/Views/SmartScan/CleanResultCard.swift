@@ -1,3 +1,4 @@
+import PareCore
 import SwiftUI
 
 /// The "you just freed X" moment: drawn check ring, counting total, one-shot sparkle burst, Undo.
@@ -8,6 +9,8 @@ struct CleanResultCard: View {
     let onUndo: () -> Void
     /// Replaces the generic skip count when one symlinked ancestor blocked every item.
     var skipExplanation: String?
+    /// Estimate next to the measured free-space gain, when the cleanup was measured.
+    var reclaim: ReclaimSummary?
     let onDismiss: () -> Void
 
     @Environment(\.pareDisplayScale) private var scale
@@ -33,6 +36,9 @@ struct CleanResultCard: View {
                         .font(scale.caption)
                         .foregroundStyle(AppTheme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let reclaim, reclaim.measuredBytes != nil {
+                        ReclaimSummaryText(summary: reclaim)
+                    }
                 }
                 Spacer(minLength: 0)
                 actions

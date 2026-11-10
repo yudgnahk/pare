@@ -18,6 +18,8 @@ public struct CategoryFolderRow: Identifiable, Equatable, Sendable {
     public let isSelectable: Bool
     /// Tool/app label (same as donut chart) for nested grouping.
     public let toolName: String
+    /// True when a member's size stopped at its deadline, so `totalBytes` is a lower bound.
+    public let hasPartialSize: Bool
 
     public var isSafeFolder: Bool { riskLevel == .safe }
 
@@ -29,7 +31,8 @@ public struct CategoryFolderRow: Identifiable, Equatable, Sendable {
         itemCount: Int,
         riskLevel: RiskLevel,
         isSelectable: Bool,
-        toolName: String
+        toolName: String,
+        hasPartialSize: Bool = false
     ) {
         self.id = id
         self.folderPath = folderPath
@@ -39,6 +42,7 @@ public struct CategoryFolderRow: Identifiable, Equatable, Sendable {
         self.riskLevel = riskLevel
         self.isSelectable = isSelectable
         self.toolName = toolName
+        self.hasPartialSize = hasPartialSize
     }
 }
 
@@ -51,9 +55,13 @@ public struct CategoryToolGroup: Identifiable, Equatable, Sendable {
     public let folderCount: Int
     public let itemCount: Int
     public let riskLevel: RiskLevel
-    /// Folder row ids in this tool group (for bulk select).
+    /// Every folder row id in this group, review rows included (display only, never bulk-selected).
     public let folderIds: Set<String>
-    public let isSelectable: Bool
+    /// Selectable SAFE rows: what the group checkbox ticks, as the category checkbox does.
+    public let safeFolderIds: Set<String>
+
+    /// The group checkbox is live only when it has a safe row to tick.
+    public var isSelectable: Bool { !safeFolderIds.isEmpty }
 
     public var isSafeGroup: Bool { riskLevel == .safe }
 
@@ -66,7 +74,7 @@ public struct CategoryToolGroup: Identifiable, Equatable, Sendable {
         itemCount: Int,
         riskLevel: RiskLevel,
         folderIds: Set<String>,
-        isSelectable: Bool
+        safeFolderIds: Set<String>
     ) {
         self.id = id
         self.category = category
@@ -76,7 +84,7 @@ public struct CategoryToolGroup: Identifiable, Equatable, Sendable {
         self.itemCount = itemCount
         self.riskLevel = riskLevel
         self.folderIds = folderIds
-        self.isSelectable = isSelectable
+        self.safeFolderIds = safeFolderIds
     }
 }
 
@@ -95,6 +103,30 @@ public struct FolderMeta: Equatable, Sendable {
     }
 }
 
+/// One rolled-up folder, kept for every folder (published rows are capped; this is not).
+public struct FolderRecord: Equatable, Sendable {
+    public let id: String
+    public let folderPath: String
+    public let category: ScanCategory
+    public let bytes: Int64
+    public let itemCount: Int
+    public let riskLevel: RiskLevel
+    public let hasPartialSize: Bool
+
+    public init(
+        id: String, folderPath: String, category: ScanCategory, bytes: Int64,
+        itemCount: Int, riskLevel: RiskLevel, hasPartialSize: Bool
+    ) {
+        self.id = id
+        self.folderPath = folderPath
+        self.category = category
+        self.bytes = bytes
+        self.itemCount = itemCount
+        self.riskLevel = riskLevel
+        self.hasPartialSize = hasPartialSize
+    }
+}
+
 /// Result of rolling findings into folder rows + private path maps.
 public struct FolderAggregate: Sendable {
     public var rowsByCategory: [ScanCategory: [CategoryFolderRow]] = [:]
@@ -103,6 +135,8 @@ public struct FolderAggregate: Sendable {
     public var pathsByFolderId: [String: [String]] = [:]
     public var folderIdByPath: [String: String] = [:]
     public var metaByFolderId: [String: FolderMeta] = [:]
+    /// One record per folder, rows beyond the display cap included.
+    public var recordsByFolderId: [String: FolderRecord] = [:]
     public var safeFolderIds: Set<String> = []
     public var safeFolderIdsByCategory: [ScanCategory: Set<String>] = [:]
 
@@ -152,6 +186,9 @@ public enum FolderRollup {
     public static func rollupFolderPath(for path: String) -> String {
         let parts = URL(fileURLWithPath: path).pathComponents.filter { $0 != "/" }
         guard !parts.isEmpty else { return path }
+
+        // Codex staging roots: one row per root, however many abandoned folders it holds.
+        if let root = ScanPolicy.codexStagingRoot(containing: path) { return root }
 
         // Package manager / tool cache roots — one row per root, not per blob.
         let singleSegmentRoots = [
@@ -233,40 +270,47 @@ public enum FolderRollup {
         return "/" + parts.joined(separator: "/")
     }
 
+    private struct FolderAccumulator {
+        var bytes: Int64 = 0
+        var reviewCount: Int = 0
+        var paths: [String] = []
+        var worstRisk: RiskLevel = .safe
+        var hasPartialSize = false
+
+        mutating func add(_ finding: ScanFinding) {
+            bytes += finding.sizeBytes
+            hasPartialSize = hasPartialSize || !finding.isSizeComplete
+            paths.append(finding.path)
+            if finding.riskLevel == .review {
+                reviewCount += 1
+                worstRisk = .review
+            }
+        }
+    }
+
+    /// Mutates in place; copying the dictionary per finding is O(n²) on huge folders.
+    private static func accumulateByFolder(
+        _ findings: [ScanFinding]
+    ) -> [ScanCategory: [String: FolderAccumulator]] {
+        var byCategory: [ScanCategory: [String: FolderAccumulator]] = [:]
+        for finding in findings where finding.riskLevel != .advanced {
+            let folderPath = rollupFolderPath(for: finding.path)
+            byCategory[finding.category, default: [:]][folderPath, default: FolderAccumulator()]
+                .add(finding)
+        }
+        return byCategory
+    }
+
     public static func buildAggregate(
         from findings: [ScanFinding],
         maxRowsPerCategory: Int = defaultMaxRowsPerCategory
     ) -> FolderAggregate {
-        struct Acc {
-            var bytes: Int64 = 0
-            var count: Int = 0
-            var reviewCount: Int = 0
-            var paths: [String] = []
-            var worstRisk: RiskLevel = .safe
-        }
-
-        var byCategory: [ScanCategory: [String: Acc]] = [:]
-
-        for finding in findings {
-            guard finding.riskLevel != .advanced else { continue }
-            let folderPath = rollupFolderPath(for: finding.path)
-            var catMap = byCategory[finding.category] ?? [:]
-            var acc = catMap[folderPath] ?? Acc()
-            acc.bytes += finding.sizeBytes
-            acc.count += 1
-            acc.paths.append(finding.path)
-            if finding.riskLevel == .review {
-                acc.reviewCount += 1
-                acc.worstRisk = .review
-            }
-            catMap[folderPath] = acc
-            byCategory[finding.category] = catMap
-        }
+        let byCategory = accumulateByFolder(findings)
 
         var aggregate = FolderAggregate()
         for (category, map) in byCategory {
             let sorted = map
-                .map { folderPath, acc -> (String, Acc, String) in
+                .map { folderPath, acc -> (String, FolderAccumulator, String) in
                     let id = "\(category.rawValue)|\(folderPath)"
                     return (folderPath, acc, id)
                 }
@@ -283,10 +327,19 @@ public enum FolderRollup {
                     aggregate.folderIdByPath[p] = id
                 }
                 aggregate.metaByFolderId[id] = FolderMeta(
-                    itemCount: acc.count,
+                    itemCount: acc.paths.count,
                     bytes: acc.bytes,
                     reviewCount: acc.reviewCount,
                     isSafe: acc.worstRisk == .safe
+                )
+                aggregate.recordsByFolderId[id] = FolderRecord(
+                    id: id,
+                    folderPath: folderPath,
+                    category: category,
+                    bytes: acc.bytes,
+                    itemCount: acc.paths.count,
+                    riskLevel: acc.worstRisk,
+                    hasPartialSize: acc.hasPartialSize
                 )
                 if acc.worstRisk == .safe {
                     aggregate.safeFolderIds.insert(id)
@@ -303,10 +356,11 @@ public enum FolderRollup {
                             folderPath: folderPath,
                             displayPath: abbreviatePath(folderPath),
                             totalBytes: acc.bytes,
-                            itemCount: acc.count,
+                            itemCount: acc.paths.count,
                             riskLevel: acc.worstRisk,
                             isSelectable: !acc.paths.isEmpty,
-                            toolName: toolName
+                            toolName: toolName,
+                            hasPartialSize: acc.hasPartialSize
                         )
                     )
                 }
@@ -324,26 +378,36 @@ public enum FolderRollup {
         category: ScanCategory,
         rows: [CategoryFolderRow]
     ) -> [CategoryToolGroup] {
-        let grouped = Dictionary(grouping: rows, by: \.toolName)
-        return grouped.map { toolName, toolRows in
-            let folderIds = Set(toolRows.map(\.id))
-            let totalBytes = toolRows.reduce(Int64(0)) { $0 + $1.totalBytes }
-            let itemCount = toolRows.reduce(0) { $0 + $1.itemCount }
+        makeToolGroups(category: category, rows: rows, ownerKeyByFolderId: [:], detailByOwnerKey: [:])
+    }
+
+    /// Groups by owner key where known (else by name), so same-named owners stay apart.
+    /// `detailByOwnerKey` is appended to the title only when two groups share a name.
+    public static func makeToolGroups(
+        category: ScanCategory,
+        rows: [CategoryFolderRow],
+        ownerKeyByFolderId: [String: String],
+        detailByOwnerKey: [String: String]
+    ) -> [CategoryToolGroup] {
+        let grouped = Dictionary(grouping: rows) { ownerKeyByFolderId[$0.id] ?? "name:\($0.toolName)" }
+        let nameCounts = Dictionary(grouping: grouped.values, by: { $0[0].toolName }).mapValues(\.count)
+        return grouped.map { key, toolRows in
+            let toolName = toolRows[0].toolName
+            let detail = nameCounts[toolName, default: 1] > 1 ? detailByOwnerKey[key] : nil
             let hasReview = toolRows.contains { $0.riskLevel == .review }
-            let selectable = toolRows.contains(where: \.isSelectable)
             return CategoryToolGroup(
-                id: "\(category.rawValue)|tool|\(toolName)",
+                id: "\(category.rawValue)|tool|\(key)",
                 category: category,
-                toolName: toolName,
-                totalBytes: totalBytes,
+                toolName: detail.map { "\(toolName) · \($0)" } ?? toolName,
+                totalBytes: toolRows.reduce(Int64(0)) { $0 + $1.totalBytes },
                 folderCount: toolRows.count,
-                itemCount: itemCount,
+                itemCount: toolRows.reduce(0) { $0 + $1.itemCount },
                 riskLevel: hasReview ? .review : .safe,
-                folderIds: folderIds,
-                isSelectable: selectable
+                folderIds: Set(toolRows.map(\.id)),
+                safeFolderIds: Set(toolRows.filter { $0.isSafeFolder && $0.isSelectable }.map(\.id))
             )
         }
-        .sorted { $0.totalBytes > $1.totalBytes }
+        .sorted { $0.totalBytes != $1.totalBytes ? $0.totalBytes > $1.totalBytes : $0.id < $1.id }
     }
 
     public static func makeToolRollups(from findings: [ScanFinding]) -> [ToolRollup] {

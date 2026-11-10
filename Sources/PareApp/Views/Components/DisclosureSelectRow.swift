@@ -15,6 +15,21 @@ enum TriSelectionState {
     }
 }
 
+/// VoiceOver text for image-only checkboxes.
+enum SelectAccessibility {
+    static func groupLabel(title: String) -> String { "Select safe folders in \(title)" }
+
+    static func folderLabel(path: String) -> String { "Select \(path)" }
+
+    static func stateText(_ state: TriSelectionState) -> String {
+        switch state {
+        case .all: return "Selected"
+        case .partial: return "Partly selected"
+        case .none: return "Not selected"
+        }
+    }
+}
+
 /// Shared anatomy of the expandable "Browse by category" section headers:
 /// [tri-state select] [leading visual · title · count chip … size · chevron].
 ///
@@ -28,6 +43,8 @@ struct DisclosureSelectRow<Leading: View>: View {
 
     let style: Style
     let title: String
+    /// Second line under the title, e.g. a project's folder.
+    var subtitle: String? = nil
     var badgeText: String? = nil
     let sizeText: String
     let isExpanded: Bool
@@ -60,6 +77,8 @@ struct DisclosureSelectRow<Leading: View>: View {
         .buttonStyle(.plain)
         .disabled(!isSelectable)
         .help(selectHelp)
+        .accessibilityLabel(SelectAccessibility.groupLabel(title: title))
+        .accessibilityValue(SelectAccessibility.stateText(selection))
     }
 
     private var disclosureButton: some View {
@@ -67,10 +86,19 @@ struct DisclosureSelectRow<Leading: View>: View {
             HStack(spacing: style == .category ? 10 : 8) {
                 leading()
 
-                Text(title)
-                    .font(scale.rowTitle)
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(scale.rowTitle)
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(scale.rowMeta)
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
 
                 if let badgeText {
                     Text(badgeText)
