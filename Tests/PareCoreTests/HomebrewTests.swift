@@ -1102,7 +1102,8 @@ private extension HomebrewTests {
             if HomebrewCaskroom.manages(
                 appName: app.name,
                 path: app.path,
-                installedTokens: installedCaskTokens
+                installedTokens: installedCaskTokens,
+                installedArtifactPaths: []
             ) {
                 continue
             }

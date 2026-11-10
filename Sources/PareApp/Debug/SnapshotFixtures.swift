@@ -22,7 +22,7 @@ enum SnapshotFixtures {
                 lastUsed: Date().addingTimeInterval(-86_400 * 21),
                 confidence: 0.9
             )
-        }
+        } + diagnosticFindings
         let grouped = Dictionary(grouping: findings, by: \.category)
         let summaries = grouped.map { category, items in
             ScanCategorySummary(
@@ -58,6 +58,21 @@ enum SnapshotFixtures {
         )
     }
 
+    private static let diagnosticFindings: [ScanFinding] = [
+        ScanFinding(
+            category: .diagnostics, riskLevel: .advanced,
+            reason: "4.1 GB of swap in use — close memory-heavy apps or restart to release it",
+            path: "/private/var/vm", sizeBytes: 4 * gb + 100 * mb, lastUsed: nil, confidence: 1,
+            annotations: [.explainOnly(action: "Restart Chrome")]
+        ),
+        ScanFinding(
+            category: .diagnostics, riskLevel: .advanced,
+            reason: "1.2 GB held by deleted files — restart node to reclaim it",
+            path: "/private/var/folders/deleted-open-files/node", sizeBytes: 1 * gb + 200 * mb, lastUsed: nil, confidence: 1,
+            annotations: [.explainOnly(action: "Restart node to reclaim the space")]
+        ),
+    ]
+
     private struct Row {
         let category: ScanCategory
         let risk: RiskLevel
@@ -83,18 +98,30 @@ enum SnapshotFixtures {
         Row(category: .projectArtifacts, risk: .review, path: "/Code/shop/node_modules", bytes: 910 * mb),
         Row(category: .projectArtifacts, risk: .safe, path: "/Code/blog/target", bytes: 2 * gb + 160 * mb),
         Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.acme.Whisper", bytes: 640 * mb),
-        Row(category: .userCaches, risk: .safe, path: "/Library/Application Support/Code/Cache", bytes: 480 * mb)
+        Row(category: .userCaches, risk: .safe, path: "/Library/Application Support/Code/Cache", bytes: 480 * mb),
+        // Under the 50 MB fold threshold, so each group shows its small-items row.
+        Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.apple.akd", bytes: 18 * mb),
+        Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.acme.Notes", bytes: 9 * mb),
+        Row(category: .projectArtifacts, risk: .safe, path: "/Code/blog/.cache", bytes: 31 * mb),
+        // Working-set cache: listed under Size only, never cleaned.
+        Row(category: .developerPackageCaches, risk: .advanced, path: "/go/pkg/mod", bytes: 4 * gb + 260 * mb)
     ]
 
     /// Owner context for the fake home: one installed app and two projects, found without touching disk.
+    /// Whisper borrows a bundled system app's icon so the scene shows a real one; nothing is read from it.
     static var ownerInputs: OwnerInputs {
         OwnerInputs(
             homeDirectory: URL(fileURLWithPath: home),
-            installedApps: InstalledAppIndex(namesByBundleID: ["com.acme.whisper": "Whisper"]),
+            installedApps: InstalledAppIndex(
+                namesByBundleID: ["com.acme.whisper": "Whisper"],
+                appURLsByBundleID: ["com.acme.whisper": URL(fileURLWithPath: fixtureIconApp)]
+            ),
             registeredRoots: [URL(fileURLWithPath: projectsRoot)],
             probe: FixtureProjectProbe(gitRoots: [projectsRoot + "/shop"], markerRoots: [projectsRoot + "/blog"])
         )
     }
+
+    static let fixtureIconApp = "/System/Applications/VoiceMemos.app"
 
     /// Answers project-marker probes from fixed lists.
     struct FixtureProjectProbe: ProjectMarkerProbing {
@@ -112,8 +139,7 @@ enum SnapshotFixtures {
         let store = CleanupTransactionStore(directory: URL(fileURLWithPath: root + "/transactions"))
         return AppModelStore(
             cleanup: CleanupCoordinator(engine: inertEngine(store: store)),
-            history: HistoryViewModel(store: store, engine: inertEngine(store: store)),
-            browseModes: .inMemory()
+            history: HistoryViewModel(store: store, engine: inertEngine(store: store))
         )
     }
 

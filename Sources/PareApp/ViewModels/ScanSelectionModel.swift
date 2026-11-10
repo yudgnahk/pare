@@ -29,6 +29,8 @@ struct ScanSelectionModel {
     var expandedCategories: Set<String> = []
     /// Expanded tool groups (e.g. Developer Package Caches → JetBrains).
     var expandedToolGroups: Set<String> = []
+    /// Clean categories the user flipped from their default open/closed state.
+    var flippedCleanCategories: Set<String> = []
 
     /// Per-path size/risk for individual selections (rebuilt per scan).
     struct PathMeta: Sendable {
@@ -130,6 +132,23 @@ struct ScanSelectionModel {
 
     func safeFolderIds(in category: ScanCategory) -> Set<String> {
         safeFolderIdsByCategory[category] ?? []
+    }
+
+    /// What a clean of the selection would free inside these folders; same rules as `selectedBytes`.
+    func selectedBytes(inFolders folderIds: Set<String>) -> Int64 {
+        var bytes: Int64 = 0
+        for id in folderIds where selectedFolderIds.contains(id) {
+            guard let meta = metaByFolderId[id] else { continue }
+            bytes += meta.bytes
+            for path in hotPathsByFolderId[id] ?? [] { bytes -= pathMetaByPath[path]?.bytes ?? 0 }
+        }
+        for path in selectedPaths {
+            guard let folderId = folderIdByPath[path], folderIds.contains(folderId) else { continue }
+            if !hotPaths.contains(path), selectedFolderIds.contains(folderId) { continue }
+            guard let meta = pathMetaByPath[path], meta.riskLevel != .advanced else { continue }
+            bytes += meta.bytes
+        }
+        return bytes
     }
 
     // MARK: - Mutations

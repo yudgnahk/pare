@@ -84,13 +84,12 @@ struct ScanDashboardView: View {
                     onManageProjectPaths: { showProjectPaths = true }
                 )
                 .modifier(RevealOnAppear(appeared: resultsAppeared, index: 0))
+                DiagnosticsBlock(lines: DiagnosticLine.lines(from: viewModel.latestFindingsSnapshot))
                 permissionCoachingSection
                 scanWarningsSection
-                decisionTiles
-                    .modifier(RevealOnAppear(appeared: resultsAppeared, index: 1))
                 deviceBackupsSection
                 categoryBrowser
-                    .modifier(RevealOnAppear(appeared: resultsAppeared, index: 2))
+                    .modifier(RevealOnAppear(appeared: resultsAppeared, index: 1))
                 toolShareSection
                 largestItemsSection
             }
@@ -118,37 +117,6 @@ struct ScanDashboardView: View {
     private func openExclusions() {
         exclusionListViewModel.load()
         showSettings = true
-    }
-
-    private var decisionTiles: some View {
-        LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: AppTheme.Spacing.md), count: 3),
-            spacing: AppTheme.Spacing.md
-        ) {
-            MetricTile(
-                label: "Safe to clean",
-                icon: "checkmark.shield.fill",
-                bytes: viewModel.quickCleanCandidatesBytes,
-                detail: "\(viewModel.quickCleanCandidatesCount) items marked Safe",
-                tint: AppTheme.success
-            )
-            MetricTile(
-                label: "Needs review",
-                icon: "eye.fill",
-                bytes: viewModel.candidateStats.reviewBytes,
-                detail: viewModel.reviewRiskCandidatesCount == 0
-                    ? "Nothing needs a second opinion"
-                    : "\(viewModel.reviewRiskCandidatesCount) Review items — may sign you out of sites or apps",
-                tint: AppTheme.warning
-            )
-            MetricTile(
-                label: "Selected",
-                icon: "checkmark.circle.fill",
-                bytes: viewModel.selectedCandidatesBytes,
-                detail: "\(viewModel.selectedCandidatesCount) items will go to the Trash when you clean",
-                tint: AppTheme.accentText
-            )
-        }
     }
 
     /// Scan warnings — rule failures and unreadable locations (R1.2/R1.3).
@@ -257,36 +225,29 @@ struct ScanDashboardView: View {
 
     private var categoryBrowser: some View {
         let ownerView = viewModel.isOwnerViewEnabled
-        let byApp = ownerView && viewModel.browseMode == .apps
         return GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(byApp ? "Browse by app" : "Browse by category")
-                            .font(scale.sectionTitle)
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text(ownerView
-                             ? "Tick what you want gone."
-                             : "Open a category to see each tool and folder. Tick what you want gone.")
-                            .font(scale.caption)
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 8)
-                    if ownerView {
-                        BrowseModeSwitch(mode: viewModel.browseMode, onSelect: viewModel.setBrowseMode)
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(ownerView ? "What to clean" : "Browse by category")
+                        .font(scale.sectionTitle)
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text(ownerView
+                         ? "Tick what you want gone."
+                         : "Open a category to see each tool and folder. Tick what you want gone.")
+                        .font(scale.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if viewModel.summaries.isEmpty {
                     EmptyStateView(
                         icon: "tray",
                         title: "No scan results yet",
-                        message: BrowseModeSwitch.emptyMessage(byApp: byApp),
+                        message: CleanListView.emptyMessage(grouped: ownerView),
                         layout: .inline
                     )
-                } else if byApp {
-                    OwnerBrowserView(viewModel: viewModel)
+                } else if ownerView {
+                    CleanListView(viewModel: viewModel)
                 } else {
                     CategoryBrowserList(viewModel: viewModel)
                 }

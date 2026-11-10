@@ -15,6 +15,9 @@ extension ScanDashboardViewModel {
         let ownerSections: [OwnerSection]
         /// Resolved owners, reused when an exclusion rebuilds the groups.
         let ownerByFolderPath: [String: FolderOwner]
+        /// Empty when `SmartScanFeatures.ownerView` is off.
+        let cleanRows: [CleanRow]
+        let appIconPathByOwnerKey: [String: String]
         let candidateStats: CandidateStats
         let totalReclaimableBytes: Int64
         /// True when some reclaimable finding's size is a lower bound (sizing hit its deadline).
@@ -45,9 +48,10 @@ extension ScanDashboardViewModel {
         let sortedTopFindings = largestItemsSorted(from: findings, limit: 40)
         let (revealablePaths, folderFindingPaths) = revealabilityIndex(
             aggregate: aggregate,
-            ownerSections: owned.sections,
+            cleanRows: owned.cleanRows,
             topFindings: sortedTopFindings
         )
+        let iconPaths = owners.map { appIconPaths(for: owned.cleanRows, index: $0.installedApps) } ?? [:]
         return PreparedScanResults(
             findings: findings,
             findingsByPath: pathIndex,
@@ -57,6 +61,8 @@ extension ScanDashboardViewModel {
             toolRollups: owned.toolRollups,
             ownerSections: owned.sections,
             ownerByFolderPath: owned.ownerByFolderPath,
+            cleanRows: owned.cleanRows,
+            appIconPathByOwnerKey: iconPaths,
             candidateStats: CandidateStats.compute(from: findings),
             totalReclaimableBytes: report.totalReclaimableBytes,
             isTotalSizePartial: report.hasPartialSizes,
@@ -85,20 +91,16 @@ extension ScanDashboardViewModel {
     }
 
     /// Stats every rendered path once, off the main actor, so row bodies can use
-    /// set lookups instead of per-render FileManager calls. Bounded work: folder
-    /// rows are capped per category and per owner group, top findings at 40.
+    /// set lookups instead of per-render FileManager calls. One stat per folder row
+    /// (any owner filter can show any of them), top findings capped at 40.
     nonisolated static func revealabilityIndex(
         aggregate: FolderAggregate,
-        ownerSections: [OwnerSection],
+        cleanRows: [CleanRow],
         topFindings: [FindingItem]
     ) -> (revealable: Set<String>, folders: Set<String>) {
         let fm = FileManager.default
         var folderPaths = Set(aggregate.rowsByCategory.values.flatMap { $0.map(\.folderPath) })
-        for section in ownerSections {
-            for group in section.groups {
-                folderPaths.formUnion(group.rows.map(\.row.folderPath))
-            }
-        }
+        folderPaths.formUnion(cleanRows.map(\.record.folderPath))
         var revealable = folderPaths.filter { fm.fileExists(atPath: $0) }
         var folders: Set<String> = []
         for item in topFindings {

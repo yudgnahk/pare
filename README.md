@@ -8,7 +8,7 @@ and moves what you choose to the Trash, where you can undo it.
 ## What it does
 
 - **Smart Scan**: about 50 rules for app, browser, developer, AI tool and system caches, logs, installers, old app versions and leftovers. Each finding is marked Safe, Review or Advanced.
-- **Grouped by owner**: results are listed by app, project and developer tool (or by category, if you prefer). Builds of projects you edited in the last 3 days start unticked.
+- **Familiar categories**: App caches, Communication, Developer tools, Projects, AI tools, Site data, Old versions and System, each with a line on what cleaning costs. Rows carry their app, project or tool name and icon, and owner chips filter them. Review rows and anything written or edited in the last 3 days start unticked.
 - **Developer depth**: package manager caches (npm, pnpm, Yarn, Bun, Cargo, CocoaPods, SwiftPM, Homebrew), Xcode, JetBrains and VS Code leftovers, and dependency folders of projects you have stopped working on, checked against git before they are offered.
 - **Worth knowing**: notes about problems Pare will not clean for you, such as heavy swap, memory pressure, files held open after deletion, or a launch agent stuck in a restart loop.
 - **App Manager**: uninstall apps together with their leftovers.

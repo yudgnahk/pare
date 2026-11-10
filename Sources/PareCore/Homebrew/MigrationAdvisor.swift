@@ -28,6 +28,7 @@ public actor MigrationAdvisor {
         // Already-adopted / installed casks must never reappear in the migrate list.
         // (AppInventory may also set isHomebrewManaged; this is the definitive gate.)
         let installedCaskTokens = HomebrewCaskroom.installedTokens()
+        let installedArtifacts = HomebrewCaskroom.installedArtifactPaths()
 
         // Build lookup sets from cask catalog
         var appNameToCask: [String: String] = [:]   // lowercase app name → cask token
@@ -67,7 +68,8 @@ public actor MigrationAdvisor {
             if HomebrewCaskroom.manages(
                 appName: app.name,
                 path: app.path,
-                installedTokens: installedCaskTokens
+                installedTokens: installedCaskTokens,
+                installedArtifactPaths: installedArtifacts
             ) {
                 continue
             }

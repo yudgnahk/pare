@@ -29,8 +29,7 @@ final class OwnerReviewFixesTests: XCTestCase {
     }
 
     private func loaded(store: ExclusionStore? = nil) -> ScanDashboardViewModel {
-        let vm = store.map { ScanDashboardViewModel(browseModes: .inMemory(.categories), exclusionStore: $0) }
-            ?? ScanDashboardViewModel(browseModes: .inMemory(.categories))
+        let vm = store.map { ScanDashboardViewModel(exclusionStore: $0) } ?? ScanDashboardViewModel()
         let summary = ScanCategorySummary(category: .projectArtifacts, reclaimableBytes: 1_000, fileCount: 4)
         vm.applySnapshotResults(ScanReport(findings: findings, summaries: [summary]), owners: inputs)
         return vm
@@ -75,7 +74,7 @@ final class OwnerReviewFixesTests: XCTestCase {
 
     func testUniquelyNamedProjectKeepsItsPlainName() {
         let one = Array(findings.prefix(2))
-        let vm = ScanDashboardViewModel(browseModes: .inMemory(.categories))
+        let vm = ScanDashboardViewModel()
         vm.applySnapshotResults(ScanReport(findings: one, summaries: []), owners: inputs)
 
         XCTAssertEqual(vm.toolGroups(for: .projectArtifacts).map(\.toolName), ["api"])
@@ -138,10 +137,9 @@ final class OwnerReviewFixesTests: XCTestCase {
     }
 
     func testOwnerViewFlagAgreesWithTheViewModel() {
-        let vm = ScanDashboardViewModel(browseModes: .inMemory(.apps))
+        let vm = ScanDashboardViewModel()
 
         XCTAssertEqual(vm.isOwnerViewEnabled, SmartScanFeatures.ownerView)
-        XCTAssertEqual(vm.browseMode, SmartScanFeatures.ownerView ? .apps : .categories)
     }
 
     // MARK: - TimeBoxedValue
@@ -181,15 +179,12 @@ final class OwnerReviewFixesTests: XCTestCase {
 
     // MARK: - Copy and accessibility
 
-    func testEmptyMessageNamesTheActiveMode() {
-        XCTAssertEqual(BrowseModeSwitch.emptyMessage(byApp: true), "Start a scan to browse reclaimable storage by app.")
-        XCTAssertEqual(BrowseModeSwitch.emptyMessage(byApp: false), "Start a scan to browse reclaimable storage by category.")
-    }
-
-    func testBrowseModeButtonsHaveDistinctLabels() {
-        let labels = BrowseMode.allCases.map(BrowseModeSwitch.accessibilityLabel)
-
-        XCTAssertEqual(labels, ["Browse by app", "Browse by category"])
+    func testEmptyMessageNamesTheActiveList() {
+        XCTAssertEqual(CleanListView.emptyMessage(grouped: true), "Start a scan to see what you can clean.")
+        XCTAssertEqual(
+            CleanListView.emptyMessage(grouped: false),
+            "Start a scan to browse reclaimable storage by category."
+        )
     }
 
     func testCheckboxLabelsNameTheGroupAndState() {

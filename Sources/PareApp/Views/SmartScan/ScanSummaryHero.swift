@@ -1,7 +1,7 @@
 import SwiftUI
 import PareCore
 
-/// Results hero: disk ring with the reclaimable share, counting total, category bar, and scan controls.
+/// Results hero: disk ring with the selected share, what a clean frees now, one found/safe/review/held line, controls.
 struct ScanSummaryHero: View {
     @ObservedObject var viewModel: ScanDashboardViewModel
     @ObservedObject var volume: VolumeUsageModel
@@ -10,8 +10,8 @@ struct ScanSummaryHero: View {
 
     @Environment(\.pareDisplayScale) private var scale
 
-    private var reclaimableShareOfDisk: Double {
-        volume.usage?.fraction(of: viewModel.totalReclaimableBytes) ?? 0
+    private var selectedShareOfDisk: Double {
+        volume.usage?.fraction(of: viewModel.selectedCandidatesBytes) ?? 0
     }
 
     var body: some View {
@@ -38,7 +38,7 @@ struct ScanSummaryHero: View {
     private var ring: some View {
         DiskUsageRing(
             usedFraction: volume.usage?.usedFraction ?? 0,
-            reclaimableFraction: reclaimableShareOfDisk,
+            reclaimableFraction: selectedShareOfDisk,
             diameter: scale.space(AppTheme.Control.summaryRing),
             lineWidth: scale.space(12)
         ) {
@@ -53,11 +53,11 @@ struct ScanSummaryHero: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(percentText) of the disk is reclaimable")
+        .accessibilityLabel("Cleaning the selection frees \(percentText) of the disk")
     }
 
     private var percentText: String {
-        let percent = reclaimableShareOfDisk * 100
+        let percent = selectedShareOfDisk * 100
         return percent > 0 && percent < 1 ? "<1%" : "\(Int(percent.rounded()))%"
     }
 
@@ -69,13 +69,17 @@ struct ScanSummaryHero: View {
                 .foregroundStyle(viewModel.isScanning ? AppTheme.accentText : AppTheme.textTertiary)
                 .lineLimit(1)
 
-            CountingBytesText(bytes: viewModel.totalReclaimableBytes, font: scale.display)
+            CountingBytesText(bytes: viewModel.selectedCandidatesBytes, font: scale.display)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
+                .accessibilityLabel("\(viewModel.formattedBytes(viewModel.selectedCandidatesBytes)) selected to clean")
 
-            Text("\(viewModel.isTotalSizePartial ? "or more " : "")ready to reclaim across \(viewModel.summaries.count) \(viewModel.summaries.count == 1 ? "category" : "categories")")
+            // Capped ideal width: ViewThatFits measures one line, which would force the stacked layout.
+            Text(viewModel.heroSummaryLine)
                 .font(scale.body)
                 .foregroundStyle(AppTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(idealWidth: 460, alignment: .leading)
 
             if let growth = viewModel.growthSinceLastScan {
                 Text(growth)
@@ -84,10 +88,6 @@ struct ScanSummaryHero: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-
-            CategoryShareBar(summaries: viewModel.summaries, formatBytes: viewModel.formattedBytes)
-                .padding(.top, 6)
-                .frame(maxWidth: 520)
         }
         .frame(minWidth: 280, alignment: .leading)
     }

@@ -21,10 +21,12 @@ struct OwnerInputs: Sendable {
     }
 }
 
-/// Owner-derived scan output: the relabeled aggregate, sections, donut feed and owner cache.
+/// Owner-derived scan output: the relabeled aggregate, sections, clean-list rows, donut feed and owner cache.
 struct OwnerResults: Sendable {
     let aggregate: FolderAggregate
     let sections: [OwnerSection]
+    /// Empty when owners are off; the legacy category list is shown instead.
+    let cleanRows: [CleanRow]
     let ownerByFolderPath: [String: FolderOwner]
     let toolRollups: [ToolRollup]
 }
@@ -85,7 +87,7 @@ extension ScanDashboardViewModel {
     ) -> OwnerResults {
         guard let resolver else {
             return OwnerResults(
-                aggregate: aggregate, sections: [], ownerByFolderPath: [:],
+                aggregate: aggregate, sections: [], cleanRows: [], ownerByFolderPath: [:],
                 toolRollups: FolderRollup.makeToolRollups(from: findings)
             )
         }
@@ -94,12 +96,31 @@ extension ScanDashboardViewModel {
         for (id, owner) in byId {
             if let record = aggregate.recordsByFolderId[id] { byPath[record.folderPath] = owner }
         }
+        let sizeOnly = CleanListing.sizeOnlyRecords(from: findings)
+        var rowOwners = byId
+        for record in sizeOnly {
+            let owner = byPath[record.folderPath] ?? resolver.owner(forFolderPath: record.folderPath)
+            byPath[record.folderPath] = owner
+            rowOwners[record.id] = owner
+        }
+        let records = aggregate.recordsByFolderId.values.filter { byId[$0.id] != nil } + sizeOnly
         return OwnerResults(
             aggregate: FolderRollup.relabelingTools(aggregate, ownerByFolderId: byId),
             sections: sections,
+            cleanRows: CleanListing.rows(records: records, owners: rowOwners),
             ownerByFolderPath: byPath,
             toolRollups: FolderRollup.makeToolRollups(owners: byId, records: aggregate.recordsByFolderId)
         )
+    }
+
+    /// App bundle paths for the app owners among `rows`; lookups go through the index's bounded fallback.
+    nonisolated static func appIconPaths(for rows: [CleanRow], index: InstalledAppIndex) -> [String: String] {
+        var paths: [String: String] = [:]
+        var seen: Set<String> = []
+        for row in rows where row.owner.kind == .app && seen.insert(row.owner.key).inserted {
+            if let url = index.appURL(for: row.owner) { paths[row.owner.key] = url.path }
+        }
+        return paths
     }
 
     // MARK: - Browser state
@@ -111,31 +132,8 @@ extension ScanDashboardViewModel {
         selection.selectionState(of: group.safeFolderIds)
     }
 
-    func isOwnerGroupExpanded(_ group: OwnerGroup) -> Bool {
-        selection.expandedToolGroups.contains(group.id)
-    }
-
-    /// Activity line for a project header; nil until project activity is known.
-    func projectActivityText(for group: OwnerGroup) -> String? {
-        group.owner.projectRoot.flatMap { projectActivity[$0] }?.text(now: Date())
-    }
-
-    /// "≥ X" when any member's size is a lower bound.
-    func formattedOwnerSize(bytes: Int64, isPartial: Bool) -> String {
-        ScanReportPresenter.formatFindingSize(bytes: bytes, isComplete: !isPartial)
-    }
-
-    static func sectionTitle(_ kind: OwnerKind) -> String {
-        switch kind {
-        case .app: return "Apps"
-        case .project: return "Projects"
-        case .tool: return "Developer tools"
-        case .macOS: return "macOS"
-        case .other: return "Other"
-        }
-    }
-
-    static func folderBadge(_ count: Int) -> String {
-        count == 1 ? "1 folder" : "\(count) folders"
+    /// Activity line for a project owner; nil until project activity is known.
+    func projectActivityText(for owner: FolderOwner) -> String? {
+        owner.projectRoot.flatMap { projectActivity[$0] }?.text(now: Date())
     }
 }
