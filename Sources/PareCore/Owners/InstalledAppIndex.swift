@@ -4,20 +4,24 @@ import Foundation
 struct InstalledAppMatch: Equatable, Sendable {
     let id: String
     let name: String
+    var url: URL? = nil
 }
 
-/// Bundle ID to display name for installed apps.
+/// Bundle ID to display name and app location for installed apps.
 public struct InstalledAppIndex: Sendable {
     public static let empty = InstalledAppIndex(namesByBundleID: [:])
 
     private let names: [String: String]
+    private let urls: [String: URL]
     private let fallback: (any AppCopyLocating)?
     private let budget: FallbackBudget
+    private let fallbackHits = FallbackMemo()
 
     /// Keys are matched case-insensitively. `fallbackLocator` is asked only for IDs the map lacks,
     /// until `fallbackBudgetSeconds` of lookups in total have been spent.
     public init(
         namesByBundleID: [String: String],
+        appURLsByBundleID: [String: URL] = [:],
         fallbackLocator: (any AppCopyLocating)? = nil,
         fallbackBudgetSeconds: TimeInterval = 1
     ) {
@@ -25,6 +29,7 @@ public struct InstalledAppIndex: Sendable {
         var lowered: [String: String] = [:]
         for (id, name) in namesByBundleID { lowered[id.lowercased()] = name }
         self.names = lowered
+        self.urls = Dictionary(appURLsByBundleID.map { ($0.key.lowercased(), $0.value) }, uniquingKeysWith: { first, _ in first })
         self.fallback = fallbackLocator
     }
 
@@ -38,33 +43,50 @@ public struct InstalledAppIndex: Sendable {
     ) -> InstalledAppIndex {
         let expired = { Date() >= deadline || isCancelled() }
         var found: [String: String] = [:]
+        var locations: [String: URL] = [:]
         for root in roots {
             for app in appBundles(in: root, expired: expired) {
                 if expired() { break }
-                if let info = AppBundleInfo.read(app) { found[info.id] = info.name }
+                if let info = AppBundleInfo.read(app) {
+                    found[info.id] = info.name
+                    locations[info.id] = app
+                }
             }
             if expired() { break }
         }
-        return InstalledAppIndex(namesByBundleID: found, fallbackLocator: found.isEmpty ? nil : locator)
+        return InstalledAppIndex(
+            namesByBundleID: found, appURLsByBundleID: locations, fallbackLocator: found.isEmpty ? nil : locator
+        )
     }
 
     public func name(forBundleID id: String) -> String? { match(forBundleID: id)?.name }
+
+    /// The installed app's bundle location, matched like `name(forBundleID:)`.
+    public func appURL(forBundleID id: String) -> URL? { match(forBundleID: id)?.url }
 
     /// Exact ID first, then the longest dot-boundary prefix with at least three components.
     func match(forBundleID id: String) -> InstalledAppMatch? {
         let candidates = Self.candidates(of: id.lowercased())
         for candidate in candidates {
-            if let name = names[candidate] { return InstalledAppMatch(id: candidate, name: name) }
+            if let name = names[candidate] { return InstalledAppMatch(id: candidate, name: name, url: urls[candidate]) }
         }
         guard let fallback else { return nil }
         for candidate in candidates {
-            guard budget.hasTime else { return nil }
-            let urls = budget.timed { fallback.appURLs(forBundleID: candidate) }
-            // A removed app sits in the Trash and belongs in Other.
-            if let url = urls.first(where: { !AppUninstaller.isInTrash($0.path) }) {
-                let name = AppBundleInfo.read(url)?.name ?? url.deletingPathExtension().lastPathComponent
-                return InstalledAppMatch(id: candidate, name: name)
+            if let known = fallbackHits.value(for: candidate) {
+                if let hit = known { return hit }
+                continue
             }
+            guard budget.hasTime else { return nil }
+            let found = budget.timed { fallback.appURLs(forBundleID: candidate) }
+            // A removed app sits in the Trash and belongs in Other.
+            let hit = found.first(where: { !AppUninstaller.isInTrash($0.path) }).map { url in
+                InstalledAppMatch(
+                    id: candidate, name: AppBundleInfo.read(url)?.name ?? url.deletingPathExtension().lastPathComponent,
+                    url: url
+                )
+            }
+            fallbackHits.store(hit, for: candidate)
+            if let hit { return hit }
         }
         return nil
     }
@@ -125,4 +147,14 @@ final class FallbackBudget: @unchecked Sendable {
         lock.unlock()
         return result
     }
+}
+
+/// Locator answers already paid for, so a second lookup of the same ID never spends budget again.
+final class FallbackMemo: @unchecked Sendable {
+    private let lock = NSLock()
+    private var answers: [String: InstalledAppMatch?] = [:]
+
+    func value(for id: String) -> InstalledAppMatch?? { lock.lock(); defer { lock.unlock() }; return answers[id] }
+
+    func store(_ match: InstalledAppMatch?, for id: String) { lock.lock(); answers[id] = .some(match); lock.unlock() }
 }
