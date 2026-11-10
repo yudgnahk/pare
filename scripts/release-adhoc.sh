@@ -112,6 +112,28 @@ assemble_bundle() {
 
     # Contents/Resources is where SwiftPM's accessor looks for apps and where codesign seals it.
     cp -R "$RESOURCE_SRC" "$contents/Resources/$RESOURCE_BUNDLE"
+    normalize_resource_bundle "$contents/Resources/$RESOURCE_BUNDLE"
+}
+
+# Xcode's SwiftPM emits a flat resource bundle that codesign rejects; give it the macOS bundle layout.
+normalize_resource_bundle() {
+    local bundle="$1" staging
+    [[ -f "$bundle/Contents/Info.plist" ]] && return 0
+    staging="$(mktemp -d "$DIST_DIR/bundle.XXXXXX")"
+    mv "$bundle"/* "$staging"/
+    mkdir -p "$bundle/Contents/Resources"
+    if [[ -f "$staging/Info.plist" ]]; then
+        mv "$staging/Info.plist" "$bundle/Contents/Info.plist"
+    else
+        /usr/libexec/PlistBuddy \
+            -c "Add :CFBundleIdentifier string com.yudgnahk.pare.PareCore.resources" \
+            -c "Add :CFBundleName string Pare_PareCore" \
+            -c "Add :CFBundlePackageType string BNDL" \
+            -c "Add :CFBundleInfoDictionaryVersion string 6.0" \
+            "$bundle/Contents/Info.plist" >/dev/null
+    fi
+    if compgen -G "$staging/*" >/dev/null; then mv "$staging"/* "$bundle/Contents/Resources/"; fi
+    rmdir "$staging"
 }
 
 sign_bundle() {
