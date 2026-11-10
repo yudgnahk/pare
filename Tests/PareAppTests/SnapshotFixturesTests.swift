@@ -48,12 +48,24 @@ final class SnapshotFixturesTests: XCTestCase {
     }
 
     func testByAppSceneShowsEveryOwnerKind() {
-        let vm = ScanDashboardViewModel(browseModes: .inMemory())
+        let vm = ScanDashboardViewModel()
         vm.applySnapshotResults(SnapshotFixtures.scanReport, owners: SnapshotFixtures.ownerInputs)
         let names = Set(vm.ownerSections.flatMap(\.groups).map(\.owner.displayName))
 
         XCTAssertEqual(vm.ownerSections.map(\.kind), [.app, .project, .tool, .macOS, .other])
         XCTAssertTrue(names.isSuperset(of: ["Whisper", "VS Code", "shop", "blog", "npm"]), "\(names)")
+    }
+
+    func testConsequenceSceneShowsEveryGroupAndAFoldRow() {
+        let vm = ScanDashboardViewModel()
+        vm.applySnapshotResults(SnapshotFixtures.scanReport, owners: SnapshotFixtures.ownerInputs)
+        let sections = vm.consequenceSections
+
+        XCTAssertEqual(sections.map(\.group), [.rebuildsItself, .slowerNextBuild, .needsALook, .sizeOnly])
+        XCTAssertTrue(sections.contains { $0.smallRowCount > 0 })
+        XCTAssertEqual(vm.appIconPath(for: FolderOwner(kind: .app, key: "app:com.acme.whisper", displayName: "Whisper")),
+                       SnapshotFixtures.fixtureIconApp)
+        XCTAssertGreaterThan(vm.ownerChips.count, ScanDashboardViewModel.primaryChipCount)
     }
 
     func testFakeRootDoesNotExist() {

@@ -125,20 +125,23 @@ struct ScanDashboardView: View {
             columns: Array(repeating: GridItem(.flexible(), spacing: AppTheme.Spacing.md), count: 3),
             spacing: AppTheme.Spacing.md
         ) {
+            // Found totals, held rows included; "Selected" is what a clean would move.
             MetricTile(
                 label: "Safe to clean",
                 icon: "checkmark.shield.fill",
-                bytes: viewModel.quickCleanCandidatesBytes,
-                detail: "\(viewModel.quickCleanCandidatesCount) items marked Safe",
+                bytes: viewModel.foundCandidateStats.safeBytes,
+                detail: ScanDashboardViewModel.safeCardDetail(
+                    count: viewModel.foundCandidateStats.safeCount, heldCount: viewModel.heldSafeCount
+                ),
                 tint: AppTheme.success
             )
             MetricTile(
                 label: "Needs review",
                 icon: "eye.fill",
-                bytes: viewModel.candidateStats.reviewBytes,
-                detail: viewModel.reviewRiskCandidatesCount == 0
+                bytes: viewModel.foundCandidateStats.reviewBytes,
+                detail: viewModel.foundCandidateStats.reviewCount == 0
                     ? "Nothing needs a second opinion"
-                    : "\(viewModel.reviewRiskCandidatesCount) Review items — may sign you out of sites or apps",
+                    : "\(viewModel.foundCandidateStats.reviewCount) Review items — may sign you out of sites or apps",
                 tint: AppTheme.warning
             )
             MetricTile(
@@ -257,36 +260,29 @@ struct ScanDashboardView: View {
 
     private var categoryBrowser: some View {
         let ownerView = viewModel.isOwnerViewEnabled
-        let byApp = ownerView && viewModel.browseMode == .apps
         return GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(byApp ? "Browse by app" : "Browse by category")
-                            .font(scale.sectionTitle)
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text(ownerView
-                             ? "Tick what you want gone."
-                             : "Open a category to see each tool and folder. Tick what you want gone.")
-                            .font(scale.caption)
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 8)
-                    if ownerView {
-                        BrowseModeSwitch(mode: viewModel.browseMode, onSelect: viewModel.setBrowseMode)
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(ownerView ? "What to clean" : "Browse by category")
+                        .font(scale.sectionTitle)
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Text(ownerView
+                         ? "Tick what you want gone."
+                         : "Open a category to see each tool and folder. Tick what you want gone.")
+                        .font(scale.caption)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if viewModel.summaries.isEmpty {
                     EmptyStateView(
                         icon: "tray",
                         title: "No scan results yet",
-                        message: BrowseModeSwitch.emptyMessage(byApp: byApp),
+                        message: ConsequenceBrowserView.emptyMessage(byConsequence: ownerView),
                         layout: .inline
                     )
-                } else if byApp {
-                    OwnerBrowserView(viewModel: viewModel)
+                } else if ownerView {
+                    ConsequenceBrowserView(viewModel: viewModel)
                 } else {
                     CategoryBrowserList(viewModel: viewModel)
                 }

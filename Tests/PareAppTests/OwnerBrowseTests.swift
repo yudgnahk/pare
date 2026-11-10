@@ -3,7 +3,7 @@ import XCTest
 import PareCore
 @testable import PareApp
 
-/// The owner browser is another view of the same folder rows: it must never change what is selected or cleaned.
+/// Owner data (groups, labels, donut) is another view of the same folder rows: it must never change what is selected or cleaned.
 @MainActor
 final class OwnerBrowseTests: XCTestCase {
 
@@ -60,8 +60,8 @@ final class OwnerBrowseTests: XCTestCase {
         )
     }
 
-    private func loaded(mode: BrowseMode = .apps, store: BrowseModeStore? = nil) -> ScanDashboardViewModel {
-        let vm = ScanDashboardViewModel(browseModes: store ?? .inMemory(mode))
+    private func loaded() -> ScanDashboardViewModel {
+        let vm = ScanDashboardViewModel()
         vm.applySnapshotResults(report, owners: inputs)
         return vm
     }
@@ -75,54 +75,13 @@ final class OwnerBrowseTests: XCTestCase {
         return try XCTUnwrap(rows.first { path == $0.row.folderPath || path.hasPrefix($0.row.folderPath + "/") }?.id, path)
     }
 
-    // MARK: - Mode switch
-
-    func testSwitchingModeKeepsSelectionIdentical() throws {
-        let vm = loaded()
-        vm.toggleFolder(try XCTUnwrap(vm.ownerSections.flatMap(\.groups).flatMap(\.rows).first { $0.row.folderPath == shopModules }).row)
-        vm.toggleSelection(path: crashLog)
-        let before = vm.selection
-
-        for mode in [BrowseMode.categories, .apps, .categories] {
-            vm.setBrowseMode(mode)
-            XCTAssertEqual(vm.browseMode, mode)
-            XCTAssertEqual(vm.selection.selectedFolderIds, before.selectedFolderIds, "\(mode)")
-            XCTAssertEqual(vm.selection.selectedPaths, before.selectedPaths, "\(mode)")
-            XCTAssertEqual(vm.selection.selectedBytes, before.selectedBytes, "\(mode)")
-            XCTAssertEqual(vm.selection.selectedCount, before.selectedCount, "\(mode)")
-        }
-    }
-
-    func testPostScanSelectionIsEverySafeFolderInEitherMode() {
+    func testPostScanSelectionIsEverySafeFolder() {
         let expected = FolderRollup.buildAggregate(from: findings).safeFolderIds
-        for mode in BrowseMode.allCases {
-            let vm = loaded(mode: mode)
-            let ownerSafe = vm.ownerSections.flatMap(\.groups).reduce(into: Set<String>()) { $0.formUnion($1.safeFolderIds) }
+        let vm = loaded()
+        let ownerSafe = vm.ownerSections.flatMap(\.groups).reduce(into: Set<String>()) { $0.formUnion($1.safeFolderIds) }
 
-            XCTAssertEqual(vm.browseMode, mode)
-            XCTAssertEqual(vm.selection.selectedFolderIds, expected, "\(mode)")
-            XCTAssertEqual(ownerSafe, expected, "\(mode)")
-        }
-    }
-
-    func testTotalsStatsAndCleanSetsDoNotDependOnMode() throws {
-        let apps = loaded(mode: .apps)
-        let categories = loaded(mode: .categories)
-
-        XCTAssertEqual(apps.totalReclaimableBytes, categories.totalReclaimableBytes)
-        XCTAssertEqual(apps.isTotalSizePartial, categories.isTotalSizePartial)
-        XCTAssertEqual(apps.candidateStats, categories.candidateStats)
-        XCTAssertEqual(apps.canRequestCleanup, categories.canRequestCleanup)
-        for kind in [PendingCleanup.quick, .deep, .selected] {
-            let a = try XCTUnwrap(apps.findingsToClean(for: kind)).map(\.path)
-            let c = try XCTUnwrap(categories.findingsToClean(for: kind)).map(\.path)
-            XCTAssertEqual(Set(a), Set(c), "\(kind)")
-        }
-
-        apps.setBrowseMode(.categories)
-        XCTAssertEqual(apps.candidateStats, categories.candidateStats)
-        XCTAssertEqual(Set(try XCTUnwrap(apps.findingsToClean(for: .selected)).map(\.path)),
-                       Set(try XCTUnwrap(categories.findingsToClean(for: .selected)).map(\.path)))
+        XCTAssertEqual(vm.selection.selectedFolderIds, expected)
+        XCTAssertEqual(ownerSafe, expected)
     }
 
     // MARK: - Group checkbox
@@ -156,7 +115,6 @@ final class OwnerBrowseTests: XCTestCase {
         vm.toggleOwnerGroup(other)
 
         XCTAssertEqual(vm.selectedCandidatesCount, 0)
-        XCTAssertEqual(OwnerGroupSection.selectHelp(other), "Review items: tick one by one")
     }
 
     func testGroupWithHotRowIsPartialAndItsTickNeverSelectsTheHotPath() throws {
@@ -191,7 +149,7 @@ final class OwnerBrowseTests: XCTestCase {
 
     func testHiddenRowsAreCountedSelectedAndTotalled() throws {
         let many = (1...60).map { finding(.projectArtifacts, .safe, Self.home + "/Code/shop/pkg\($0)/dist", Int64($0)) }
-        let vm = ScanDashboardViewModel(browseModes: .inMemory())
+        let vm = ScanDashboardViewModel()
         vm.applySnapshotResults(ScanReport(findings: many, summaries: []), owners: inputs)
         let shop = try group("project:" + Self.home + "/Code/shop", in: vm)
         vm.clearSelection()
@@ -200,7 +158,6 @@ final class OwnerBrowseTests: XCTestCase {
         XCTAssertEqual(shop.hiddenRowCount, 10)
         XCTAssertEqual(shop.folderIds.count, 60)
         XCTAssertEqual(shop.totalBytes, (1...60).reduce(Int64(0)) { $0 + Int64($1) })
-        XCTAssertEqual(ScanDashboardViewModel.folderBadge(shop.folderIds.count), "60 folders")
 
         vm.toggleOwnerGroup(shop)
         XCTAssertEqual(vm.selectedCandidatesCount, 60)
@@ -213,7 +170,9 @@ final class OwnerBrowseTests: XCTestCase {
 
         XCTAssertEqual(app.owner.displayName, "W")
         XCTAssertTrue(app.hasPartialSize)
-        XCTAssertTrue(vm.formattedOwnerSize(bytes: app.totalBytes, isPartial: app.hasPartialSize).hasPrefix("≥ "))
+        let section = try XCTUnwrap(vm.consequenceSections.first { $0.group == .rebuildsItself })
+        XCTAssertTrue(section.hasPartialSize)
+        XCTAssertTrue(vm.consequenceSizeText(section).contains("≥ "))
     }
 
     func testExplainOnlyAndAdvancedFindingsAreInNoGroupOrTotal() {
@@ -231,8 +190,6 @@ final class OwnerBrowseTests: XCTestCase {
         let vm = loaded()
 
         XCTAssertEqual(vm.ownerSections.map(\.kind), [.app, .project, .tool, .macOS, .other])
-        XCTAssertEqual(vm.ownerSections.map { ScanDashboardViewModel.sectionTitle($0.kind) },
-                       ["Apps", "Projects", "Developer tools", "macOS", "Other"])
     }
 
     func testProjectRowsAreLabelledRelativeToTheProject() throws {
@@ -240,13 +197,11 @@ final class OwnerBrowseTests: XCTestCase {
         let shop = try group("project:" + Self.home + "/Code/shop", in: vm)
 
         XCTAssertEqual(Set(shop.rows.map(\.label)), [".next", "node_modules"])
-        XCTAssertEqual(ProjectGroupHeader.meta(root: Self.home + "/Code/shop", activity: nil), Self.home + "/Code/shop")
-        XCTAssertEqual(ProjectGroupHeader.meta(root: "/r/shop", activity: "Idle 1 day"), "/r/shop · Idle 1 day")
-        XCTAssertNil(vm.projectActivityText(for: shop))
+        XCTAssertNil(vm.projectActivityText(for: shop.owner))
     }
 
     func testCategoryToolGroupsUseOwnerNames() {
-        let vm = loaded(mode: .categories)
+        let vm = loaded()
 
         XCTAssertEqual(vm.toolGroups(for: .projectArtifacts).map(\.toolName), ["shop"])
         XCTAssertEqual(vm.toolGroups(for: .browserCaches).map(\.toolName), ["Chrome"])
@@ -316,43 +271,6 @@ final class OwnerBrowseTests: XCTestCase {
         )
     }
 
-    // MARK: - Persistence
-
-    func testModeDefaultsToAppsAndPersistsAcrossViewModels() throws {
-        let suite = "pare.tests.browseMode.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-
-        let first = ScanDashboardViewModel(browseModes: BrowseModeStore(defaults: defaults))
-        XCTAssertEqual(first.browseMode, .apps)
-
-        first.setBrowseMode(.categories)
-
-        XCTAssertEqual(defaults.string(forKey: BrowseModeStore.storageKey), "categories")
-        XCTAssertEqual(ScanDashboardViewModel(browseModes: BrowseModeStore(defaults: defaults)).browseMode, .categories)
-        XCTAssertEqual(BrowseModeStore.storageKey, "pare.smartScan.browseMode")
-    }
-
-    func testInMemoryStoreNeverWritesDefaults() {
-        let stored = UserDefaults.standard.string(forKey: BrowseModeStore.storageKey)
-        let store = BrowseModeStore.inMemory()
-        XCTAssertEqual(store.mode, .apps)
-
-        store.mode = store.mode == .apps ? .categories : .apps
-
-        XCTAssertEqual(store.mode, .categories)
-        XCTAssertEqual(UserDefaults.standard.string(forKey: BrowseModeStore.storageKey), stored)
-    }
-
-    func testUnknownStoredModeFallsBackToApps() throws {
-        let suite = "pare.tests.browseMode.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        defaults.set("tree", forKey: BrowseModeStore.storageKey)
-
-        XCTAssertEqual(BrowseModeStore(defaults: defaults).mode, .apps)
-    }
-
     // MARK: - Installed-app wait
 
     func testInstalledAppsWaitGivesUpAtItsLimit() async {
@@ -386,8 +304,8 @@ final class OwnerBrowseTests: XCTestCase {
     // MARK: - Copy and symbols
 
     func testChipsAndOwnerSymbolsResolve() {
-        XCTAssertEqual(CategoryStyle.chipLabel(for: .developerBuildArtifacts), "Build")
-        XCTAssertEqual(CategoryStyle.chipLabel(for: .launchAgents), "Agent")
+        XCTAssertEqual(CategoryStyle.kindLabel(for: .developerPackageCaches, risk: .safe), "package cache")
+        XCTAssertEqual(CategoryStyle.kindLabel(for: .browserCaches, risk: .review), "site data")
         let owners: [FolderOwner] = [
             .macOS, .other, .project(ProjectRef(root: "/r/a", name: "a")),
             FolderOwner(kind: .tool, key: "tool:homebrew", displayName: "Homebrew"),
@@ -396,10 +314,8 @@ final class OwnerBrowseTests: XCTestCase {
         for name in owners.map(OwnerIcon.symbol(for:)) + ["Projects", "Developer tools"].map(OwnerIcon.symbol(forName:)) {
             XCTAssertNotNil(NSImage(systemSymbolName: name, accessibilityDescription: nil), name)
         }
-        XCTAssertEqual(OwnerGroupSection.ownerHelp(.macOS), "Owned by macOS")
-        XCTAssertEqual(OwnerGroupSection.ownerHelp(.other), "Owner unknown")
-        XCTAssertEqual(BrowseModeSwitch.title(.apps), "Apps")
-        XCTAssertEqual(BrowseModeSwitch.title(.categories), "Categories")
+        XCTAssertEqual(OwnerIconView.help(for: .macOS), "Owned by macOS")
+        XCTAssertEqual(OwnerIconView.help(for: .other), "Owner unknown")
     }
 
     // MARK: - Helpers

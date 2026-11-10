@@ -15,6 +15,16 @@ enum TriSelectionState {
     }
 }
 
+extension TriSelectionState {
+    init(_ state: CategorySelectState) {
+        switch state {
+        case .all: self = .all
+        case .partial: self = .partial
+        case .none: self = .none
+        }
+    }
+}
+
 /// VoiceOver text for image-only checkboxes.
 enum SelectAccessibility {
     static func groupLabel(title: String) -> String { "Select safe folders in \(title)" }

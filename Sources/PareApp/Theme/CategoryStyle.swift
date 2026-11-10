@@ -90,28 +90,26 @@ enum CategoryStyle {
         }
     }
 
-    // MARK: - Chip
+    // MARK: - Kind
 
-    /// One-word category chip on owner-browser rows.
-    static func chipLabel(for category: ScanCategory) -> String {
+    /// Short lowercase kind after an owner name, e.g. `Chrome · cache`.
+    static func kindLabel(for category: ScanCategory, risk: RiskLevel) -> String {
         switch category {
-        case .userCaches, .productivityCaches: return "Cache"
-        case .browserCaches: return "Browser"
-        case .logsAndCrashReports: return "Logs"
-        case .temporaryFiles: return "Temp"
-        case .developerBuildArtifacts: return "Build"
-        case .developerPackageCaches: return "Packages"
-        case .developerSimulatorCaches: return "Simulator"
-        case .designerCaches: return "Design"
-        case .videoBuilderCaches: return "Video"
-        case .aiToolCaches: return "AI"
-        case .installerFiles: return "Installer"
-        case .applications: return "App"
-        case .projectArtifacts: return "Project"
-        case .deviceBackups: return "Backup"
-        case .launchAgents: return "Agent"
-        // Diagnostics never reach an owner group.
-        case .diagnostics: return category.rawValue
+        case .userCaches, .productivityCaches: return "cache"
+        case .browserCaches: return risk == .safe ? "cache" : "site data"
+        case .logsAndCrashReports: return "logs"
+        case .temporaryFiles: return "temp files"
+        case .developerBuildArtifacts, .projectArtifacts: return "build output"
+        case .developerPackageCaches: return "package cache"
+        case .developerSimulatorCaches: return "simulator cache"
+        case .designerCaches: return "design cache"
+        case .videoBuilderCaches: return "render cache"
+        case .aiToolCaches: return "AI cache"
+        case .installerFiles: return "installer"
+        case .applications: return "old version"
+        case .deviceBackups: return "device backup"
+        case .launchAgents: return "launch agent"
+        case .diagnostics: return "diagnostics"
         }
     }
 

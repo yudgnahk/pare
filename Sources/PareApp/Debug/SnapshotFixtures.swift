@@ -83,18 +83,30 @@ enum SnapshotFixtures {
         Row(category: .projectArtifacts, risk: .review, path: "/Code/shop/node_modules", bytes: 910 * mb),
         Row(category: .projectArtifacts, risk: .safe, path: "/Code/blog/target", bytes: 2 * gb + 160 * mb),
         Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.acme.Whisper", bytes: 640 * mb),
-        Row(category: .userCaches, risk: .safe, path: "/Library/Application Support/Code/Cache", bytes: 480 * mb)
+        Row(category: .userCaches, risk: .safe, path: "/Library/Application Support/Code/Cache", bytes: 480 * mb),
+        // Under the 50 MB fold threshold, so each group shows its small-items row.
+        Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.apple.akd", bytes: 18 * mb),
+        Row(category: .userCaches, risk: .safe, path: "/Library/Caches/com.acme.Notes", bytes: 9 * mb),
+        Row(category: .projectArtifacts, risk: .safe, path: "/Code/blog/.cache", bytes: 31 * mb),
+        // Working-set cache: listed under Size only, never cleaned.
+        Row(category: .developerPackageCaches, risk: .advanced, path: "/go/pkg/mod", bytes: 4 * gb + 260 * mb)
     ]
 
     /// Owner context for the fake home: one installed app and two projects, found without touching disk.
+    /// Whisper borrows a bundled system app's icon so the scene shows a real one; nothing is read from it.
     static var ownerInputs: OwnerInputs {
         OwnerInputs(
             homeDirectory: URL(fileURLWithPath: home),
-            installedApps: InstalledAppIndex(namesByBundleID: ["com.acme.whisper": "Whisper"]),
+            installedApps: InstalledAppIndex(
+                namesByBundleID: ["com.acme.whisper": "Whisper"],
+                appURLsByBundleID: ["com.acme.whisper": URL(fileURLWithPath: fixtureIconApp)]
+            ),
             registeredRoots: [URL(fileURLWithPath: projectsRoot)],
             probe: FixtureProjectProbe(gitRoots: [projectsRoot + "/shop"], markerRoots: [projectsRoot + "/blog"])
         )
     }
+
+    static let fixtureIconApp = "/System/Applications/VoiceMemos.app"
 
     /// Answers project-marker probes from fixed lists.
     struct FixtureProjectProbe: ProjectMarkerProbing {
@@ -112,8 +124,7 @@ enum SnapshotFixtures {
         let store = CleanupTransactionStore(directory: URL(fileURLWithPath: root + "/transactions"))
         return AppModelStore(
             cleanup: CleanupCoordinator(engine: inertEngine(store: store)),
-            history: HistoryViewModel(store: store, engine: inertEngine(store: store)),
-            browseModes: .inMemory()
+            history: HistoryViewModel(store: store, engine: inertEngine(store: store))
         )
     }
 

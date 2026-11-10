@@ -60,8 +60,7 @@ final class ActiveProjectSelectionTests: XCTestCase {
                 directory: growthDir ?? FileManager.default.temporaryDirectory.appendingPathComponent("pare-active-\(UUID().uuidString)")
             ),
             cacheActivityLabeler: { _ in [:] },
-            projectActivityLabeler: projectLabeler,
-            browseModes: .inMemory()
+            projectActivityLabeler: projectLabeler
         )
         vm.applySnapshotResults(report, owners: inputs)
         return vm
@@ -222,14 +221,14 @@ final class ActiveProjectSelectionTests: XCTestCase {
 
     func testProjectActivityTextAppearsOnlyOnceKnown() throws {
         let vm = makeModel()
-        XCTAssertNil(vm.projectActivityText(for: try group(shopRoot, in: vm)))
+        XCTAssertNil(vm.projectActivityText(for: try group(shopRoot, in: vm).owner))
 
         vm.applyProjectActivity(
             [shopRoot: ago(hours: 1), blogRoot: ago(hours: 5 * 24 + 1)], generation: vm.currentScanGeneration
         )
 
-        XCTAssertEqual(vm.projectActivityText(for: try group(shopRoot, in: vm)), "Active today")
-        XCTAssertEqual(vm.projectActivityText(for: try group(blogRoot, in: vm)), "Idle 5 days")
+        XCTAssertEqual(vm.projectActivityText(for: try group(shopRoot, in: vm).owner), "Active today")
+        XCTAssertEqual(vm.projectActivityText(for: try group(blogRoot, in: vm).owner), "Idle 5 days")
     }
 
     func testHeldRowsShowWhyAndOthersDoNot() throws {

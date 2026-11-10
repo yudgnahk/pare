@@ -27,10 +27,10 @@ final class AppModelStore: ObservableObject {
     )
 
     /// Injectable so the DEBUG snapshot renderer can run on an engine that never touches real files.
-    init(cleanup: CleanupCoordinator? = nil, history: HistoryViewModel? = nil, browseModes: BrowseModeStore? = nil) {
+    init(cleanup: CleanupCoordinator? = nil, history: HistoryViewModel? = nil) {
         let cleanup = cleanup ?? CleanupCoordinator()
         self.cleanup = cleanup
-        self.scan = ScanDashboardViewModel(cleanup: cleanup, browseModes: browseModes ?? BrowseModeStore())
+        self.scan = ScanDashboardViewModel(cleanup: cleanup)
         self.history = history ?? HistoryViewModel()
         cleanup.addCompletionHandler { [volume] in volume.refresh() }
     }
