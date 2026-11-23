@@ -33,6 +33,61 @@ extension ScanPolicy {
         return containsAnyMarker(path, sensitiveDataMarkers)
     }
 
+    /// True when the path matches an app-state-sensitive marker (settings, SSH keys, etc.).
+    public static func containsAppStateSensitiveMarker(_ url: URL) -> Bool {
+        let path = url.path.lowercased()
+        return containsAnyMarker(path, appStateSensitiveMarkers, orSuffix: true)
+    }
+
+    /// Entry/time budgets for the pre-trash walk under a directory finding.
+    public static let directorySensitiveWalkEntryBudget = 10_000
+    public static let directorySensitiveWalkTimeBudget: TimeInterval = 2.0
+
+    /// Outcome of a bounded descendant check for sensitive / app-state markers.
+    public enum DirectorySensitiveContent: Sendable, Equatable {
+        /// No marker found within budget.
+        case clear
+        /// A descendant path matched a sensitive or app-state marker.
+        case found
+        /// Entry or time budget ran out before the tree was fully checked — treat as unsafe.
+        case budgetExhausted
+    }
+
+    /// Walks `root` (no symlink following) looking for sensitive/app-state markers on any entry.
+    /// Fail-closed: an unreadable enumerator or an exhausted budget returns `.budgetExhausted`.
+    public static func directorySensitiveContent(
+        under root: URL,
+        entryBudget: Int = directorySensitiveWalkEntryBudget,
+        timeBudget: TimeInterval = directorySensitiveWalkTimeBudget,
+        now: () -> Date = Date.init
+    ) -> DirectorySensitiveContent {
+        let keys: [URLResourceKey] = [.isSymbolicLinkKey]
+        guard let enumerator = FileManager.default.enumerator(
+            at: root,
+            includingPropertiesForKeys: keys,
+            options: [.skipsPackageDescendants]
+        ) else {
+            return .budgetExhausted
+        }
+
+        var visited = 0
+        let deadline = now().addingTimeInterval(timeBudget)
+        while let entry = enumerator.nextObject() as? URL {
+            visited += 1
+            if visited > entryBudget || now() >= deadline {
+                return .budgetExhausted
+            }
+            if containsSensitiveDataMarker(entry) || containsAppStateSensitiveMarker(entry) {
+                return .found
+            }
+            let isLink = (try? entry.resourceValues(forKeys: Set(keys)))?.isSymbolicLink == true
+            if isLink {
+                enumerator.skipDescendants()
+            }
+        }
+        return .clear
+    }
+
     /// True when the path is JetBrains plugin/driver data requiring review.
     public static func isJetBrainsReviewRequiredPath(_ url: URL) -> Bool {
         let path = url.path.lowercased()

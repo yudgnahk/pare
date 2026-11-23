@@ -156,24 +156,53 @@ final class InUseGateTests: XCTestCase {
         XCTAssertEqual(fixture.trashedCount, 1)
     }
 
-    func testUnavailableSnapshotBlocksCacheOfRunningAppOnly() async throws {
+    /// Directory findings fail closed without an open-file snapshot; file findings still
+    /// use the running-app heuristic so an idle app's single-file cache can clean.
+    func testUnavailableSnapshotBlocksDirectoryCaches() async throws {
         let fixture = try Fixture()
         let runningCache = try fixture.makeCache("com.example.running")
         let idleCache = try fixture.makeCache("com.example.idle")
+        let idleFile = idleCache.appending(path: "payload.bin")
+        let runningFile = runningCache.appending(path: "payload.bin")
         let engine = fixture.engine(
             snapshot: nil,
             running: [RunningApp(bundleIdentifier: "com.example.running", name: "Running")]
         )
 
         let result = try await engine.clean(
-            findings: [fixture.finding(runningCache), fixture.finding(idleCache)],
+            findings: [
+                fixture.finding(runningCache),
+                fixture.finding(idleCache),
+                fixture.finding(idleFile),
+                fixture.finding(runningFile),
+            ],
             profileName: "test"
         )
 
-        XCTAssertEqual(result.succeeded.map(\.originalPath), [idleCache.path])
-        guard case .some(.inUse(runningCache.path, _)) = result.skipped.first?.error else {
-            return XCTFail("expected .inUse for the running app's cache, got \(result.skipped)")
+        XCTAssertEqual(result.succeeded.map(\.originalPath), [idleFile.path])
+        let skippedPaths = Set(result.skipped.map(\.path))
+        XCTAssertEqual(skippedPaths, [runningCache.path, idleCache.path, runningFile.path])
+        XCTAssertTrue(
+            result.skipped.contains { item in
+                if case .inUse(runningCache.path, _) = item.error { return true }
+                return false
+            },
+            "directory cache must fail closed: \(result.skipped)"
+        )
+        XCTAssertTrue(
+            result.skipped.contains { item in
+                if case .inUse(idleCache.path, _) = item.error { return true }
+                return false
+            },
+            "idle directory cache must also fail closed: \(result.skipped)"
+        )
+        guard case .some(.inUse(runningFile.path, let holder)) = result.skipped.first(where: {
+            if case .inUse(runningFile.path, _) = $0.error { return true }
+            return false
+        })?.error else {
+            return XCTFail("expected .inUse for the running app's file cache, got \(result.skipped)")
         }
+        XCTAssertTrue(holder.contains("Running"), holder)
     }
 
     func testDryRunReportsInUseToo() async throws {

@@ -1,7 +1,8 @@
 import XCTest
 @testable import PareCore
 
-/// When `lsof` cannot produce a snapshot, only three item classes fail closed; everything else is still cleaned.
+/// When `lsof` cannot produce a snapshot, risky classes fail closed (running-app caches, SQLite,
+/// incomplete downloads, Application Support, and directory findings); ordinary cache *files* may still clean.
 final class InUseGateFailureTests: XCTestCase {
 
     private var root: URL!
@@ -76,10 +77,15 @@ final class InUseGateFailureTests: XCTestCase {
                 if case .inUse = item.error { return item.path }
                 return nil
             })
-            XCTAssertEqual(blocked, [runningCache.path, database.path, download.path], kind.rawValue)
-            XCTAssertEqual(Set(result.succeeded.map(\.originalPath)), [ordinaryFolder.path, ordinaryFile.path],
+            // Directory findings fail closed without a snapshot — ordinaryFolder must not trash.
+            XCTAssertEqual(
+                blocked,
+                [runningCache.path, database.path, download.path, ordinaryFolder.path],
+                kind.rawValue
+            )
+            XCTAssertEqual(Set(result.succeeded.map(\.originalPath)), [ordinaryFile.path],
                            "\(kind.rawValue): \(result.skipped.map(\.reason))")
-            XCTAssertFalse(FileManager.default.fileExists(atPath: ordinaryFolder.path), kind.rawValue)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: ordinaryFolder.path), kind.rawValue)
             XCTAssertTrue(FileManager.default.fileExists(atPath: database.path), kind.rawValue)
         }
     }
@@ -113,7 +119,9 @@ final class InUseGateFailureTests: XCTestCase {
             ("/Users/u/Library/Caches/COM.EXAMPLE.EDITOR/sub/file", true),
             ("/Users/u/Library/Caches/com.example.editor2", false),
             ("/Users/u/Library/Caches/other/com.example.editor", false),
-            ("/Users/u/Library/Application Support/com.example.editor", false),
+            // App Support fails closed without a snapshot — open files under it are invisible to heuristics.
+            ("/Users/u/Library/Application Support/com.example.editor", true),
+            ("/Users/u/Library/Application Support/Slack/Cache", true),
             ("/Users/u/Downloads/big.iso.incomplete", true),
             ("/Users/u/Library/Caches/x.INCOMPLETE", true),
             ("/Users/u/Library/Caches/x.incomplete.bak", false),

@@ -282,6 +282,135 @@ final class CleanupEngineTests: XCTestCase {
                        ".git-credentials must be blocked")
         XCTAssertFalse(ScanPolicy.isLowImpactPath(sshURL),
                        "SSH keys must be blocked")
+        XCTAssertTrue(ScanPolicy.containsAppStateSensitiveMarker(settingsURL))
+        XCTAssertTrue(ScanPolicy.containsAppStateSensitiveMarker(sshURL))
+    }
+
+    // MARK: - Directory finding: nested sensitive / app-state markers
+
+    /// Builds an aged directory finding under the low-impact cache root.
+    private func makeTempDirectoryFinding(
+        name: String,
+        ageSeconds: TimeInterval = 5 * 24 * 60 * 60
+    ) throws -> (url: URL, finding: ScanFinding) {
+        let url = tempDir.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        let oldDate = Date().addingTimeInterval(-ageSeconds)
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate, .creationDate: oldDate],
+            ofItemAtPath: url.path
+        )
+        let finding = ScanFinding(
+            category: .userCaches,
+            riskLevel: .safe,
+            reason: "Test cache folder",
+            path: url.path,
+            sizeBytes: 4096,
+            lastUsed: oldDate,
+            confidence: 0.95
+        )
+        return (url, finding)
+    }
+
+    func testDirectorySensitiveContentFindsNestedCookies() throws {
+        let folder = tempDir.appendingPathComponent("app-cache-sensitive")
+        let nested = folder.appendingPathComponent("sub/Cookies")
+        try FileManager.default.createDirectory(at: nested.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: nested)
+
+        XCTAssertEqual(ScanPolicy.directorySensitiveContent(under: folder), .found)
+    }
+
+    func testDirectorySensitiveContentFindsNestedAppState() throws {
+        // Full path must contain the app-state marker substring.
+        let folder = tempDir.appendingPathComponent("Library/Application Support/Code/User")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: folder.appendingPathComponent("settings.json"))
+
+        let root = tempDir.appendingPathComponent("Library")
+        XCTAssertEqual(ScanPolicy.directorySensitiveContent(under: root), .found)
+    }
+
+    func testDirectorySensitiveContentClearWhenNoMarkers() throws {
+        let folder = tempDir.appendingPathComponent("app-cache-clean")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: folder.appendingPathComponent("blob.bin"))
+
+        XCTAssertEqual(ScanPolicy.directorySensitiveContent(under: folder), .clear)
+    }
+
+    func testDirectorySensitiveContentBudgetExhaustedFailsClosed() throws {
+        let folder = tempDir.appendingPathComponent("app-cache-huge")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for i in 0..<5 {
+            try Data("x".utf8).write(to: folder.appendingPathComponent("f\(i).bin"))
+        }
+
+        XCTAssertEqual(
+            ScanPolicy.directorySensitiveContent(under: folder, entryBudget: 2, timeBudget: 60),
+            .budgetExhausted
+        )
+    }
+
+    func testDirectorySensitiveContentDoesNotFollowSymlinks() throws {
+        let folder = tempDir.appendingPathComponent("app-cache-link")
+        let outside = tempDir.appendingPathComponent("outside-Cookies")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("secret".utf8).write(to: outside)
+        try FileManager.default.createSymbolicLink(
+            at: folder.appendingPathComponent("link"),
+            withDestinationURL: outside
+        )
+
+        // Symlink leaf named "link" is not a marker; destination is not walked.
+        XCTAssertEqual(ScanPolicy.directorySensitiveContent(under: folder), .clear)
+    }
+
+    func testCleanSkipsDirectoryWithNestedSensitiveMarker() async throws {
+        let (folder, finding) = try makeTempDirectoryFinding(name: "vendor-cache")
+        let nested = folder.appendingPathComponent("db/login-state.sqlite")
+        try FileManager.default.createDirectory(at: nested.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: nested)
+        // Nested writes bump the folder mtime; re-age so the age gate does not fire first.
+        let oldDate = finding.lastUsed ?? Date().addingTimeInterval(-5 * 24 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: nested.path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate, .creationDate: oldDate],
+            ofItemAtPath: nested.deletingLastPathComponent().path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate, .creationDate: oldDate],
+            ofItemAtPath: folder.path
+        )
+
+        let result = try await CleanupEngineFixture.make(store: makeStore())
+            .clean(findings: [finding], profileName: "test")
+
+        XCTAssertEqual(result.succeeded.count, 0)
+        XCTAssertEqual(result.skipped.count, 1)
+        guard case .holdsProtectedContent = result.skipped.first?.error else {
+            return XCTFail("expected holdsProtectedContent, got \(String(describing: result.skipped.first?.error))")
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.path))
+    }
+
+    func testCleanTrashesDirectoryWithoutSensitiveDescendants() async throws {
+        let (folder, finding) = try makeTempDirectoryFinding(name: "safe-vendor-cache")
+        let blob = folder.appendingPathComponent("blob.bin")
+        try Data(repeating: 0x41, count: 512).write(to: blob)
+        // Nested writes bump the folder mtime; re-age so the age gate does not fire first.
+        let oldDate = finding.lastUsed ?? Date().addingTimeInterval(-5 * 24 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: blob.path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate, .creationDate: oldDate],
+            ofItemAtPath: folder.path
+        )
+
+        let result = try await CleanupEngineFixture.make(store: makeStore())
+            .clean(findings: [finding], profileName: "test")
+
+        XCTAssertEqual(result.succeeded.count, 1, "\(result.skipped.map(\.reason))")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
 
     // MARK: - ScanFinding: reason is propagated from rule
