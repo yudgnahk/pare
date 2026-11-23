@@ -297,6 +297,29 @@ final class AppUninstallerSafetyTests: XCTestCase {
         XCTAssertTrue(transaction.items.allSatisfy { $0.trashedPath != nil })
     }
 
+    /// A leftover whose leaf is a real directory but whose parent folder is a symlink must still be refused.
+    func testUninstallRefusesLeftoverUnderSymlinkedParent() async throws {
+        let app = try makeApp()
+        let realCaches = try makeDirectory(home.appendingPathComponent("RealCaches"))
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        let cachesLink = library.appendingPathComponent("Caches")
+        try FileManager.default.createSymbolicLink(at: cachesLink, withDestinationURL: realCaches)
+        let leftover = try makeDirectory(cachesLink.appendingPathComponent(chromeID))
+
+        XCTAssertFalse(ScanPolicy.isSymbolicLink(atPath: leftover.path), "leaf itself is a real directory")
+        XCTAssertTrue(ScanPolicy.hasSymbolicLinkComponent(atPath: leftover.path))
+
+        let result = try await makeUninstaller().uninstall(
+            app: app,
+            leftovers: [AppLeftover(path: leftover.path, sizeBytes: 1, category: .caches)]
+        )
+
+        XCTAssertEqual(result.trashed, [app.path])
+        XCTAssertEqual(result.skipped.map(\.path), [leftover.path])
+        XCTAssertEqual(result.skipped.first?.reason, "Symbolic link")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: leftover.path))
+    }
+
     func testUninstallRefusesWhileAppRuns() async throws {
         let app = try makeApp()
         let uninstaller = makeUninstaller(running: [RunningApp(bundleIdentifier: "COM.GOOGLE.CHROME", name: "Chrome")])

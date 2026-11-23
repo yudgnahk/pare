@@ -369,7 +369,7 @@ public struct AppUninstaller: Sendable {
         guard ScanPolicy.isAppLeftoverLocation(leftover.path, home: home) else {
             return "Outside the folders Pare uninstalls from"
         }
-        guard !ScanPolicy.isSymbolicLink(atPath: leftover.path) else { return "Symbolic link" }
+        guard !ScanPolicy.hasSymbolicLinkComponent(atPath: leftover.path) else { return "Symbolic link" }
         guard FileManager.default.fileExists(atPath: leftover.path) else { return "Already gone" }
         guard !excluded.blocksRemoval(of: leftover.path) else { return Self.excludedReason }
         return nil
