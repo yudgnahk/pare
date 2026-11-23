@@ -371,6 +371,17 @@ final class CleanupEngineTests: XCTestCase {
         let nested = folder.appendingPathComponent("db/login-state.sqlite")
         try FileManager.default.createDirectory(at: nested.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("x".utf8).write(to: nested)
+        // Nested writes bump the folder mtime; re-age so the age gate does not fire first.
+        let oldDate = finding.lastUsed ?? Date().addingTimeInterval(-5 * 24 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: nested.path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate, .creationDate: oldDate],
+            ofItemAtPath: nested.deletingLastPathComponent().path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate, .creationDate: oldDate],
+            ofItemAtPath: folder.path
+        )
 
         let result = try await CleanupEngineFixture.make(store: makeStore())
             .clean(findings: [finding], profileName: "test")
@@ -385,7 +396,15 @@ final class CleanupEngineTests: XCTestCase {
 
     func testCleanTrashesDirectoryWithoutSensitiveDescendants() async throws {
         let (folder, finding) = try makeTempDirectoryFinding(name: "safe-vendor-cache")
-        try Data(repeating: 0x41, count: 512).write(to: folder.appendingPathComponent("blob.bin"))
+        let blob = folder.appendingPathComponent("blob.bin")
+        try Data(repeating: 0x41, count: 512).write(to: blob)
+        // Nested writes bump the folder mtime; re-age so the age gate does not fire first.
+        let oldDate = finding.lastUsed ?? Date().addingTimeInterval(-5 * 24 * 60 * 60)
+        try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: blob.path)
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate, .creationDate: oldDate],
+            ofItemAtPath: folder.path
+        )
 
         let result = try await CleanupEngineFixture.make(store: makeStore())
             .clean(findings: [finding], profileName: "test")
