@@ -32,9 +32,12 @@ public enum InUseGate {
     static let sqliteFileSuffixes = [".db", ".sqlite", ".sqlite3", "-wal", "-shm", "-journal"]
 
     static let unavailableProjectHolder = "the project may be in use (open-file check unavailable)"
+    static let unavailableAppSupportHolder = "application data may be in use (open-file check unavailable)"
 
     /// The holder blocking `path`, or nil. With a snapshot, any open file at or under the path blocks it.
-    /// Without one, only items where trashing a live file does damage fail closed; the rest fail open.
+    /// Without one: incomplete downloads, SQLite under Caches, running-app cache folders, and any
+    /// Application Support path fail closed; callers can also force fail-closed (directories, persona
+    /// paths, project deps, version siblings). Everything else fails open.
     public static func holder(
         forPath path: String,
         snapshot: OpenFileSnapshot?,
@@ -49,6 +52,10 @@ public enum InUseGate {
         let name = URL(fileURLWithPath: lower).lastPathComponent
         if name.hasSuffix(".incomplete") {
             return "a download may still be in progress (open-file check unavailable)"
+        }
+        // App Support holds live sessions/databases; without lsof we cannot prove it is idle.
+        if lower.contains("/library/application support/") {
+            return unavailableAppSupportHolder
         }
         guard let caches = lower.range(of: "/library/caches/") else { return nil }
         if sqliteFileSuffixes.contains(where: { name.hasSuffix($0) }) {
@@ -99,7 +106,7 @@ actor InUseBatchCheck {
             let taken = await openFiles.snapshot()
             if taken == nil {
                 snapshotWasUnavailable = true
-                log("Open-file snapshot unavailable; only risky cache items are held back")
+                log("Open-file snapshot unavailable; directories, App Support, and risky cache items are held back")
             }
             snapshot = .some(taken)
             snapshotTakenAt = now()

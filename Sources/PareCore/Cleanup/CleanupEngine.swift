@@ -530,9 +530,14 @@ public actor CleanupEngine {
 
             // Last gate before trashing, so the batch's single snapshot is only taken when needed.
             // A dependency folder is in use when anything inside its project is, e.g. a dev server's cwd.
+            // Without a snapshot: directories and persona paths fail closed — heuristics cannot see open
+            // files under them (App Support is also covered inside InUseGate itself).
             let inUsePath = isProjectDependency ? url.deletingLastPathComponent().path : finding.path
+            let isDirectoryFinding = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+            let failClosedWithoutSnapshot = isProjectDependency || isVersionSibling
+                || isDirectoryFinding || isPersonaPath(url)
             if let holder = await inUse.holder(
-                forPath: inUsePath, failClosedWithoutSnapshot: isProjectDependency || isVersionSibling) {
+                forPath: inUsePath, failClosedWithoutSnapshot: failClosedWithoutSnapshot) {
                 skipped.append(CleanupSkippedItem(path: finding.path, error: .inUse(finding.path, holder: holder)))
                 continue
             }
